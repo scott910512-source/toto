@@ -191,10 +191,15 @@
   function buildPrompt() {
     const tags = selectedSummary();
     return (
-      "다음 조건에 맞는 한국 주말 활동을 추천해 주세요.\n\n" +
+      "다음 조건에 맞는 한국 주말 나들이 '코스(동선)'를 3개 추천해 주세요.\n\n" +
       "조건: " + (tags.length ? tags.join(", ") : "조건 없음") + "\n\n" +
-      "실제로 가능한 구체적인 장소·활동 5개를 제안하고, 각 활동마다 한 줄 설명과 " +
-      "어울리는 테마 키워드를 1~3개 붙여 주세요. 한국어로 답해 주세요."
+      "각 코스는 시간 순서대로 이어지는 간단한 흐름으로 구성하세요. " +
+      "예) 성심당 → 엑스포타워 → 맛집 → 기념품가게\n" +
+      "- flow: 4~6개의 장소·활동을 순서대로 나열 (실제 존재하는 구체적인 장소명 사용)\n" +
+      "- 맛집 단계는 인기·유명하거나 최신 유행하는 식당의 실제 상호명을 넣어 주세요\n" +
+      "- title: 코스를 한마디로 부르는 이름\n" +
+      "- desc: 이 코스를 한 줄로 요약\n" +
+      "한국어로 답해 주세요."
     );
   }
 
@@ -208,10 +213,10 @@
           type: "OBJECT",
           properties: {
             title: { type: "STRING" },
+            flow: { type: "ARRAY", items: { type: "STRING" } },
             desc: { type: "STRING" },
-            themes: { type: "ARRAY", items: { type: "STRING" } },
           },
-          required: ["title", "desc", "themes"],
+          required: ["title", "flow", "desc"],
         },
       },
     },
@@ -294,19 +299,19 @@
     const summary = selectedSummary()
       .map((t) => `<span class="tag">${t}</span>`)
       .join("");
+    const esc = (s) => String(s == null ? "" : s).replace(/</g, "&lt;");
     const cards = list
-      .map(
-        (act) => `
+      .map((act) => {
+        const steps = (act.flow || [])
+          .map((s) => `<span class="flow__step">${esc(s)}</span>`)
+          .join('<span class="flow__arrow">→</span>');
+        return `
         <article class="card">
-          <h3 class="card__title">${(act.title || "").replace(/</g, "&lt;")}</h3>
-          <p class="card__desc">${(act.desc || "").replace(/</g, "&lt;")}</p>
-          <div class="card__meta">
-            ${(act.themes || [])
-              .map((t) => `<span class="tag tag--theme">${String(t).replace(/</g, "&lt;")}</span>`)
-              .join("")}
-          </div>
-        </article>`
-      )
+          <h3 class="card__title">${esc(act.title)}</h3>
+          ${act.desc ? `<p class="card__desc">${esc(act.desc)}</p>` : ""}
+          <div class="flow">${steps}</div>
+        </article>`;
+      })
       .join("");
     results.innerHTML = `
       <div class="results__head">

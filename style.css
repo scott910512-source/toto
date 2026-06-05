@@ -160,6 +160,24 @@ body {
 .card__desc { margin: 0 0 12px; color: #444b59; font-size: 14px; }
 .card__meta { display: flex; flex-wrap: wrap; gap: 6px; }
 
+/* AI 코스 동선 흐름 */
+.flow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+.flow__step {
+  background: #eef1f7;
+  color: #1f2430;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 6px 11px;
+  border-radius: 10px;
+}
+.flow__arrow { color: var(--primary); font-weight: 700; }
+
 #reroll { margin-top: 18px; width: 100%; }
 
 .message {
