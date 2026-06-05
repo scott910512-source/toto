@@ -173,11 +173,15 @@
   const apiKeyInput = document.getElementById("apiKey");
   const saveKeyCheckbox = document.getElementById("saveKey");
 
-  // 저장된 키 불러오기
+  // 저장된 키 불러오기 (없으면 설정을 펼쳐 안내, 저장은 기본 ON)
   const storedKey = localStorage.getItem(KEY_STORAGE);
   if (storedKey) {
     apiKeyInput.value = storedKey;
     saveKeyCheckbox.checked = true;
+  } else {
+    saveKeyCheckbox.checked = true; // 처음 입력한 키가 바로 저장되도록
+    const aiConfig = document.querySelector(".ai-config");
+    if (aiConfig && !(window.AI_PROXY_URL || "").trim()) aiConfig.open = true;
   }
   saveKeyCheckbox.addEventListener("change", () => {
     if (!saveKeyCheckbox.checked) localStorage.removeItem(KEY_STORAGE);
@@ -240,7 +244,7 @@
         "anthropic-dangerous-direct-browser-access": "true",
       },
       body: JSON.stringify({
-        model: "claude-opus-4-8",
+        model: "claude-haiku-4-5", // 가장 저렴한 모델
         max_tokens: 2000,
         system:
           "당신은 한국의 주말 나들이를 추천하는 친절한 도우미입니다. " +

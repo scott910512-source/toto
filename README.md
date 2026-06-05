@@ -12,8 +12,10 @@
 - **🤖 AI 추천**: Anthropic Claude API로 조건에 맞는 활동을 즉석에서 생성합니다(선택).
 
 ## 🤖 AI 추천 사용법
-1. 앱 하단의 **🔑 AI 설정**을 엽니다.
-2. 본인의 Anthropic API 키(`sk-ant-...`)를 입력합니다.
+가장 저렴한 **Claude Haiku 4.5** 모델을 사용합니다.
+
+1. 앱 하단의 **🔑 AI 설정**을 엽니다. ([API 키 발급](https://console.anthropic.com/settings/keys))
+2. 본인의 Anthropic API 키(`sk-ant-...`)를 붙여넣습니다. → 이 브라우저에 자동 저장돼 다음부터는 다시 입력할 필요가 없습니다.
 3. 조건을 고른 뒤 **🤖 AI 추천** 버튼을 누릅니다.
 
 > ⚠️ **보안 주의**: 이 앱은 브라우저에서 직접 Claude API를 호출하므로 **API 키가 브라우저에
