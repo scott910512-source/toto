@@ -1,11 +1,13 @@
 /**
  * 사이트 설정
  *
- * AI 추천을 "공개용 프록시(Cloudflare Worker)"로 호출하려면 아래에 배포한
- * Worker 주소를 넣으세요. (worker/README.md 참고)
+ * ⚠️ 보안 경고
+ * 아래 GEMINI_API_KEY 에 키를 넣고 사이트를 공개(githack/GitHub Pages)하면,
+ * 키가 페이지 소스에 그대로 노출됩니다. 누구나 복사해 쓸 수 있고, 구글이 키를
+ * 자동 정지할 수 있습니다. 본인 책임 하에 개인용으로만 사용하세요.
  *
- *   window.AI_PROXY_URL = "https://weekend-ai-proxy.<계정명>.workers.dev";
- *
- * 비워두면 → 브라우저에서 직접 호출(본인 API 키 입력 방식)으로 동작합니다.
+ * - 키를 넣으면  → 사용자가 키를 입력하지 않아도 바로 AI 추천이 동작합니다.
+ *                 (화면의 🔑 AI 설정 칸은 자동으로 숨겨집니다)
+ * - 비워두면     → 각자 본인 키를 입력하는 방식으로 동작합니다.
  */
-window.AI_PROXY_URL = "";
+window.GEMINI_API_KEY = "";

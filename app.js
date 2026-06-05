@@ -171,22 +171,73 @@
   // ── AI 추천 (Google Gemini API · 무료) ─────────────
   const KEY_STORAGE = "weekend_gemini_key";
   const GEMINI_MODEL = "gemini-2.5-flash"; // 무료 사용량이 있는 모델
+  const EMBEDDED_KEY = (window.GEMINI_API_KEY || "").trim(); // config.js에 내장한 키
   const apiKeyInput = document.getElementById("apiKey");
   const saveKeyCheckbox = document.getElementById("saveKey");
 
-  // 저장된 키 불러오기 (없으면 설정을 펼쳐 안내, 저장은 기본 ON)
-  const storedKey = localStorage.getItem(KEY_STORAGE);
-  if (storedKey) {
-    apiKeyInput.value = storedKey;
-    saveKeyCheckbox.checked = true;
-  } else {
-    saveKeyCheckbox.checked = true; // 처음 입력한 키가 바로 저장되도록
+  if (EMBEDDED_KEY) {
+    // 코드에 키가 내장돼 있으면 사용자 입력 UI는 필요 없음 — 숨김
     const aiConfig = document.querySelector(".ai-config");
-    if (aiConfig) aiConfig.open = true;
+    if (aiConfig) aiConfig.style.display = "none";
+  } else {
+    // 저장된 키 불러오기 (없으면 설정을 펼쳐 안내, 저장은 기본 ON)
+    const storedKey = localStorage.getItem(KEY_STORAGE);
+    if (storedKey) {
+      apiKeyInput.value = storedKey;
+      saveKeyCheckbox.checked = true;
+    } else {
+      saveKeyCheckbox.checked = true; // 처음 입력한 키가 바로 저장되도록
+      const aiConfig = document.querySelector(".ai-config");
+      if (aiConfig) aiConfig.open = true;
+    }
+    saveKeyCheckbox.addEventListener("change", () => {
+      if (!saveKeyCheckbox.checked) localStorage.removeItem(KEY_STORAGE);
+    });
   }
-  saveKeyCheckbox.addEventListener("change", () => {
-    if (!saveKeyCheckbox.checked) localStorage.removeItem(KEY_STORAGE);
-  });
+
+  // ── 사용 제한 (기기별 / localStorage 기반) ─────────
+  // 주의: 진짜 IP별 제한은 서버가 필요합니다. 이건 이 브라우저 기준이라
+  //       시크릿창·캐시삭제로 우회될 수 있습니다.
+  const LIMIT_STORAGE = "weekend_ai_usage";
+  const DAILY_LIMIT = 5; // 하루 5회
+  const COOLDOWN_MS = 30 * 60 * 1000; // 초과 시 30분 대기
+
+  function todayStr() {
+    return new Date().toLocaleDateString("sv-SE"); // YYYY-MM-DD (현지 기준)
+  }
+  function loadUsage() {
+    let u;
+    try {
+      u = JSON.parse(localStorage.getItem(LIMIT_STORAGE)) || {};
+    } catch {
+      u = {};
+    }
+    if (u.date !== todayStr()) u = { date: todayStr(), count: 0, cooldownUntil: 0 };
+    return u;
+  }
+  function saveUsage(u) {
+    localStorage.setItem(LIMIT_STORAGE, JSON.stringify(u));
+  }
+  // 호출 가능 여부 확인 — { allowed, msg }
+  function checkLimit() {
+    const u = loadUsage();
+    const now = Date.now();
+    if (u.cooldownUntil && now < u.cooldownUntil) {
+      const mins = Math.ceil((u.cooldownUntil - now) / 60000);
+      return {
+        allowed: false,
+        msg: `오늘 AI 추천 ${DAILY_LIMIT}회를 모두 사용했어요.\n약 ${mins}분 후에 다시 시도할 수 있어요.`,
+      };
+    }
+    return { allowed: true };
+  }
+  // 성공한 호출 1회 기록
+  function recordUse() {
+    const u = loadUsage();
+    u.count = (u.count || 0) + 1;
+    if (u.count >= DAILY_LIMIT) u.cooldownUntil = Date.now() + COOLDOWN_MS;
+    saveUsage(u);
+  }
 
   function buildPrompt() {
     const tags = selectedSummary();
@@ -253,7 +304,7 @@
   }
 
   async function recommendAi() {
-    const apiKey = apiKeyInput.value.trim();
+    const apiKey = EMBEDDED_KEY || apiKeyInput.value.trim();
 
     if (!apiKey) {
       renderMessage("🔑 아래 <strong>AI 설정</strong>을 열고 Gemini API 키를 입력해 주세요.");
@@ -264,7 +315,15 @@
       return;
     }
 
-    if (saveKeyCheckbox.checked) localStorage.setItem(KEY_STORAGE, apiKey);
+    // 사용 제한 확인 (초과 시 경고창 + 30분 대기)
+    const limit = checkLimit();
+    if (!limit.allowed) {
+      alert("⚠️ " + limit.msg);
+      renderMessage("⏳ " + limit.msg.replace(/\n/g, "<br>"));
+      return;
+    }
+
+    if (!EMBEDDED_KEY && saveKeyCheckbox.checked) localStorage.setItem(KEY_STORAGE, apiKey);
 
     renderMessage("🤖 AI가 추천을 고르는 중...");
 
@@ -275,6 +334,8 @@
         const errText = await res.text();
         throw new Error(`API ${res.status}: ${errText}`);
       }
+
+      recordUse(); // 성공한 호출만 카운트
 
       const data = await res.json();
       const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
