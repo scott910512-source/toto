@@ -168,8 +168,9 @@
     document.getElementById("results").innerHTML = "";
   });
 
-  // ── AI 추천 (Claude API) ──────────────────────────
-  const KEY_STORAGE = "weekend_anthropic_key";
+  // ── AI 추천 (Google Gemini API · 무료) ─────────────
+  const KEY_STORAGE = "weekend_gemini_key";
+  const GEMINI_MODEL = "gemini-2.5-flash"; // 무료 사용량이 있는 모델
   const apiKeyInput = document.getElementById("apiKey");
   const saveKeyCheckbox = document.getElementById("saveKey");
 
@@ -181,17 +182,11 @@
   } else {
     saveKeyCheckbox.checked = true; // 처음 입력한 키가 바로 저장되도록
     const aiConfig = document.querySelector(".ai-config");
-    if (aiConfig && !(window.AI_PROXY_URL || "").trim()) aiConfig.open = true;
+    if (aiConfig) aiConfig.open = true;
   }
   saveKeyCheckbox.addEventListener("change", () => {
     if (!saveKeyCheckbox.checked) localStorage.removeItem(KEY_STORAGE);
   });
-
-  // 프록시가 설정돼 있으면 키 입력 UI는 필요 없음 — 숨김
-  if ((window.AI_PROXY_URL || "").trim()) {
-    const aiConfig = document.querySelector(".ai-config");
-    if (aiConfig) aiConfig.style.display = "none";
-  }
 
   function buildPrompt() {
     const tags = selectedSummary();
@@ -203,64 +198,60 @@
     );
   }
 
-  const AI_SCHEMA = {
-    type: "object",
+  // Gemini 구조화 출력 스키마 (타입은 대문자)
+  const GEMINI_SCHEMA = {
+    type: "OBJECT",
     properties: {
       recommendations: {
-        type: "array",
+        type: "ARRAY",
         items: {
-          type: "object",
+          type: "OBJECT",
           properties: {
-            title: { type: "string" },
-            desc: { type: "string" },
-            themes: { type: "array", items: { type: "string" } },
+            title: { type: "STRING" },
+            desc: { type: "STRING" },
+            themes: { type: "ARRAY", items: { type: "STRING" } },
           },
           required: ["title", "desc", "themes"],
-          additionalProperties: false,
         },
       },
     },
     required: ["recommendations"],
-    additionalProperties: false,
   };
 
-  // 프록시(Cloudflare Worker)에 보내는 호출 — 키가 브라우저에 없음
-  async function fetchViaProxy(proxyUrl) {
-    return fetch(proxyUrl, {
+  // 브라우저에서 Gemini 직접 호출 — 본인 키 필요(개인용)
+  async function fetchGemini(apiKey) {
+    const url =
+      "https://generativelanguage.googleapis.com/v1beta/models/" +
+      GEMINI_MODEL +
+      ":generateContent?key=" +
+      encodeURIComponent(apiKey);
+    return fetch(url, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ tags: selectedSummary() }),
-    });
-  }
-
-  // 브라우저에서 직접 호출 — 본인 키 필요(개인용)
-  async function fetchDirect(apiKey) {
-    return fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-        "anthropic-dangerous-direct-browser-access": "true",
-      },
       body: JSON.stringify({
-        model: "claude-haiku-4-5", // 가장 저렴한 모델
-        max_tokens: 2000,
-        system:
-          "당신은 한국의 주말 나들이를 추천하는 친절한 도우미입니다. " +
-          "사용자가 고른 지역·기간·테마·제한사항에 실제로 맞는 활동만 제안하세요.",
-        messages: [{ role: "user", content: buildPrompt() }],
-        output_config: { format: { type: "json_schema", schema: AI_SCHEMA } },
+        systemInstruction: {
+          parts: [
+            {
+              text:
+                "당신은 한국의 주말 나들이를 추천하는 친절한 도우미입니다. " +
+                "사용자가 고른 지역·기간·테마·제한사항에 실제로 맞는 활동만 제안하세요.",
+            },
+          ],
+        },
+        contents: [{ parts: [{ text: buildPrompt() }] }],
+        generationConfig: {
+          responseMimeType: "application/json",
+          responseSchema: GEMINI_SCHEMA,
+        },
       }),
     });
   }
 
   async function recommendAi() {
-    const proxyUrl = (window.AI_PROXY_URL || "").trim();
     const apiKey = apiKeyInput.value.trim();
 
-    if (!proxyUrl && !apiKey) {
-      renderMessage("🔑 아래 <strong>AI 설정</strong>을 열고 Anthropic API 키를 입력해 주세요.");
+    if (!apiKey) {
+      renderMessage("🔑 아래 <strong>AI 설정</strong>을 열고 Gemini API 키를 입력해 주세요.");
       return;
     }
     if (selections.region.size === 0) {
@@ -268,12 +259,12 @@
       return;
     }
 
-    if (!proxyUrl && saveKeyCheckbox.checked) localStorage.setItem(KEY_STORAGE, apiKey);
+    if (saveKeyCheckbox.checked) localStorage.setItem(KEY_STORAGE, apiKey);
 
     renderMessage("🤖 AI가 추천을 고르는 중...");
 
     try {
-      const res = proxyUrl ? await fetchViaProxy(proxyUrl) : await fetchDirect(apiKey);
+      const res = await fetchGemini(apiKey);
 
       if (!res.ok) {
         const errText = await res.text();
@@ -281,9 +272,9 @@
       }
 
       const data = await res.json();
-      const textBlock = (data.content || []).find((b) => b.type === "text");
-      if (!textBlock) throw new Error("응답에서 텍스트를 찾지 못했어요.");
-      const parsed = JSON.parse(textBlock.text);
+      const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!text) throw new Error("응답에서 텍스트를 찾지 못했어요.");
+      const parsed = JSON.parse(text);
       renderAiResults(parsed.recommendations || []);
     } catch (err) {
       renderMessage(
