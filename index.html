@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>주말 뭐하지? — 주말 활동 추천</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <main class="app">
+    <header class="app__header">
+      <h1>🗓️ 주말 뭐하지?</h1>
+      <p class="app__subtitle">지역 · 기간 · 테마 · 제한사항을 골라 주말 활동을 추천받아 보세요.</p>
+    </header>
+
+    <form id="selector" class="selector">
+      <!-- 지역 -->
+      <fieldset class="field">
+        <legend class="field__legend">지역 <span class="field__hint">하나 선택</span></legend>
+        <div class="chips" data-group="region" data-multi="false">
+          <button type="button" class="chip" data-value="seoul">서울</button>
+          <button type="button" class="chip" data-value="gyeonggi">경기·인천</button>
+          <button type="button" class="chip" data-value="gangwon">강원</button>
+          <button type="button" class="chip" data-value="chungcheong">충청</button>
+          <button type="button" class="chip" data-value="jeolla">전라</button>
+          <button type="button" class="chip" data-value="gyeongsang">경상</button>
+          <button type="button" class="chip" data-value="busan">부산</button>
+          <button type="button" class="chip" data-value="jeju">제주</button>
+        </div>
+      </fieldset>
+
+      <!-- 기간 -->
+      <fieldset class="field">
+        <legend class="field__legend">기간 <span class="field__hint">하나 선택</span></legend>
+        <div class="chips" data-group="duration" data-multi="false">
+          <button type="button" class="chip" data-value="half">반나절</button>
+          <button type="button" class="chip" data-value="day">당일치기</button>
+          <button type="button" class="chip" data-value="overnight">1박 2일</button>
+        </div>
+      </fieldset>
+
+      <!-- 테마 -->
+      <fieldset class="field">
+        <legend class="field__legend">테마 <span class="field__hint">여러 개 선택 가능</span></legend>
+        <div class="chips" data-group="theme" data-multi="true">
+          <button type="button" class="chip" data-value="nature">🌿 자연·힐링</button>
+          <button type="button" class="chip" data-value="active">🏃 액티비티</button>
+          <button type="button" class="chip" data-value="food">🍜 맛집·카페</button>
+          <button type="button" class="chip" data-value="culture">🎨 문화·예술</button>
+          <button type="button" class="chip" data-value="shopping">🛍️ 쇼핑·도심</button>
+          <button type="button" class="chip" data-value="healing">🧖 휴식·온천</button>
+        </div>
+      </fieldset>
+
+      <!-- 제한사항 -->
+      <fieldset class="field">
+        <legend class="field__legend">제한사항 <span class="field__hint">해당되는 것 모두</span></legend>
+        <div class="chips" data-group="constraint" data-multi="true">
+          <button type="button" class="chip" data-value="budget">💸 저예산</button>
+          <button type="button" class="chip" data-value="kids">👶 아이 동반</button>
+          <button type="button" class="chip" data-value="pet">🐾 반려동물 동반</button>
+          <button type="button" class="chip" data-value="transit">🚆 대중교통</button>
+          <button type="button" class="chip" data-value="indoor">☔ 실내 위주</button>
+          <button type="button" class="chip" data-value="lowEnergy">🪑 체력 적게</button>
+        </div>
+      </fieldset>
+
+      <div class="actions">
+        <button type="submit" class="btn btn--primary" id="recommend">추천받기 ✨</button>
+        <button type="button" class="btn btn--ghost" id="reset">초기화</button>
+      </div>
+    </form>
+
+    <section id="results" class="results" aria-live="polite"></section>
+  </main>
+
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
