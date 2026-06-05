@@ -17,7 +17,10 @@
       chungcheong: "충청", jeolla: "전라", gyeongsang: "경상",
       busan: "부산", jeju: "제주",
     },
-    duration: { half: "반나절", day: "당일치기", overnight: "1박 2일" },
+    duration: {
+      half: "반나절", day: "당일치기", overnight: "1박 2일",
+      n2d3: "2박 3일", n3d4: "3박 4일", week: "일주일", longstay: "한 달 살기",
+    },
     theme: {
       nature: "자연·힐링", active: "액티비티", food: "맛집·카페",
       culture: "문화·예술", shopping: "쇼핑·도심", healing: "휴식·온천",
@@ -53,6 +56,21 @@
     });
   });
 
+  // 기타(직접입력) 값 — 칩과 별개로 자유 입력. 주로 AI 추천에 반영됨.
+  const customInputs = { region: "", duration: "", theme: "", constraint: "" };
+  const CUSTOM_LABEL = { region: "지역", duration: "기간", theme: "테마", constraint: "제한" };
+  document.querySelectorAll(".custom-input").forEach((inp) => {
+    inp.addEventListener("input", () => {
+      customInputs[inp.dataset.group] = inp.value.trim();
+    });
+  });
+
+  // 긴 기간 코드는 고정 데이터 매칭 시 기본 코드로 환산
+  const DURATION_BASE = {
+    half: "half", day: "day", overnight: "overnight",
+    n2d3: "overnight", n3d4: "overnight", week: "overnight", longstay: "overnight",
+  };
+
   // ── 추천 매칭 로직 ────────────────────────────────
   function scoreActivity(act) {
     const region = [...selections.region];
@@ -62,8 +80,9 @@
 
     // 필수 조건: 지역
     if (region.length && !region.some((r) => act.region.includes(r))) return null;
-    // 필수 조건: 기간
-    if (duration.length && !duration.some((d) => act.duration.includes(d))) return null;
+    // 필수 조건: 기간 (긴 일정은 1박2일 활동과 매칭)
+    if (duration.length && !duration.some((d) => act.duration.includes(DURATION_BASE[d] || d)))
+      return null;
     // 필수 조건: 제한사항은 모두 충족해야 함 (AND)
     if (constraints.length && !constraints.every((c) => act.friendly.includes(c))) return null;
 
@@ -86,8 +105,8 @@
   }
 
   function recommend() {
-    if (selections.region.size === 0) {
-      renderMessage("📍 먼저 <strong>지역</strong>을 하나 선택해 주세요.");
+    if (!hasRegion()) {
+      renderMessage("📍 먼저 <strong>지역</strong>을 선택하거나 기타에 입력해 주세요.");
       return;
     }
 
@@ -98,7 +117,10 @@
     });
 
     if (scored.length === 0) {
-      renderMessage("😢 조건에 맞는 활동을 찾지 못했어요. 제한사항이나 테마를 줄여보세요.");
+      renderMessage(
+        "😢 기본 목록에서 조건에 맞는 활동을 못 찾았어요.<br>" +
+          "<small>소도시·기타 직접입력은 🤖 AI 추천에서 반영됩니다.</small>"
+      );
       return;
     }
 
@@ -109,6 +131,11 @@
     renderResults(top, scored.length);
   }
 
+  // 지역이 칩 또는 기타 입력으로 지정됐는지
+  function hasRegion() {
+    return selections.region.size > 0 || !!customInputs.region;
+  }
+
   // ── 렌더링 ────────────────────────────────────────
   function selectedSummary() {
     const tags = [];
@@ -116,6 +143,10 @@
     selections.duration.forEach((v) => tags.push(LABELS.duration[v]));
     selections.theme.forEach((v) => tags.push(LABELS.theme[v]));
     selections.constraint.forEach((v) => tags.push(LABELS.constraint[v]));
+    // 기타(직접입력) 값 추가 — AI가 반영하도록 카테고리명을 붙임
+    Object.keys(customInputs).forEach((g) => {
+      if (customInputs[g]) tags.push(`기타 ${CUSTOM_LABEL[g]}: ${customInputs[g]}`);
+    });
     return tags;
   }
 
@@ -165,6 +196,8 @@
   document.getElementById("reset").addEventListener("click", () => {
     Object.values(selections).forEach((s) => s.clear());
     document.querySelectorAll(".chip.is-selected").forEach((c) => c.classList.remove("is-selected"));
+    Object.keys(customInputs).forEach((g) => (customInputs[g] = ""));
+    document.querySelectorAll(".custom-input").forEach((inp) => (inp.value = ""));
     document.getElementById("results").innerHTML = "";
   });
 
@@ -244,6 +277,8 @@
     return (
       "다음 조건에 맞는 한국 주말 나들이 '코스(동선)'를 3개 추천해 주세요.\n\n" +
       "조건: " + (tags.length ? tags.join(", ") : "조건 없음") + "\n\n" +
+      "'기타'로 직접 입력한 지역·조건(소도시·특수 지역 등)이 있으면 반드시 그 내용을 " +
+      "우선해서 그 지역·조건에 맞는 코스를 만들어 주세요.\n\n" +
       "각 코스는 시간 순서대로 이어지는 간단한 흐름으로 구성하세요. " +
       "예) 성심당 → 엑스포타워 → 맛집 → 기념품가게\n" +
       "- flow: 4~6개의 장소·활동을 순서대로 나열 (실제 존재하는 구체적인 장소명 사용)\n" +
@@ -310,8 +345,8 @@
       renderMessage("🔑 아래 <strong>AI 설정</strong>을 열고 Gemini API 키를 입력해 주세요.");
       return;
     }
-    if (selections.region.size === 0) {
-      renderMessage("📍 먼저 <strong>지역</strong>을 하나 선택해 주세요.");
+    if (!hasRegion()) {
+      renderMessage("📍 먼저 <strong>지역</strong>을 선택하거나 기타에 입력해 주세요.");
       return;
     }
 

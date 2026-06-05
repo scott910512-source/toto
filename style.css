@@ -79,6 +79,23 @@ body {
   font-weight: 600;
 }
 
+/* 기타(직접입력) */
+.custom-input {
+  width: 100%;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  font-size: 14px;
+  box-sizing: border-box;
+  background: #fafbfe;
+}
+.custom-input:focus {
+  outline: none;
+  border-color: var(--primary);
+  border-style: solid;
+}
+
 /* 버튼 */
 .actions { display: flex; gap: 10px; margin-top: 8px; }
 .btn {

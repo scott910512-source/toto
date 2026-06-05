@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>주말 뭐하지? — 주말 활동 추천</title>
-  <link rel="stylesheet" href="style.css?v=8" />
+  <link rel="stylesheet" href="style.css?v=9" />
 </head>
 <body>
   <main class="app">
@@ -27,6 +27,8 @@
           <button type="button" class="chip" data-value="busan">부산</button>
           <button type="button" class="chip" data-value="jeju">제주</button>
         </div>
+        <input type="text" class="custom-input" data-group="region"
+          placeholder="기타 (직접입력) — 예: 통영, 영월, 거제 소도시" />
       </fieldset>
 
       <!-- 기간 -->
@@ -36,7 +38,13 @@
           <button type="button" class="chip" data-value="half">반나절</button>
           <button type="button" class="chip" data-value="day">당일치기</button>
           <button type="button" class="chip" data-value="overnight">1박 2일</button>
+          <button type="button" class="chip" data-value="n2d3">2박 3일</button>
+          <button type="button" class="chip" data-value="n3d4">3박 4일</button>
+          <button type="button" class="chip" data-value="week">일주일</button>
+          <button type="button" class="chip" data-value="longstay">한 달 살기</button>
         </div>
+        <input type="text" class="custom-input" data-group="duration"
+          placeholder="기타 (직접입력) — 예: 무박 2일, 5박 6일" />
       </fieldset>
 
       <!-- 테마 -->
@@ -50,6 +58,8 @@
           <button type="button" class="chip" data-value="shopping">🛍️ 쇼핑·도심</button>
           <button type="button" class="chip" data-value="healing">🧖 휴식·온천</button>
         </div>
+        <input type="text" class="custom-input" data-group="theme"
+          placeholder="기타 (직접입력) — 예: 사진 출사, 별 보기, 서핑" />
       </fieldset>
 
       <!-- 제한사항 -->
@@ -63,6 +73,8 @@
           <button type="button" class="chip" data-value="indoor">☔ 실내 위주</button>
           <button type="button" class="chip" data-value="lowEnergy">🪑 체력 적게</button>
         </div>
+        <input type="text" class="custom-input" data-group="constraint"
+          placeholder="기타 (직접입력) — 예: 휠체어 접근, 노키즈존 제외" />
       </fieldset>
 
       <div class="actions">
@@ -95,8 +107,8 @@
     <section id="results" class="results" aria-live="polite"></section>
   </main>
 
-  <script src="config.js?v=8"></script>
-  <script src="data.js?v=8"></script>
-  <script src="app.js?v=8"></script>
+  <script src="config.js?v=9"></script>
+  <script src="data.js?v=9"></script>
+  <script src="app.js?v=9"></script>
 </body>
 </html>
