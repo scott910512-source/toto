@@ -167,4 +167,141 @@
     document.querySelectorAll(".chip.is-selected").forEach((c) => c.classList.remove("is-selected"));
     document.getElementById("results").innerHTML = "";
   });
+
+  // ── AI 추천 (Claude API) ──────────────────────────
+  const KEY_STORAGE = "weekend_anthropic_key";
+  const apiKeyInput = document.getElementById("apiKey");
+  const saveKeyCheckbox = document.getElementById("saveKey");
+
+  // 저장된 키 불러오기
+  const storedKey = localStorage.getItem(KEY_STORAGE);
+  if (storedKey) {
+    apiKeyInput.value = storedKey;
+    saveKeyCheckbox.checked = true;
+  }
+  saveKeyCheckbox.addEventListener("change", () => {
+    if (!saveKeyCheckbox.checked) localStorage.removeItem(KEY_STORAGE);
+  });
+
+  function buildPrompt() {
+    const tags = selectedSummary();
+    return (
+      "다음 조건에 맞는 한국 주말 활동을 추천해 주세요.\n\n" +
+      "조건: " + (tags.length ? tags.join(", ") : "조건 없음") + "\n\n" +
+      "실제로 가능한 구체적인 장소·활동 5개를 제안하고, 각 활동마다 한 줄 설명과 " +
+      "어울리는 테마 키워드를 1~3개 붙여 주세요. 한국어로 답해 주세요."
+    );
+  }
+
+  const AI_SCHEMA = {
+    type: "object",
+    properties: {
+      recommendations: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            title: { type: "string" },
+            desc: { type: "string" },
+            themes: { type: "array", items: { type: "string" } },
+          },
+          required: ["title", "desc", "themes"],
+          additionalProperties: false,
+        },
+      },
+    },
+    required: ["recommendations"],
+    additionalProperties: false,
+  };
+
+  async function recommendAi() {
+    const apiKey = apiKeyInput.value.trim();
+    if (!apiKey) {
+      renderMessage("🔑 아래 <strong>AI 설정</strong>을 열고 Anthropic API 키를 입력해 주세요.");
+      return;
+    }
+    if (selections.region.size === 0) {
+      renderMessage("📍 먼저 <strong>지역</strong>을 하나 선택해 주세요.");
+      return;
+    }
+
+    if (saveKeyCheckbox.checked) localStorage.setItem(KEY_STORAGE, apiKey);
+
+    renderMessage("🤖 AI가 추천을 고르는 중...");
+
+    try {
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-api-key": apiKey,
+          "anthropic-version": "2023-06-01",
+          "anthropic-dangerous-direct-browser-access": "true",
+        },
+        body: JSON.stringify({
+          model: "claude-opus-4-8",
+          max_tokens: 2000,
+          system:
+            "당신은 한국의 주말 나들이를 추천하는 친절한 도우미입니다. " +
+            "사용자가 고른 지역·기간·테마·제한사항에 실제로 맞는 활동만 제안하세요.",
+          messages: [{ role: "user", content: buildPrompt() }],
+          output_config: {
+            format: { type: "json_schema", schema: AI_SCHEMA },
+          },
+        }),
+      });
+
+      if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(`API ${res.status}: ${errText}`);
+      }
+
+      const data = await res.json();
+      const textBlock = (data.content || []).find((b) => b.type === "text");
+      if (!textBlock) throw new Error("응답에서 텍스트를 찾지 못했어요.");
+      const parsed = JSON.parse(textBlock.text);
+      renderAiResults(parsed.recommendations || []);
+    } catch (err) {
+      renderMessage(
+        "😢 AI 추천에 실패했어요.<br><small>" +
+          String(err.message || err).replace(/</g, "&lt;") +
+          "</small>"
+      );
+    }
+  }
+
+  function renderAiResults(list) {
+    const results = document.getElementById("results");
+    if (!list.length) {
+      renderMessage("😢 AI가 조건에 맞는 활동을 찾지 못했어요.");
+      return;
+    }
+    const summary = selectedSummary()
+      .map((t) => `<span class="tag">${t}</span>`)
+      .join("");
+    const cards = list
+      .map(
+        (act) => `
+        <article class="card">
+          <h3 class="card__title">${(act.title || "").replace(/</g, "&lt;")}</h3>
+          <p class="card__desc">${(act.desc || "").replace(/</g, "&lt;")}</p>
+          <div class="card__meta">
+            ${(act.themes || [])
+              .map((t) => `<span class="tag tag--theme">${String(t).replace(/</g, "&lt;")}</span>`)
+              .join("")}
+          </div>
+        </article>`
+      )
+      .join("");
+    results.innerHTML = `
+      <div class="results__head">
+        <h2>🤖 AI 추천 결과</h2>
+        <div class="results__tags">${summary}</div>
+      </div>
+      <div class="cards">${cards}</div>
+    `;
+    results.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  document.getElementById("recommendAi").addEventListener("click", recommendAi);
 })();

@@ -67,8 +67,28 @@
 
       <div class="actions">
         <button type="submit" class="btn btn--primary" id="recommend">추천받기 ✨</button>
+        <button type="button" class="btn btn--ai" id="recommendAi">🤖 AI 추천</button>
         <button type="button" class="btn btn--ghost" id="reset">초기화</button>
       </div>
+
+      <details class="ai-config">
+        <summary>🔑 AI 설정 (선택)</summary>
+        <p class="ai-config__note">
+          AI 추천을 쓰려면 본인의 Anthropic API 키가 필요합니다. 키는 이 브라우저에만
+          저장되며 서버로 전송되지 않습니다. <strong>본인만 사용하세요</strong> — 공개된
+          페이지에 키를 넣으면 유출될 수 있습니다.
+        </p>
+        <input
+          type="password"
+          id="apiKey"
+          class="ai-config__input"
+          placeholder="sk-ant-..."
+          autocomplete="off"
+        />
+        <label class="ai-config__save">
+          <input type="checkbox" id="saveKey" /> 이 브라우저에 키 저장
+        </label>
+      </details>
     </form>
 
     <section id="results" class="results" aria-live="polite"></section>

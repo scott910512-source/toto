@@ -95,8 +95,43 @@ body {
 .btn:active { transform: scale(0.98); }
 .btn--primary { background: var(--primary); color: #fff; flex: 2; }
 .btn--primary:hover { background: var(--primary-dark); }
+.btn--ai { background: #1f2430; color: #fff; flex: 1.4; }
+.btn--ai:hover { background: #0f1422; }
 .btn--ghost { background: #fff; color: var(--ink); border: 1px solid var(--line); }
 .btn--ghost:hover { background: #f7f8fc; }
+
+/* AI 설정 */
+.ai-config {
+  margin-top: 14px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 4px 16px;
+  box-shadow: var(--shadow);
+}
+.ai-config summary {
+  cursor: pointer;
+  font-weight: 600;
+  padding: 12px 0;
+  font-size: 14px;
+}
+.ai-config__note { font-size: 13px; color: var(--muted); margin: 0 0 12px; }
+.ai-config__input {
+  width: 100%;
+  padding: 11px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  font-size: 14px;
+  box-sizing: border-box;
+}
+.ai-config__save {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--muted);
+  margin: 10px 0 14px;
+}
 
 /* 결과 */
 .results { margin-top: 28px; }
