@@ -183,6 +183,12 @@
     if (!saveKeyCheckbox.checked) localStorage.removeItem(KEY_STORAGE);
   });
 
+  // 프록시가 설정돼 있으면 키 입력 UI는 필요 없음 — 숨김
+  if ((window.AI_PROXY_URL || "").trim()) {
+    const aiConfig = document.querySelector(".ai-config");
+    if (aiConfig) aiConfig.style.display = "none";
+  }
+
   function buildPrompt() {
     const tags = selectedSummary();
     return (
@@ -214,9 +220,42 @@
     additionalProperties: false,
   };
 
+  // 프록시(Cloudflare Worker)에 보내는 호출 — 키가 브라우저에 없음
+  async function fetchViaProxy(proxyUrl) {
+    return fetch(proxyUrl, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ tags: selectedSummary() }),
+    });
+  }
+
+  // 브라우저에서 직접 호출 — 본인 키 필요(개인용)
+  async function fetchDirect(apiKey) {
+    return fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+        "anthropic-dangerous-direct-browser-access": "true",
+      },
+      body: JSON.stringify({
+        model: "claude-opus-4-8",
+        max_tokens: 2000,
+        system:
+          "당신은 한국의 주말 나들이를 추천하는 친절한 도우미입니다. " +
+          "사용자가 고른 지역·기간·테마·제한사항에 실제로 맞는 활동만 제안하세요.",
+        messages: [{ role: "user", content: buildPrompt() }],
+        output_config: { format: { type: "json_schema", schema: AI_SCHEMA } },
+      }),
+    });
+  }
+
   async function recommendAi() {
+    const proxyUrl = (window.AI_PROXY_URL || "").trim();
     const apiKey = apiKeyInput.value.trim();
-    if (!apiKey) {
+
+    if (!proxyUrl && !apiKey) {
       renderMessage("🔑 아래 <strong>AI 설정</strong>을 열고 Anthropic API 키를 입력해 주세요.");
       return;
     }
@@ -225,31 +264,12 @@
       return;
     }
 
-    if (saveKeyCheckbox.checked) localStorage.setItem(KEY_STORAGE, apiKey);
+    if (!proxyUrl && saveKeyCheckbox.checked) localStorage.setItem(KEY_STORAGE, apiKey);
 
     renderMessage("🤖 AI가 추천을 고르는 중...");
 
     try {
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "x-api-key": apiKey,
-          "anthropic-version": "2023-06-01",
-          "anthropic-dangerous-direct-browser-access": "true",
-        },
-        body: JSON.stringify({
-          model: "claude-opus-4-8",
-          max_tokens: 2000,
-          system:
-            "당신은 한국의 주말 나들이를 추천하는 친절한 도우미입니다. " +
-            "사용자가 고른 지역·기간·테마·제한사항에 실제로 맞는 활동만 제안하세요.",
-          messages: [{ role: "user", content: buildPrompt() }],
-          output_config: {
-            format: { type: "json_schema", schema: AI_SCHEMA },
-          },
-        }),
-      });
+      const res = proxyUrl ? await fetchViaProxy(proxyUrl) : await fetchDirect(apiKey);
 
       if (!res.ok) {
         const errText = await res.text();
