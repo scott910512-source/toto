@@ -90,7 +90,8 @@
     const BABY_DEFAULTS = {
       name: "우리 아기",
       birthDate: "",      // 예: "2026-05-01" (출생 후) — 비우면 임신 모드
-      dueDate: "2026-09-01" // 출산 예정일 (임신 주수 계산용)
+      dueDate: "2026-09-01", // 출산 예정일 (임신 주수 계산용)
+      sex: ""             // "male"(남아) | "female"(여아) — WHO 성장 백분위 곡선용
     };
 
     // 👑 항상 관리자로 처리할 이메일 목록 (여기에 이메일을 추가하면 무조건 관리자)
@@ -1062,17 +1063,57 @@
   };
 
   /* ========================================================================
-     12. 성장 기록 (그래프)
+     12. 성장 기록 (WHO 백분위 곡선 포함)
+     ----------------------------------------------------------------------
+     WHO Child Growth Standards 근사값 (월령: P3 / P50 / P97), 0~24개월. 참고용.
      ======================================================================== */
+  // [month, P3, P50, P97]
+  const WHO = {
+    male: {
+      weight: [[0,2.5,3.3,4.4],[1,3.4,4.5,5.8],[2,4.3,5.6,7.1],[3,5.0,6.4,8.0],[4,5.6,7.0,8.7],[5,6.0,7.5,9.3],[6,6.4,7.9,9.8],[9,7.1,8.9,11.0],[12,7.7,9.6,12.0],[18,8.8,10.9,13.7],[24,9.7,12.2,15.3]],
+      height: [[0,46.3,49.9,53.4],[1,51.1,54.7,58.4],[2,54.7,58.4,62.2],[3,57.6,61.4,65.3],[6,63.3,67.6,71.9],[9,67.5,72.0,76.5],[12,71.0,75.7,80.5],[18,76.9,82.3,87.7],[24,81.7,87.8,93.9]],
+    },
+    female: {
+      weight: [[0,2.4,3.2,4.2],[1,3.2,4.2,5.5],[2,3.9,5.1,6.6],[3,4.5,5.8,7.5],[4,5.0,6.4,8.2],[5,5.4,6.9,8.8],[6,5.7,7.3,9.3],[9,6.5,8.2,10.5],[12,7.0,8.9,11.5],[18,8.1,10.2,13.2],[24,9.0,11.5,14.8]],
+      height: [[0,45.6,49.1,52.7],[1,50.0,53.7,57.4],[2,53.2,57.1,61.1],[3,55.8,59.8,63.9],[6,61.2,65.7,70.3],[9,65.3,70.1,75.0],[12,68.9,74.0,79.2],[18,74.9,80.7,86.5],[24,80.0,86.4,92.9]],
+    },
+  };
+  // 선형보간으로 특정 월령의 [P3,P50,P97] 구하기
+  const whoAt = (rows, m) => {
+    if (m <= rows[0][0]) return rows[0].slice(1);
+    if (m >= rows[rows.length - 1][0]) return rows[rows.length - 1].slice(1);
+    for (let i = 0; i < rows.length - 1; i++) {
+      const a = rows[i], b = rows[i + 1];
+      if (m >= a[0] && m <= b[0]) {
+        const t = (m - a[0]) / (b[0] - a[0]);
+        return [1, 2, 3].map((k) => a[k] + (b[k] - a[k]) * t);
+      }
+    }
+    return rows[rows.length - 1].slice(1);
+  };
+  // 측정값의 대략적 백분위 추정 (P3/P50/P97 구간 선형 근사)
+  const estPercentile = (rows, m, v) => {
+    if (v == null) return null;
+    const [p3, p50, p97] = whoAt(rows, m);
+    let pct;
+    if (v <= p3) pct = 3 * (v / p3);
+    else if (v <= p50) pct = 3 + (50 - 3) * (v - p3) / (p50 - p3);
+    else if (v <= p97) pct = 50 + (97 - 50) * (v - p50) / (p97 - p50);
+    else pct = 97 + (v - p97) / p97 * 100;
+    return Math.max(0, Math.min(100, Math.round(pct)));
+  };
+
   const GrowthTracker = () => {
     const { user, profile } = useAuth();
     const toast = useToast();
+    const baby = useBaby();
     const items = useRecords("growth", 100);
     const [height, setHeight] = useState("");
     const [weight, setWeight] = useState("");
     const [head, setHead] = useState("");
     const [at, setAt] = useState(toLocalInput(new Date()));
     const [busy, setBusy] = useState(false);
+    const [metric, setMetric] = useState("weight"); // weight | height
 
     const save = async () => {
       if (!height && !weight && !head) { toast("측정값을 하나 이상 입력하세요.", "error"); return; }
@@ -1088,12 +1129,31 @@
       } catch (e) { toast(errMsg(e), "error"); } finally { setBusy(false); }
     };
 
+    // 월령 계산 (출생일 기준)
+    const ageMonthsAt = (d) => baby.birthDate ? (toDate(d) - new Date(baby.birthDate)) / (86400000 * 30.4375) : null;
+    const whoRows = baby.sex && WHO[baby.sex] ? WHO[baby.sex][metric] : null;
+
+    // 차트 데이터: WHO 곡선 점 + 아기 측정점을 월령(x) 기준으로 병합
     const chartData = useMemo(() => {
-      if (!items) return [];
-      return [...items].reverse().map((r) => ({
-        date: fmtDate(r.at), weight: r.weight, height: r.height, head: r.head,
-      }));
-    }, [items]);
+      if (!whoRows) return null;
+      const rows = whoRows.map((r) => ({ m: r[0], p3: r[1], p50: r[2], p97: r[3] }));
+      const pts = [];
+      (items || []).forEach((r) => {
+        const v = r[metric]; const m = ageMonthsAt(r.at);
+        if (v != null && m != null && m >= 0 && m <= 24) pts.push({ m: +m.toFixed(2), baby: v });
+      });
+      return [...rows, ...pts].sort((a, b) => a.m - b.m);
+    }, [items, metric, whoRows, baby.birthDate]);
+
+    // 최신 측정의 백분위
+    const latest = items && items.find((r) => r[metric] != null);
+    const latestM = latest ? ageMonthsAt(latest.at) : null;
+    const pct = (whoRows && latest && latestM != null && latestM >= 0 && latestM <= 24)
+      ? estPercentile(whoRows, latestM, latest[metric]) : null;
+
+    // 백업: 성별/출생일 없을 때 날짜 기준 단순 그래프
+    const simpleData = useMemo(() => (items ? [...items].reverse().map((r) => ({ date: fmtDate(r.at), weight: r.weight, height: r.height })) : []), [items]);
+    const unit = metric === "weight" ? "kg" : "cm";
 
     return (
       <div className="space-y-4">
@@ -1108,37 +1168,60 @@
         </Card>
 
         <Card className="p-4">
-          <h3 className="font-bold text-slate-800 dark:text-white mb-1">몸무게 추이 (kg)</h3>
-          <p className="text-[11px] text-slate-400 mb-2">초록 음영: WHO 0~6개월 정상 범위(참고용)</p>
-          <div style={{ width: "100%", height: 200 }}>
-            <ResponsiveContainer>
-              <LineChart data={chartData} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                <XAxis dataKey="date" tick={{ fontSize: 10 }} />
-                <YAxis tick={{ fontSize: 11 }} domain={["auto", "auto"]} />
-                <Tooltip />
-                {/* WHO 참고 정상 범위 음영 (대략치) */}
-                <ReferenceArea y1={2.5} y2={8} fill="#34d399" fillOpacity={0.08} />
-                <Line type="monotone" dataKey="weight" stroke="#14b8a6" strokeWidth={2} dot={{ r: 3 }} connectNulls />
-              </LineChart>
-            </ResponsiveContainer>
+          <div className="flex items-center justify-between mb-1">
+            <h3 className="font-bold text-slate-800 dark:text-white">WHO 성장 백분위</h3>
+            <ChipGroup value={metric} onChange={setMetric}
+              options={[{ value: "weight", label: "몸무게" }, { value: "height", label: "키" }]} />
           </div>
+
+          {!whoRows ? (
+            <div className="text-sm text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-700/40 rounded-xl p-3 my-2">
+              WHO 백분위 곡선을 보려면 <b>설정 → 아기 정보</b>에서 <b>출생일</b>과 <b>성별</b>을 입력해주세요.
+            </div>
+          ) : (
+            <>
+              {pct != null && (
+                <p className="text-xs text-slate-500 dark:text-slate-400 mb-2">
+                  최근 {metric === "weight" ? "몸무게" : "키"} <b>{latest[metric]}{unit}</b> · 또래 약 <b className="text-teal-600">{pct}백분위</b>
+                  {(pct < 3 || pct > 97) && <span className="text-amber-600"> · 소아과 상담 권장</span>}
+                </p>
+              )}
+              <p className="text-[11px] text-slate-400 mb-2">회색 곡선: WHO 3/50/97 백분위(참고용) · 점선: 우리 아기</p>
+              <div style={{ width: "100%", height: 220 }}>
+                <ResponsiveContainer>
+                  <LineChart data={chartData} margin={{ top: 5, right: 8, left: -20, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                    <XAxis dataKey="m" type="number" domain={[0, 24]} ticks={[0, 3, 6, 9, 12, 18, 24]} tick={{ fontSize: 10 }} label={{ value: "개월", position: "insideBottomRight", fontSize: 9, offset: -2 }} />
+                    <YAxis tick={{ fontSize: 11 }} domain={["auto", "auto"]} />
+                    <Tooltip formatter={(v, n) => [v + unit, ({ p3: "3백분위", p50: "50백분위", p97: "97백분위", baby: "우리아기" })[n] || n]} labelFormatter={(l) => `${l}개월`} />
+                    <Line type="monotone" dataKey="p97" stroke="#cbd5e1" strokeWidth={1} dot={false} connectNulls />
+                    <Line type="monotone" dataKey="p50" stroke="#94a3b8" strokeWidth={1} strokeDasharray="4 3" dot={false} connectNulls />
+                    <Line type="monotone" dataKey="p3" stroke="#cbd5e1" strokeWidth={1} dot={false} connectNulls />
+                    <Line type="monotone" dataKey="baby" stroke="#14b8a6" strokeWidth={2.5} dot={{ r: 4 }} connectNulls />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </>
+          )}
         </Card>
 
-        <Card className="p-4">
-          <h3 className="font-bold text-slate-800 dark:text-white mb-2">키 추이 (cm)</h3>
-          <div style={{ width: "100%", height: 180 }}>
-            <ResponsiveContainer>
-              <LineChart data={chartData} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                <XAxis dataKey="date" tick={{ fontSize: 10 }} />
-                <YAxis tick={{ fontSize: 11 }} domain={["auto", "auto"]} />
-                <Tooltip />
-                <Line type="monotone" dataKey="height" stroke="#a78bfa" strokeWidth={2} dot={{ r: 3 }} connectNulls />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        </Card>
+        {/* 성별/출생일 없을 때 단순 추이 */}
+        {!whoRows && (
+          <Card className="p-4">
+            <h3 className="font-bold text-slate-800 dark:text-white mb-2">{metric === "weight" ? "몸무게" : "키"} 추이 ({unit})</h3>
+            <div style={{ width: "100%", height: 180 }}>
+              <ResponsiveContainer>
+                <LineChart data={simpleData} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                  <XAxis dataKey="date" tick={{ fontSize: 10 }} />
+                  <YAxis tick={{ fontSize: 11 }} domain={["auto", "auto"]} />
+                  <Tooltip />
+                  <Line type="monotone" dataKey={metric} stroke="#14b8a6" strokeWidth={2} dot={{ r: 3 }} connectNulls />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </Card>
+        )}
 
         <RecordList items={items} render={(r) => (
           <>{r.height ? `키 ${r.height}cm ` : ""}{r.weight ? `몸무게 ${r.weight}kg ` : ""}{r.head ? `머리 ${r.head}cm` : ""}</>
@@ -1936,7 +2019,7 @@
   /* ========================================================================
      20-b. 슬라이드쇼 (최신 + 좋아요 많은 사진 30장, 각 1분, 크로스페이드)
      ======================================================================== */
-  const SLIDE_MS = 60000; // 한 장당 1분 유지
+  const SLIDE_OPTIONS = [{ ms: 10000, label: "10초" }, { ms: 30000, label: "30초" }, { ms: 60000, label: "1분" }];
   const buildSlideDeck = (photos) => {
     if (!photos || photos.length === 0) return [];
     const byRecent = [...photos].sort((a, b) => toDate(b.takenAt || b.createdAt) - toDate(a.takenAt || a.createdAt)).slice(0, 20);
@@ -1952,6 +2035,10 @@
     const [prevIdx, setPrevIdx] = useState(null);
     const [paused, setPaused] = useState(false);
     const [progress, setProgress] = useState(0);
+    const [dur, setDur] = useState(() => Number(localStorage.getItem("baby-slide-ms")) || 30000);
+    const rootRef = useRef(null);
+
+    const setDuration = (ms) => { setDur(ms); localStorage.setItem("baby-slide-ms", String(ms)); setProgress(0); };
 
     const go = useCallback((dir) => {
       setIdx((i) => {
@@ -1962,22 +2049,43 @@
       setProgress(0);
     }, [deck.length]);
 
-    // 자동 전환 (1분) + 진행 막대
+    // 자동 전환 + 진행 막대 (선택한 속도)
     useEffect(() => {
       if (paused || deck.length <= 1) return;
-      const tick = setInterval(() => setProgress((p) => Math.min(100, p + 100 / (SLIDE_MS / 200))), 200);
-      const next = setTimeout(() => go(1), SLIDE_MS);
+      const tick = setInterval(() => setProgress((p) => Math.min(100, p + 100 / (dur / 200))), 200);
+      const next = setTimeout(() => go(1), dur);
       return () => { clearInterval(tick); clearTimeout(next); };
-    }, [idx, paused, deck.length, go]);
+    }, [idx, paused, deck.length, go, dur]);
 
-    // 화면 꺼짐 방지 (지원 브라우저)
+    // 전체화면 + 화면 꺼짐 방지(Wake Lock) — 재획득 포함
     useEffect(() => {
-      let lock;
-      if (navigator.wakeLock) navigator.wakeLock.request("screen").then((l) => lock = l).catch(() => {});
+      let lock = null, released = false;
+      const acquire = () => {
+        if (navigator.wakeLock && document.visibilityState === "visible") {
+          navigator.wakeLock.request("screen").then((l) => { if (released) l.release().catch(() => {}); else { lock = l; lock.addEventListener && lock.addEventListener("release", () => { lock = null; }); } }).catch(() => {});
+        }
+      };
+      acquire();
+      // 탭이 다시 보이면 Wake Lock 재획득 (브라우저가 자동 해제하므로)
+      const onVis = () => { if (document.visibilityState === "visible") acquire(); };
+      document.addEventListener("visibilitychange", onVis);
+      // 전체화면 진입 (지원 브라우저; iPhone Safari는 미지원이라 무시)
+      const el = rootRef.current;
+      if (el && el.requestFullscreen) el.requestFullscreen().catch(() => {});
+      else if (el && el.webkitRequestFullscreen) try { el.webkitRequestFullscreen(); } catch (e) {}
+
       const onKey = (e) => { if (e.key === "Escape") onClose(); if (e.key === "ArrowRight") go(1); if (e.key === "ArrowLeft") go(-1); if (e.key === " ") setPaused((p) => !p); };
       window.addEventListener("keydown", onKey);
       document.body.style.overflow = "hidden";
-      return () => { window.removeEventListener("keydown", onKey); document.body.style.overflow = ""; if (lock) lock.release().catch(() => {}); };
+      return () => {
+        released = true;
+        window.removeEventListener("keydown", onKey);
+        document.removeEventListener("visibilitychange", onVis);
+        document.body.style.overflow = "";
+        if (lock) lock.release().catch(() => {});
+        if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+        else if (document.webkitFullscreenElement && document.webkitExitFullscreen) try { document.webkitExitFullscreen(); } catch (e) {}
+      };
     }, [go, onClose]);
 
     if (deck.length === 0) {
@@ -1994,7 +2102,7 @@
     const meta = [cur.uploaderName, (cur.people || []).join(", "), cur.place, fmtDate(cur.takenAt || cur.createdAt)].filter(Boolean).join(" · ");
 
     return (
-      <div className="fixed inset-0 z-[60] bg-black overflow-hidden" role="dialog" aria-modal="true" aria-label="슬라이드쇼">
+      <div ref={rootRef} className="fixed inset-0 z-[60] bg-black overflow-hidden" role="dialog" aria-modal="true" aria-label="슬라이드쇼">
         {/* 진행 막대 */}
         <div className="absolute top-0 inset-x-0 h-1 bg-white/20 z-20">
           <div className="h-full bg-violet-400 transition-all duration-200 ease-linear" style={{ width: `${progress}%` }}></div>
@@ -2019,8 +2127,17 @@
         <div className="absolute top-1/2 -translate-y-1/2 right-3 z-30">
           <button onClick={() => go(1)} aria-label="다음" className="text-white/70 text-4xl w-12 h-12 bg-black/20 rounded-full">›</button>
         </div>
-        <button onClick={() => setPaused((p) => !p)} aria-label={paused ? "재생" : "일시정지"}
-          className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 text-white text-2xl w-12 h-12 bg-black/30 rounded-full">{paused ? "▶" : "⏸"}</button>
+        {/* 하단 컨트롤: 재생/일시정지 + 속도 선택 */}
+        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 flex items-center gap-3">
+          <button onClick={() => setPaused((p) => !p)} aria-label={paused ? "재생" : "일시정지"}
+            className="text-white text-2xl w-12 h-12 bg-black/30 rounded-full">{paused ? "▶" : "⏸"}</button>
+          <div className="flex items-center bg-black/30 rounded-full p-1" role="group" aria-label="전환 속도">
+            {SLIDE_OPTIONS.map((o) => (
+              <button key={o.ms} onClick={() => setDuration(o.ms)} aria-pressed={dur === o.ms}
+                className={`px-3 py-1.5 rounded-full text-xs font-medium ${dur === o.ms ? "bg-violet-400 text-white" : "text-white/70"}`}>{o.label}</button>
+            ))}
+          </div>
+        </div>
       </div>
     );
   };
@@ -2369,11 +2486,11 @@
     const toast = useToast();
     const baby = useBaby();
     const [users, setUsers] = useState(null);
-    const [babyForm, setBabyForm] = useState({ name: baby.name, birthDate: baby.birthDate || "", dueDate: baby.dueDate || "" });
+    const [babyForm, setBabyForm] = useState({ name: baby.name, birthDate: baby.birthDate || "", dueDate: baby.dueDate || "", sex: baby.sex || "" });
     const [addOpen, setAddOpen] = useState(false);
     const [nickOpen, setNickOpen] = useState(false);
 
-    useEffect(() => setBabyForm({ name: baby.name, birthDate: baby.birthDate || "", dueDate: baby.dueDate || "" }), [baby]);
+    useEffect(() => setBabyForm({ name: baby.name, birthDate: baby.birthDate || "", dueDate: baby.dueDate || "", sex: baby.sex || "" }), [baby]);
 
     useEffect(() => {
       if (!isAdmin) return;
@@ -2424,6 +2541,12 @@
             <Field label="출생일"><input className={inputCls} type="date" value={babyForm.birthDate} disabled={!isAdmin} onChange={(e) => setBabyForm({ ...babyForm, birthDate: e.target.value })} /></Field>
             <Field label="출산 예정일"><input className={inputCls} type="date" value={babyForm.dueDate} disabled={!isAdmin} onChange={(e) => setBabyForm({ ...babyForm, dueDate: e.target.value })} /></Field>
           </div>
+          {isAdmin ? (
+            <ChipGroup label="성별 (WHO 성장곡선용)" value={babyForm.sex} onChange={(v) => setBabyForm({ ...babyForm, sex: v })}
+              options={[{ value: "male", label: "👦 남아" }, { value: "female", label: "👧 여아" }]} />
+          ) : (
+            <p className="text-sm text-slate-500 dark:text-slate-400">성별: {babyForm.sex === "male" ? "남아" : babyForm.sex === "female" ? "여아" : "미설정"}</p>
+          )}
           {isAdmin && <Btn onClick={saveBaby} className="w-full">저장</Btn>}
         </Card>
 
