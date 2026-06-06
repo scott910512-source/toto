@@ -482,6 +482,7 @@
       if (baby.birthDate) {
         const b = new Date(baby.birthDate);
         const days = Math.floor((Date.now() - b.getTime()) / 86400000);
+        if (days < 0) return { mode: "born", days: 0, weeks: 0, months: 0, label: "출생 예정일이 아직 오지 않았어요 (날짜 확인)" };
         const weeks = Math.floor(days / 7);
         const months = Math.floor(days / 30.44);
         return { mode: "born", days, weeks, months, label: `생후 ${days}일 (${weeks}주 / 약 ${months}개월)` };
@@ -501,18 +502,28 @@
   /* ========================================================================
      5. records 컬렉션 실시간 구독 훅 (타입별)
      ======================================================================== */
+  // 현재 시각을 주기적으로 갱신 (경과시간 실시간 표시용)
+  const useNow = (intervalMs = 30000) => {
+    const [now, setNow] = useState(Date.now());
+    useEffect(() => {
+      const t = setInterval(() => setNow(Date.now()), intervalMs);
+      return () => clearInterval(t);
+    }, [intervalMs]);
+    return now;
+  };
+
   const useRecords = (type, max = 200) => {
     const [items, setItems] = useState(null);
     useEffect(() => {
-      // 복합 색인 없이 동작하도록: 전체 records를 at 내림차순으로 구독 후 클라이언트에서 type 필터
-      // (where + orderBy 조합은 Firestore 복합 색인을 요구하므로 회피)
+      // 타입별 단일 필드 equality 쿼리(자동 색인, 복합 색인 불필요) → 해당 타입만 가져옴
       const unsub = COL.records()
-        .orderBy("at", "desc")
-        .limit(800)
+        .where("type", "==", type)
+        .limit(max)
         .onSnapshot(
           (snap) => {
-            const all = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-            setItems(all.filter((r) => r.type === type).slice(0, max));
+            const arr = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+            arr.sort((a, b) => (toDate(b.at) || 0) - (toDate(a.at) || 0)); // 최신순 클라이언트 정렬
+            setItems(arr);
           },
           (err) => { console.error(type, err); setItems([]); }
         );
@@ -665,29 +676,56 @@
     const feedings = useRecords("feeding");
     const sleeps = useRecords("sleep");
     const diapers = useRecords("diaper");
+    const growths = useRecords("growth", 50);
+    const healths = useRecords("health", 50);
+    const letters = useRecords("letter", 30);
+    const photos = usePhotos(20);
     const ageInfo = useBabyAge();
     const baby = useBaby();
+    const now = useNow(30000);
 
     if (!feedings || !sleeps || !diapers) return <Spinner label="불러오는 중..." />;
 
     const today = new Date();
     const tF = feedings.filter((r) => isSameDay(r.at, today));
     const tD = diapers.filter((r) => isSameDay(r.at, today));
-    const tS = sleeps.filter((r) => r.end && isSameDay(r.at, today));
+    // 자정 넘긴 밤잠도 포함: 시작 또는 종료가 오늘인 완료 수면
+    const tS = sleeps.filter((r) => r.end && (isSameDay(r.at, today) || isSameDay(r.end, today)));
     const sleepMin = tS.reduce((s, r) => s + (r.durationMin || 0), 0);
 
-    // 마지막 수유 & 다음 예상 (평균 간격 또는 기본 3시간)
+    // 마지막 수유 & 다음 예상 (최근 간격 평균 기반)
     const lastFeed = feedings[0];
     const lastFeedDate = lastFeed ? toDate(lastFeed.at) : null;
-    const nextFeed = lastFeedDate ? new Date(lastFeedDate.getTime() + 3 * 3600000) : null;
-    const overdue = lastFeedDate && (Date.now() - lastFeedDate.getTime()) > 3 * 3600000; // 3시간 초과 경고
+    const intervals = [];
+    for (let i = 0; i < Math.min(feedings.length - 1, 6); i++) {
+      const d = toDate(feedings[i].at) - toDate(feedings[i + 1].at);
+      if (d > 0) intervals.push(d);
+    }
+    const avgMs = intervals.length ? Math.max(5400000, intervals.reduce((a, b) => a + b, 0) / intervals.length) : 3 * 3600000;
+    const nextFeed = lastFeedDate ? new Date(lastFeedDate.getTime() + avgMs) : null;
+    const overdue = lastFeedDate && (now - lastFeedDate.getTime()) > 3 * 3600000; // 3시간 초과(임상 권고)
 
-    // 활동 피드 (최근 records 합산)
-    const feed = [...feedings, ...sleeps, ...diapers]
+    // 활동 피드 (모든 기록 + 사진 합산)
+    const photoActs = (photos || []).map((p) => ({ ...p, type: "photo", at: p.createdAt, creatorName: p.uploaderName }));
+    const feed = [...feedings, ...sleeps, ...diapers, ...growths, ...healths, ...letters, ...photoActs]
       .sort((a, b) => (toDate(b.createdAt || b.at) - toDate(a.createdAt || a.at)))
-      .slice(0, 8);
-    const labelOf = (r) => r.type === "feeding" ? "수유 기록" : r.type === "sleep" ? "수면 기록" : "기저귀 기록";
-    const iconOf = (r) => r.type === "feeding" ? "🍼" : r.type === "sleep" ? "😴" : "👶";
+      .slice(0, 12);
+    const labelOf = (r) => ({ feeding: "수유 기록", sleep: "수면 기록", diaper: "기저귀 기록", growth: "성장 기록", health: "건강 기록", letter: "편지", photo: "사진" })[r.type] || "기록";
+    const iconOf = (r) => ({ feeding: "🍼", sleep: "😴", diaper: "👶", growth: "📏", health: "🩺", letter: "💌", photo: "🖼️" })[r.type] || "📋";
+
+    // 최근 7일 통계
+    const weekly = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(); d.setDate(d.getDate() - i); const key = ymd(d);
+      const sl = sleeps.filter((r) => r.end && (ymd(r.at) === key || (r.end && ymd(r.end) === key))).reduce((s, r) => s + (r.durationMin || 0), 0) / 60;
+      weekly.push({
+        day: d.toLocaleDateString("ko-KR", { weekday: "short" }),
+        수유: feedings.filter((r) => ymd(r.at) === key).length,
+        기저귀: diapers.filter((r) => ymd(r.at) === key).length,
+        수면: +sl.toFixed(1),
+      });
+    }
+    const avg = (k) => (weekly.reduce((s, d) => s + d[k], 0) / 7);
 
     return (
       <div className="p-4 space-y-4 pb-safe">
@@ -736,6 +774,29 @@
           <Btn variant="primary" onClick={() => go("records", "feeding")}>🍼 수유 기록</Btn>
           <Btn variant="lavender" onClick={() => go("records", "sleep")}>😴 수면 기록</Btn>
         </div>
+
+        {/* 주간 통계 */}
+        <Card className="p-4">
+          <h3 className="font-bold text-slate-800 dark:text-white mb-1">최근 7일 통계</h3>
+          <div className="grid grid-cols-3 gap-2 my-3 text-center">
+            <div><p className="text-lg font-bold text-teal-500">{avg("수유").toFixed(1)}</p><p className="text-[11px] text-slate-400">하루 평균 수유</p></div>
+            <div><p className="text-lg font-bold text-violet-500">{avg("수면").toFixed(1)}h</p><p className="text-[11px] text-slate-400">하루 평균 수면</p></div>
+            <div><p className="text-lg font-bold text-amber-500">{avg("기저귀").toFixed(1)}</p><p className="text-[11px] text-slate-400">하루 평균 기저귀</p></div>
+          </div>
+          <div style={{ width: "100%", height: 160 }}>
+            <ResponsiveContainer>
+              <BarChart data={weekly} margin={{ top: 5, right: 5, left: -22, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                <XAxis dataKey="day" tick={{ fontSize: 11 }} />
+                <YAxis tick={{ fontSize: 11 }} />
+                <Tooltip />
+                <Legend wrapperStyle={{ fontSize: 11 }} />
+                <Bar dataKey="수유" fill="#14b8a6" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="기저귀" fill="#f59e0b" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </Card>
 
         {/* 활동 피드 */}
         <Card className="p-4">
@@ -786,11 +847,25 @@
       } catch (e) { toast(errMsg(e), "error"); } finally { setBusy(false); }
     };
 
+    const now = useNow(30000); // 30초마다 경과시간 갱신
     const last = items && items[0];
     const lastDate = last && toDate(last.at);
-    const elapsedMin = lastDate ? Math.floor((Date.now() - lastDate) / 60000) : null;
+    const elapsedMin = lastDate ? Math.floor((now - lastDate) / 60000) : null;
     const overdue = elapsedMin != null && elapsedMin > 180;
     const kindLabel = { breast: "모유", formula: "분유", mixed: "혼합" };
+
+    // 직전 수유와 동일하게 한 번 더 (야간 빠른 입력)
+    const repeatLast = async () => {
+      if (!last) return;
+      setBusy(true);
+      try {
+        await addRecord("feeding", {
+          kind: last.kind, side: last.side || null,
+          amount: last.amount || null, durationMin: last.durationMin || null, at: TS(),
+        }, user, profile);
+        toast("직전 수유와 동일하게 기록했어요.", "success");
+      } catch (e) { toast(errMsg(e), "error"); } finally { setBusy(false); }
+    };
 
     return (
       <div className="space-y-4">
@@ -799,7 +874,9 @@
           <Card className={`p-4 text-center ${overdue ? "ring-2 ring-amber-400" : ""}`}>
             <p className="text-sm text-slate-500 dark:text-slate-400">마지막 수유 경과</p>
             <p className={`text-2xl font-bold ${overdue ? "text-amber-500" : "text-teal-500"}`}>{hm(elapsedMin)}</p>
+            <p className="text-[11px] text-slate-400">{kindLabel[last.kind]}{last.amount ? ` ${last.amount}ml` : ""} · {fmtTime(last.at)}</p>
             {overdue && <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">⚠️ 3시간 초과 — 수유 시간을 확인해주세요</p>}
+            <Btn variant="ghost" onClick={repeatLast} disabled={busy} className="w-full mt-3 text-sm py-2.5">🔁 직전과 동일하게 한 번 더</Btn>
           </Card>
         )}
 
@@ -1312,15 +1389,72 @@
   /* ========================================================================
      15. 공용 기록 리스트 (입력자/시각/삭제)
      ======================================================================== */
+  // 기록 종류별 수정 가능한 필드 정의
+  const numOrNull = (v) => (v === "" || v == null ? null : Number(v));
+  const renderEditFields = (e, upd) => {
+    const set = (k) => (ev) => upd({ ...e, [k]: ev.target.value });
+    switch (e.type) {
+      case "feeding": return (
+        <>
+          <ChipGroup label="수유 종류" value={e.kind} onChange={(v) => upd({ ...e, kind: v })}
+            options={[{ value: "breast", label: "🤱 모유" }, { value: "formula", label: "🍼 분유" }, { value: "mixed", label: "🥛 혼합" }]} />
+          {e.kind === "breast" && <ChipGroup label="위치" value={e.side || "left"} onChange={(v) => upd({ ...e, side: v })}
+            options={[{ value: "left", label: "왼쪽" }, { value: "right", label: "오른쪽" }, { value: "both", label: "양쪽" }]} />}
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="수유량 (ml)"><input className={inputCls} type="number" value={e.amount ?? ""} onChange={set("amount")} /></Field>
+            <Field label="시간 (분)"><input className={inputCls} type="number" value={e.durationMin ?? ""} onChange={set("durationMin")} /></Field>
+          </div>
+        </>
+      );
+      case "diaper": return (
+        <>
+          <ChipGroup label="종류" value={e.diaperType} onChange={(v) => upd({ ...e, diaperType: v })}
+            options={[{ value: "pee", label: "💧 소변" }, { value: "poo", label: "💩 대변" }, { value: "both", label: "💧💩 둘 다" }]} />
+          <Field label="색상 메모"><input className={inputCls} value={e.color ?? ""} onChange={set("color")} /></Field>
+        </>
+      );
+      case "growth": return (
+        <div className="grid grid-cols-3 gap-2">
+          <Field label="키 (cm)"><input className={inputCls} type="number" value={e.height ?? ""} onChange={set("height")} /></Field>
+          <Field label="몸무게 (kg)"><input className={inputCls} type="number" value={e.weight ?? ""} onChange={set("weight")} /></Field>
+          <Field label="머리둘레"><input className={inputCls} type="number" value={e.head ?? ""} onChange={set("head")} /></Field>
+        </div>
+      );
+      case "health": return (
+        <>
+          <Field label="체온 (℃)"><input className={inputCls} type="number" step="0.1" value={e.temp ?? ""} onChange={set("temp")} /></Field>
+          <Field label="증상 메모"><input className={inputCls} value={e.symptom ?? ""} onChange={set("symptom")} /></Field>
+          <Field label="병원 방문"><input className={inputCls} value={e.hospital ?? ""} onChange={set("hospital")} /></Field>
+        </>
+      );
+      case "sleep": return (
+        <ChipGroup label="구분" value={e.naptype || "nap"} onChange={(v) => upd({ ...e, naptype: v })}
+          options={[{ value: "nap", label: "🌤️ 낮잠" }, { value: "night", label: "🌙 밤잠" }]} />
+      );
+      default: return null;
+    }
+  };
+  const buildEditUpdate = (e) => {
+    const at = fromLocalInput(e.at);
+    switch (e.type) {
+      case "feeding": return { at, kind: e.kind, side: e.kind === "breast" ? (e.side || "left") : null, amount: numOrNull(e.amount), durationMin: numOrNull(e.durationMin) };
+      case "diaper": return { at, diaperType: e.diaperType, color: e.color || null };
+      case "growth": return { at, height: numOrNull(e.height), weight: numOrNull(e.weight), head: numOrNull(e.head) };
+      case "health": return { at, temp: numOrNull(e.temp), symptom: e.symptom || null, hospital: e.hospital || null };
+      case "sleep": return { at, naptype: e.naptype || "nap" };
+      default: return { at };
+    }
+  };
+
   const RecordList = ({ items, render }) => {
     const { user, isAdmin } = useAuth();
     const toast = useToast();
-    const [editing, setEditing] = useState(null); // {id, at}
+    const [editing, setEditing] = useState(null); // 수정 중인 기록(복사본)
     if (!items) return <Spinner />;
     if (items.length === 0) return <Card className="p-6 text-center text-sm text-slate-400">아직 기록이 없어요.</Card>;
 
-    const saveTime = async () => {
-      try { await updateRecordAt(editing.id, fromLocalInput(editing.at)); toast("시간을 수정했어요.", "success"); setEditing(null); }
+    const saveEdit = async () => {
+      try { await COL.records().doc(editing.id).update(buildEditUpdate(editing)); toast("기록을 수정했어요.", "success"); setEditing(null); }
       catch (e) { toast(errMsg(e), "error"); }
     };
 
@@ -1336,8 +1470,8 @@
                   <p className="text-[11px] text-slate-400">{fmtDateTime(r.at)} · {r.creatorName}</p>
                 </div>
                 {mine && (
-                  <button onClick={() => setEditing({ id: r.id, at: toLocalInput(r.at) })}
-                    aria-label="시간 수정" className="text-slate-300 hover:text-teal-500 text-base px-1">✏️</button>
+                  <button onClick={() => setEditing({ ...r, at: toLocalInput(r.at) })}
+                    aria-label="기록 수정" className="text-slate-300 hover:text-teal-500 text-base px-1">✏️</button>
                 )}
                 {mine && (
                   <button onClick={() => { if (confirm("삭제할까요?")) deleteRecord(r.id); }}
@@ -1348,11 +1482,12 @@
           })}
         </ul>
 
-        <Modal open={!!editing} onClose={() => setEditing(null)} title="기록 시간 수정">
+        <Modal open={!!editing} onClose={() => setEditing(null)} title="기록 수정">
           {editing && (
             <div className="space-y-4">
+              {renderEditFields(editing, setEditing)}
               <DateTimeField value={editing.at} onChange={(v) => setEditing({ ...editing, at: v })} />
-              <Btn onClick={saveTime} className="w-full">저장</Btn>
+              <Btn onClick={saveEdit} className="w-full">저장</Btn>
             </div>
           )}
         </Modal>
@@ -1619,19 +1754,9 @@
   /* ========================================================================
      19. 좋아요 / 저장 훅 (트랜잭션, 계정별) — 시니어 검토 #2
      ======================================================================== */
-  const useMyLikes = (uid) => {
-    // 내가 좋아요한 photoId 집합 (실시간)
-    const [liked, setLiked] = useState(new Set());
-    useEffect(() => {
-      if (!uid) return;
-      // collectionGroup likes 중 내 uid 문서 구독
-      const unsub = db.collectionGroup("likes").where("uid", "==", uid)
-        .onSnapshot((snap) => setLiked(new Set(snap.docs.map((d) => d.ref.parent.parent.id))),
-          (e) => console.warn("likes index 필요 가능성:", e.code));
-      return () => unsub();
-    }, [uid]);
-    return liked;
-  };
+  // 좋아요는 사진 문서의 likedBy 배열로 관리 (색인/추가 규칙 불필요, 동시성 안전)
+  const isLikedBy = (photo, uid) => !!photo && (photo.likedBy || []).includes(uid);
+  const likeCountOf = (photo) => (photo && photo.likedBy ? photo.likedBy.length : (photo && photo.likeCount) || 0);
 
   const useMySaved = (uid) => {
     const [saved, setSaved] = useState(new Set());
@@ -1649,21 +1774,13 @@
     return { saved, docs };
   };
 
-  // 좋아요 토글 — runTransaction 으로 동시성 정합성 보장
-  const toggleLike = async (photoId, uid) => {
-    const photoRef = COL.photos().doc(photoId);
-    const likeRef = photoRef.collection("likes").doc(uid);
-    await db.runTransaction(async (tx) => {
-      const likeSnap = await tx.get(likeRef);
-      const photoSnap = await tx.get(photoRef);
-      const cur = (photoSnap.data() && photoSnap.data().likeCount) || 0;
-      if (likeSnap.exists) {
-        tx.delete(likeRef);
-        tx.update(photoRef, { likeCount: Math.max(0, cur - 1) });
-      } else {
-        tx.set(likeRef, { uid, likedAt: TS() });
-        tx.update(photoRef, { likeCount: cur + 1 });
-      }
+  // 좋아요 토글 — likedBy 배열에 arrayUnion/arrayRemove (원자적, 동시성 안전)
+  const toggleLike = async (photo, uid) => {
+    const FV = firebase.firestore.FieldValue;
+    const liked = isLikedBy(photo, uid);
+    await COL.photos().doc(photo.id).update({
+      likedBy: liked ? FV.arrayRemove(uid) : FV.arrayUnion(uid),
+      likeCount: FV.increment(liked ? -1 : 1), // 호환용 카운트도 함께 유지
     });
   };
 
@@ -1677,23 +1794,26 @@
   /* ========================================================================
      20. 사진 카드 + 갤러리
      ======================================================================== */
-  const PhotoCard = ({ photo, liked, saved, uid, onOpen }) => (
-    <div className="relative group">
-      <button onClick={onOpen} className="block w-full" aria-label={`${photo.uploaderName}님의 사진 열기`}>
-        <img src={photo.url} alt={photo.caption || `${photo.uploaderName}님이 올린 사진`} loading="lazy"
-          className="w-full aspect-square object-cover rounded-xl bg-slate-100 dark:bg-slate-700" />
-      </button>
-      <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/60 to-transparent rounded-b-xl p-2 flex items-end justify-between">
-        <span className="text-[10px] text-white/90 truncate">{photo.uploaderName}</span>
-        <div className="flex items-center gap-2">
-          <button onClick={() => toggleLike(photo.id, uid)} aria-label={liked ? "좋아요 취소" : "좋아요"} className="text-sm flex items-center gap-0.5 text-white">
-            <span aria-hidden="true">{liked ? "❤️" : "🤍"}</span><span className="text-[10px]">{photo.likeCount || 0}</span>
-          </button>
-          <button onClick={() => toggleSave(photo, uid)} aria-label={saved ? "저장 취소" : "저장"} className="text-sm text-white" aria-hidden="true">{saved ? "🔖" : "🏷️"}</button>
+  const PhotoCard = ({ photo, saved, uid, onOpen }) => {
+    const liked = isLikedBy(photo, uid);
+    return (
+      <div className="relative group">
+        <button onClick={onOpen} className="block w-full" aria-label={`${photo.uploaderName}님의 사진 열기`}>
+          <img src={photo.url} alt={photo.caption || `${photo.uploaderName}님이 올린 사진`} loading="lazy"
+            className="w-full aspect-square object-cover rounded-xl bg-slate-100 dark:bg-slate-700" />
+        </button>
+        <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/60 to-transparent rounded-b-xl p-2 flex items-end justify-between">
+          <span className="text-[10px] text-white/90 truncate">{photo.uploaderName}</span>
+          <div className="flex items-center gap-2">
+            <button onClick={() => toggleLike(photo, uid)} aria-label={liked ? "좋아요 취소" : "좋아요"} className="text-sm flex items-center gap-0.5 text-white">
+              <span aria-hidden="true">{liked ? "❤️" : "🤍"}</span><span className="text-[10px]">{likeCountOf(photo)}</span>
+            </button>
+            <button onClick={() => toggleSave(photo, uid)} aria-label={saved ? "저장 취소" : "저장"} className="text-base text-white">{saved ? "🔖" : "🏷️"}</button>
+          </div>
         </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   // 사진 컬렉션 실시간 구독 (갤러리/슬라이드쇼 공용)
   const usePhotos = (max = 300) => {
@@ -1709,7 +1829,8 @@
 
   const Gallery = ({ openUpload, canUpload = true }) => {
     const { user } = useAuth();
-    const photos = usePhotos(300);
+    const [lim, setLim] = useState(60);          // 무한스크롤: 60장씩 늘려가며 로딩
+    const photos = usePhotos(lim);
     const [cat, setCat] = useState("all");
     const [sort, setSort] = useState("recent");
     const [q, setQ] = useState("");
@@ -1717,8 +1838,19 @@
     const [to, setTo] = useState("");
     const [detail, setDetail] = useState(null); // index
     const [showSlide, setShowSlide] = useState(false);
-    const liked = useMyLikes(user.uid);
     const { saved } = useMySaved(user.uid);
+    const sentinel = useRef(null);
+    const canMore = photos && photos.length >= lim; // 더 있을 가능성
+
+    // 바닥 근처에 닿으면 더 로딩
+    useEffect(() => {
+      if (!sentinel.current) return;
+      const io = new IntersectionObserver((es) => {
+        if (es[0].isIntersecting && canMore) setLim((n) => n + 60);
+      }, { rootMargin: "300px" });
+      io.observe(sentinel.current);
+      return () => io.disconnect();
+    }, [canMore]);
 
     const list = useMemo(() => {
       if (!photos) return [];
@@ -1735,7 +1867,7 @@
       const dayOf = (p) => toDate(p.takenAt || p.createdAt);
       if (from) l = l.filter((p) => { const d = dayOf(p); return d && ymd(d) >= from; });
       if (to) l = l.filter((p) => { const d = dayOf(p); return d && ymd(d) <= to; });
-      if (sort === "likes") l = [...l].sort((a, b) => (b.likeCount || 0) - (a.likeCount || 0));
+      if (sort === "likes") l = [...l].sort((a, b) => likeCountOf(b) - likeCountOf(a));
       else l = [...l].sort((a, b) => (toDate(b.takenAt || b.createdAt) - toDate(a.takenAt || a.createdAt)));
       return l;
     }, [photos, cat, sort, q, from, to]);
@@ -1775,11 +1907,16 @@
         {!photos ? <Spinner /> : list.length === 0 ? (
           <Card className="p-8 text-center text-sm text-slate-400">{q || from || to ? "검색 결과가 없어요." : <>아직 사진이 없어요.<br />아래 + 버튼으로 추가해보세요.</>}</Card>
         ) : (
-          <div className="grid grid-cols-3 gap-2">
-            {list.map((p, i) => (
-              <PhotoCard key={p.id} photo={p} uid={user.uid} liked={liked.has(p.id)} saved={saved.has(p.id)} onOpen={() => setDetail(i)} />
-            ))}
-          </div>
+          <>
+            <div className="grid grid-cols-3 gap-2">
+              {list.map((p, i) => (
+                <PhotoCard key={p.id} photo={p} uid={user.uid} saved={saved.has(p.id)} onOpen={() => setDetail(i)} />
+              ))}
+            </div>
+            <div ref={sentinel} className="h-8 flex items-center justify-center">
+              {canMore && <span className="text-xs text-slate-400">더 불러오는 중…</span>}
+            </div>
+          </>
         )}
 
         {/* 업로드 FAB */}
@@ -1789,7 +1926,7 @@
         )}
 
         {detail != null && (
-          <PhotoDetail list={list} index={detail} setIndex={setDetail} uid={user.uid} liked={liked} saved={saved} onClose={() => setDetail(null)} />
+          <PhotoDetail list={list} index={detail} setIndex={setDetail} uid={user.uid} saved={saved} onClose={() => setDetail(null)} />
         )}
         {showSlide && <Slideshow photos={photos} onClose={() => setShowSlide(false)} />}
       </div>
@@ -1803,7 +1940,7 @@
   const buildSlideDeck = (photos) => {
     if (!photos || photos.length === 0) return [];
     const byRecent = [...photos].sort((a, b) => toDate(b.takenAt || b.createdAt) - toDate(a.takenAt || a.createdAt)).slice(0, 20);
-    const byLikes = [...photos].sort((a, b) => (b.likeCount || 0) - (a.likeCount || 0)).slice(0, 15);
+    const byLikes = [...photos].sort((a, b) => likeCountOf(b) - likeCountOf(a)).slice(0, 15);
     const map = new Map();
     [...byRecent, ...byLikes].forEach((p) => map.set(p.id, p)); // 중복 제거(최신 우선)
     return [...map.values()].slice(0, 30);
@@ -1871,7 +2008,7 @@
         <div className="absolute bottom-0 inset-x-0 z-20 bg-gradient-to-t from-black/80 to-transparent p-6 pb-10 text-white">
           {cur.caption && <p className="text-xl font-bold mb-1 drop-shadow">{cur.caption}</p>}
           <p className="text-sm text-white/80">{meta}</p>
-          <p className="text-xs text-white/50 mt-1">❤️ {cur.likeCount || 0} · {idx + 1} / {deck.length}</p>
+          <p className="text-xs text-white/50 mt-1">❤️ {likeCountOf(cur)} · {idx + 1} / {deck.length}</p>
         </div>
 
         {/* 컨트롤 */}
@@ -1891,7 +2028,7 @@
   /* ========================================================================
      21. 사진 상세 모달 (스와이프/이전·다음/다운로드/삭제)
      ======================================================================== */
-  const PhotoDetail = ({ list, index, setIndex, uid, liked, saved, onClose }) => {
+  const PhotoDetail = ({ list, index, setIndex, uid, saved, onClose }) => {
     const { user, isAdmin } = useAuth();
     const toast = useToast();
     const [editOpen, setEditOpen] = useState(false);
@@ -1945,8 +2082,8 @@
               <p className="text-xs text-slate-400">{fmtDateTime(p.createdAt)}</p>
             </div>
             <div className="flex items-center gap-3">
-              <button onClick={() => toggleLike(p.id, uid)} aria-label="좋아요" className="flex items-center gap-1 text-lg">
-                <span aria-hidden="true">{liked.has(p.id) ? "❤️" : "🤍"}</span><span className="text-sm text-slate-500">{p.likeCount || 0}</span>
+              <button onClick={() => toggleLike(p, uid)} aria-label={isLikedBy(p, uid) ? "좋아요 취소" : "좋아요"} className="flex items-center gap-1 text-lg">
+                <span aria-hidden="true">{isLikedBy(p, uid) ? "❤️" : "🤍"}</span><span className="text-sm text-slate-500">{likeCountOf(p)}</span>
               </button>
               <button onClick={() => toggleSave(p, uid)} aria-label="저장" className="text-lg" aria-hidden="true">{saved.has(p.id) ? "🔖" : "🏷️"}</button>
             </div>
@@ -2041,7 +2178,6 @@
   const Saved = () => {
     const { user } = useAuth();
     const { docs } = useMySaved(user.uid);
-    const liked = useMyLikes(user.uid);
     const [photos, setPhotos] = useState({}); // id -> 최신 photo
     const [detail, setDetail] = useState(null);
 
@@ -2069,12 +2205,12 @@
         ) : list.length === 0 ? <Spinner /> : (
           <div className="grid grid-cols-3 gap-2">
             {list.map((p, i) => (
-              <PhotoCard key={p.id} photo={p} uid={user.uid} liked={liked.has(p.id)} saved={savedSet.has(p.id)} onOpen={() => setDetail(i)} />
+              <PhotoCard key={p.id} photo={p} uid={user.uid} saved={savedSet.has(p.id)} onOpen={() => setDetail(i)} />
             ))}
           </div>
         )}
         {detail != null && (
-          <PhotoDetail list={list} index={detail} setIndex={setDetail} uid={user.uid} liked={liked} saved={savedSet} onClose={() => setDetail(null)} />
+          <PhotoDetail list={list} index={detail} setIndex={setDetail} uid={user.uid} saved={savedSet} onClose={() => setDetail(null)} />
         )}
       </div>
     );
