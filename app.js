@@ -1,423 +1,450 @@
-/* 주말 활동 추천 로직 */
+/* =========================================================================
+ * 올리브식권 간편식 신청 도우미 — 로직
+ *  - 요일별 × 끼니별(아침/점심/저녁) 체크 + 목록선택바(드롭다운)로 메뉴 선택
+ *  - 날짜 범위를 지정하면 그 기간의 신청 계획표를 자동 생성
+ *  - 설정/메뉴는 이 브라우저(localStorage)에 저장
+ * ===================================================================== */
 (function () {
   "use strict";
 
-  // 칩 그룹별 선택 상태 저장
-  const selections = {
-    region: new Set(),
-    duration: new Set(),
-    theme: new Set(),
-    constraint: new Set(),
-  };
+  const DAYS = window.OLIVE_DAYS;
+  const MEALS = window.OLIVE_MEALS;
+  const CONFIG_KEY = "olive_config_v1";
+  const MENU_KEY = "olive_menu_v1";
 
-  // 코드 → 한글 라벨 (결과 표시용)
-  const LABELS = {
-    region: {
-      seoul: "서울", gyeonggi: "경기·인천", gangwon: "강원",
-      chungcheong: "충청", jeolla: "전라", gyeongsang: "경상",
-      busan: "부산", jeju: "제주",
-    },
-    duration: {
-      half: "반나절", day: "당일치기", overnight: "1박 2일",
-      n2d3: "2박 3일", n3d4: "3박 4일", week: "일주일", longstay: "한 달 살기",
-    },
-    theme: {
-      nature: "자연·힐링", active: "액티비티", food: "맛집·카페",
-      culture: "문화·예술", shopping: "쇼핑·도심", healing: "휴식·온천",
-    },
-    constraint: {
-      budget: "저예산", kids: "아이 동반", pet: "반려동물 동반",
-      transit: "대중교통", indoor: "실내 위주", lowEnergy: "체력 적게",
-    },
-  };
+  // 현재 설정 상태: { mon: { breakfast: {enabled, menu}, ... }, ... }
+  let config = emptyConfig();
 
-  // ── 칩 토글 동작 연결 ──────────────────────────────
-  document.querySelectorAll(".chips").forEach((group) => {
-    const name = group.dataset.group;
-    const multi = group.dataset.multi === "true";
+  function emptyConfig() {
+    const c = {};
+    DAYS.forEach((d) => {
+      c[d.key] = {};
+      MEALS.forEach((m) => (c[d.key][m.key] = { enabled: false, menu: "" }));
+    });
+    return c;
+  }
 
-    group.addEventListener("click", (e) => {
-      const chip = e.target.closest(".chip");
-      if (!chip) return;
-      const value = chip.dataset.value;
+  // ── 메뉴 데이터 (기본값 + 저장된 편집본 병합) ─────────────
+  function getMenu() {
+    const stored = localStorage.getItem(MENU_KEY);
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length) return parsed;
+      } catch (_) {}
+    }
+    return window.OLIVE_MENU;
+  }
 
-      if (chip.classList.contains("is-selected")) {
-        chip.classList.remove("is-selected");
-        selections[name].delete(value);
+  // 메뉴를 텍스트(한 줄에 "그룹: a, b, c")로 직렬화
+  function menuToText(menu) {
+    return menu.map((g) => `${g.group}: ${g.items.join(", ")}`).join("\n");
+  }
+
+  // 텍스트를 메뉴 구조로 파싱
+  function textToMenu(text) {
+    const groups = [];
+    text.split("\n").forEach((raw) => {
+      const line = raw.trim();
+      if (!line) return;
+      const idx = line.indexOf(":");
+      if (idx > -1) {
+        const group = line.slice(0, idx).trim() || "메뉴";
+        const items = line.slice(idx + 1).split(",").map((s) => s.trim()).filter(Boolean);
+        if (items.length) groups.push({ group, items });
       } else {
-        if (!multi) {
-          // 단일 선택: 같은 그룹의 다른 선택 해제
-          group.querySelectorAll(".chip.is-selected").forEach((c) => c.classList.remove("is-selected"));
-          selections[name].clear();
-        }
-        chip.classList.add("is-selected");
-        selections[name].add(value);
+        // 콜론 없는 줄은 "기타" 그룹의 단일 항목
+        let etc = groups.find((g) => g.group === "기타");
+        if (!etc) { etc = { group: "기타", items: [] }; groups.push(etc); }
+        etc.items.push(line);
       }
     });
-  });
+    return groups;
+  }
 
-  // 기타(직접입력) 값 — 칩과 별개로 자유 입력. 주로 AI 추천에 반영됨.
-  const customInputs = { region: "", duration: "", theme: "", constraint: "" };
-  const CUSTOM_LABEL = { region: "지역", duration: "기간", theme: "테마", constraint: "제한" };
-  document.querySelectorAll(".custom-input").forEach((inp) => {
-    inp.addEventListener("input", () => {
-      customInputs[inp.dataset.group] = inp.value.trim();
+  // 모든 메뉴 항목을 평평하게 (유효성 검사용)
+  function allMenuItems() {
+    return getMenu().flatMap((g) => g.items);
+  }
+
+  // ── 요일 그리드 만들기 ────────────────────────────────
+  function buildSelect(dayKey, mealKey) {
+    const sel = document.createElement("select");
+    sel.className = "mealrow__select";
+    sel.dataset.day = dayKey;
+    sel.dataset.meal = mealKey;
+    sel.disabled = true;
+
+    const blank = document.createElement("option");
+    blank.value = "";
+    blank.textContent = "— 메뉴 선택 —";
+    sel.appendChild(blank);
+
+    getMenu().forEach((g) => {
+      const og = document.createElement("optgroup");
+      og.label = g.group;
+      g.items.forEach((item) => {
+        const o = document.createElement("option");
+        o.value = item;
+        o.textContent = item;
+        og.appendChild(o);
+      });
+      sel.appendChild(og);
     });
-  });
-
-  // 긴 기간 코드는 고정 데이터 매칭 시 기본 코드로 환산
-  const DURATION_BASE = {
-    half: "half", day: "day", overnight: "overnight",
-    n2d3: "overnight", n3d4: "overnight", week: "overnight", longstay: "overnight",
-  };
-
-  // ── 추천 매칭 로직 ────────────────────────────────
-  function scoreActivity(act) {
-    const region = [...selections.region];
-    const duration = [...selections.duration];
-    const themes = [...selections.theme];
-    const constraints = [...selections.constraint];
-
-    // 필수 조건: 지역
-    if (region.length && !region.some((r) => act.region.includes(r))) return null;
-    // 필수 조건: 기간 (긴 일정은 1박2일 활동과 매칭)
-    if (duration.length && !duration.some((d) => act.duration.includes(DURATION_BASE[d] || d)))
-      return null;
-    // 필수 조건: 제한사항은 모두 충족해야 함 (AND)
-    if (constraints.length && !constraints.every((c) => act.friendly.includes(c))) return null;
-
-    // 점수: 테마 일치 개수 (테마 미선택 시 모두 동점)
-    let score = 1;
-    if (themes.length) {
-      const matched = themes.filter((t) => act.theme.includes(t)).length;
-      if (matched === 0) return null; // 테마를 골랐는데 하나도 안 맞으면 제외
-      score += matched * 2;
-    }
-    return score;
+    return sel;
   }
 
-  function shuffle(arr) {
-    for (let i = arr.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [arr[i], arr[j]] = [arr[j], arr[i]];
-    }
-    return arr;
+  function buildGrid() {
+    const grid = document.getElementById("weekGrid");
+    grid.innerHTML = "";
+
+    DAYS.forEach((d) => {
+      const card = document.createElement("div");
+      card.className = "daycard";
+      card.dataset.day = d.key;
+
+      const head = document.createElement("div");
+      head.className = "daycard__head";
+      head.innerHTML =
+        `<span class="daycard__day">${d.label}</span>` +
+        `<span class="daycard__count" data-count="${d.key}"></span>`;
+      card.appendChild(head);
+
+      MEALS.forEach((m) => {
+        const row = document.createElement("div");
+        row.className = "mealrow";
+
+        const label = document.createElement("label");
+        label.className = "mealrow__check";
+        const cb = document.createElement("input");
+        cb.type = "checkbox";
+        cb.dataset.day = d.key;
+        cb.dataset.meal = m.key;
+        label.appendChild(cb);
+        label.appendChild(document.createTextNode(`${m.emoji} ${m.label}`));
+
+        const sel = buildSelect(d.key, m.key);
+
+        cb.addEventListener("change", () => {
+          config[d.key][m.key].enabled = cb.checked;
+          sel.disabled = !cb.checked;
+          refreshDayState(d.key);
+        });
+        sel.addEventListener("change", () => {
+          config[d.key][m.key].menu = sel.value;
+        });
+
+        row.appendChild(label);
+        row.appendChild(sel);
+        card.appendChild(row);
+      });
+
+      grid.appendChild(card);
+    });
   }
 
-  function recommend() {
-    if (!hasRegion()) {
-      renderMessage("📍 먼저 <strong>지역</strong>을 선택하거나 기타에 입력해 주세요.");
+  // 카드 활성 상태/카운트 갱신
+  function refreshDayState(dayKey) {
+    const card = document.querySelector(`.daycard[data-day="${dayKey}"]`);
+    const enabledMeals = MEALS.filter((m) => config[dayKey][m.key].enabled);
+    card.classList.toggle("is-active", enabledMeals.length > 0);
+    const countEl = card.querySelector(`[data-count="${dayKey}"]`);
+    countEl.textContent = enabledMeals.length
+      ? `${enabledMeals.length}끼 신청`
+      : "";
+  }
+
+  // config 상태를 화면 입력요소에 반영
+  function syncFormFromConfig() {
+    DAYS.forEach((d) => {
+      MEALS.forEach((m) => {
+        const slot = config[d.key][m.key];
+        const cb = document.querySelector(
+          `input[type="checkbox"][data-day="${d.key}"][data-meal="${m.key}"]`
+        );
+        const sel = document.querySelector(
+          `select[data-day="${d.key}"][data-meal="${m.key}"]`
+        );
+        if (cb) cb.checked = !!slot.enabled;
+        if (sel) {
+          sel.disabled = !slot.enabled;
+          // 저장된 메뉴가 현재 목록에 있으면 선택, 없으면 비움
+          sel.value = allMenuItems().includes(slot.menu) ? slot.menu : "";
+          slot.menu = sel.value;
+        }
+      });
+      refreshDayState(d.key);
+    });
+  }
+
+  // ── 날짜 유틸 ────────────────────────────────────────
+  function fmtInput(date) {
+    return date.toLocaleDateString("sv-SE"); // YYYY-MM-DD (현지 기준)
+  }
+  function parseInput(str) {
+    const [y, mo, d] = str.split("-").map(Number);
+    return new Date(y, mo - 1, d);
+  }
+  function dowKey(date) {
+    const found = DAYS.find((d) => d.dow === date.getDay());
+    return found ? found.key : null;
+  }
+  function dowLabel(date) {
+    const found = DAYS.find((d) => d.dow === date.getDay());
+    return found ? found.label : "";
+  }
+
+  // 빠른 기간 선택
+  function setQuickRange(kind) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    let start = new Date(today);
+    let end = new Date(today);
+
+    if (kind === "thisweek" || kind === "nextweek") {
+      // 이번 주 월요일 찾기 (일=0 보정)
+      const offset = (today.getDay() + 6) % 7;
+      start = new Date(today);
+      start.setDate(today.getDate() - offset);
+      if (kind === "nextweek") start.setDate(start.getDate() + 7);
+      end = new Date(start);
+      end.setDate(start.getDate() + 6);
+    } else if (kind === "thismonth") {
+      start = new Date(today.getFullYear(), today.getMonth(), 1);
+      end = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+    } else if (kind === "14") {
+      end = new Date(today);
+      end.setDate(today.getDate() + 13);
+    }
+
+    document.getElementById("startDate").value = fmtInput(start);
+    document.getElementById("endDate").value = fmtInput(end);
+  }
+
+  // ── 계획표 생성 ──────────────────────────────────────
+  function generatePlan() {
+    const startStr = document.getElementById("startDate").value;
+    const endStr = document.getElementById("endDate").value;
+
+    if (!startStr || !endStr) {
+      renderMessage("📅 먼저 <strong>신청 기간</strong>(시작일·종료일)을 정해 주세요.");
+      return;
+    }
+    const start = parseInput(startStr);
+    const end = parseInput(endStr);
+    if (start > end) {
+      renderMessage("📅 시작일이 종료일보다 늦어요. 기간을 다시 확인해 주세요.");
       return;
     }
 
-    const scored = [];
-    window.ACTIVITIES.forEach((act) => {
-      const s = scoreActivity(act);
-      if (s !== null) scored.push({ act, score: s });
-    });
+    // 메뉴 없이 체크만 된 칸 경고용 수집
+    const missing = [];
+    const plan = []; // { date, dowLabel, meal, menu }
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+      const key = dowKey(d);
+      if (!key) continue;
+      MEALS.forEach((m) => {
+        const slot = config[key][m.key];
+        if (!slot.enabled) return;
+        if (!slot.menu) missing.push(`${dowLabel(d)} ${m.label}`);
+        plan.push({
+          date: new Date(d),
+          dow: dowLabel(d),
+          meal: m,
+          menu: slot.menu || "(메뉴 미선택)",
+        });
+      });
+    }
 
-    if (scored.length === 0) {
+    if (plan.length === 0) {
       renderMessage(
-        "😢 기본 목록에서 조건에 맞는 활동을 못 찾았어요.<br>" +
-          "<small>소도시·기타 직접입력은 🤖 AI 추천에서 반영됩니다.</small>"
+        "✅ 신청할 끼니가 없어요.<br><small>②에서 요일·끼니를 체크하고 메뉴를 골라 주세요.</small>"
       );
       return;
     }
 
-    // 점수 높은 순 정렬, 동점은 랜덤. 상위 3개 추천.
-    shuffle(scored);
-    scored.sort((a, b) => b.score - a.score);
-    const top = scored.slice(0, 3).map((x) => x.act);
-    renderResults(top, scored.length);
+    renderPlan(plan, missing);
   }
 
-  // 지역이 칩 또는 기타 입력으로 지정됐는지
-  function hasRegion() {
-    return selections.region.size > 0 || !!customInputs.region;
-  }
-
-  // ── 렌더링 ────────────────────────────────────────
-  function selectedSummary() {
-    const tags = [];
-    selections.region.forEach((v) => tags.push(LABELS.region[v]));
-    selections.duration.forEach((v) => tags.push(LABELS.duration[v]));
-    selections.theme.forEach((v) => tags.push(LABELS.theme[v]));
-    selections.constraint.forEach((v) => tags.push(LABELS.constraint[v]));
-    // 기타(직접입력) 값 추가 — AI가 반영하도록 카테고리명을 붙임
-    Object.keys(customInputs).forEach((g) => {
-      if (customInputs[g]) tags.push(`기타 ${CUSTOM_LABEL[g]}: ${customInputs[g]}`);
-    });
-    return tags;
-  }
-
-  function renderResults(list, total) {
+  function renderPlan(plan, missing) {
     const results = document.getElementById("results");
-    const summary = selectedSummary()
-      .map((t) => `<span class="tag">${t}</span>`)
-      .join("");
 
-    const cards = list
-      .map(
-        (act) => `
-        <article class="card">
-          <h3 class="card__title">${act.title}</h3>
-          <p class="card__desc">${act.desc}</p>
-          <div class="card__meta">
-            ${act.theme.map((t) => `<span class="tag tag--theme">${LABELS.theme[t]}</span>`).join("")}
-          </div>
-        </article>`
-      )
-      .join("");
+    // 날짜별 묶기
+    const byDate = new Map();
+    plan.forEach((p) => {
+      const k = fmtInput(p.date);
+      if (!byDate.has(k)) byDate.set(k, []);
+      byDate.get(k).push(p);
+    });
 
-    results.innerHTML = `
-      <div class="results__head">
-        <h2>추천 결과</h2>
-        <div class="results__tags">${summary}</div>
-        <p class="results__count">조건에 맞는 활동 ${total}개 중 추천 ${list.length}개</p>
-      </div>
-      <div class="cards">${cards}</div>
-      <button type="button" class="btn btn--ghost" id="reroll">🎲 다른 추천 보기</button>
-    `;
+    let html =
+      `<div class="results__head">` +
+      `<h2>📋 신청 계획표</h2>` +
+      `<button type="button" class="btn btn--small" id="copyPlan">📑 복사</button>` +
+      `</div>` +
+      `<p class="results__count">총 <strong>${plan.length}끼</strong> · ${byDate.size}일</p>`;
 
-    document.getElementById("reroll").addEventListener("click", recommend);
+    if (missing.length) {
+      html +=
+        `<p class="message" style="text-align:left">⚠️ 메뉴를 아직 안 고른 칸이 있어요: ` +
+        `<strong>${[...new Set(missing)].join(", ")}</strong></p>`;
+    }
+
+    byDate.forEach((items, dateStr) => {
+      const dow = items[0].dow;
+      html += `<div class="plan-day">`;
+      html += `<p class="plan-day__date">${dateStr} <span class="dow">(${dow})</span></p>`;
+      items
+        .slice()
+        .sort((a, b) => MEALS.indexOf(a.meal) - MEALS.indexOf(b.meal))
+        .forEach((p) => {
+          html +=
+            `<div class="plan-item">` +
+            `<span class="plan-item__meal">${p.meal.emoji} ${p.meal.label}</span>` +
+            `<span class="plan-item__menu">${escapeHtml(p.menu)}</span>` +
+            `</div>`;
+        });
+      html += `</div>`;
+    });
+
+    results.innerHTML = html;
+    document.getElementById("copyPlan").addEventListener("click", () => copyPlan(plan));
     results.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  function copyPlan(plan) {
+    const lines = ["[올리브식권 간편식 신청 계획]"];
+    let lastDate = "";
+    plan.forEach((p) => {
+      const dateStr = fmtInput(p.date);
+      if (dateStr !== lastDate) {
+        lines.push("");
+        lines.push(`■ ${dateStr} (${p.dow})`);
+        lastDate = dateStr;
+      }
+      lines.push(`  - ${p.meal.label}: ${p.menu}`);
+    });
+    const text = lines.join("\n");
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(
+        () => flash("copyPlan", "✅ 복사됨"),
+        () => fallbackCopy(text)
+      );
+    } else {
+      fallbackCopy(text);
+    }
+  }
+  function fallbackCopy(text) {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand("copy"); flash("copyPlan", "✅ 복사됨"); }
+    catch (_) { alert(text); }
+    document.body.removeChild(ta);
+  }
+  function flash(id, msg) {
+    const btn = document.getElementById(id);
+    if (!btn) return;
+    const orig = btn.textContent;
+    btn.textContent = msg;
+    setTimeout(() => (btn.textContent = orig), 1500);
+  }
+
+  function escapeHtml(s) {
+    return String(s == null ? "" : s).replace(/[&<>]/g, (c) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c])
+    );
   }
 
   function renderMessage(html) {
     document.getElementById("results").innerHTML = `<p class="message">${html}</p>`;
   }
 
-  // ── 폼 이벤트 ─────────────────────────────────────
-  document.getElementById("selector").addEventListener("submit", (e) => {
-    e.preventDefault();
-    recommend();
-  });
-
-  document.getElementById("reset").addEventListener("click", () => {
-    Object.values(selections).forEach((s) => s.clear());
-    document.querySelectorAll(".chip.is-selected").forEach((c) => c.classList.remove("is-selected"));
-    Object.keys(customInputs).forEach((g) => (customInputs[g] = ""));
-    document.querySelectorAll(".custom-input").forEach((inp) => (inp.value = ""));
-    document.getElementById("results").innerHTML = "";
-  });
-
-  // ── AI 추천 (Google Gemini API · 무료) ─────────────
-  const KEY_STORAGE = "weekend_gemini_key";
-  const GEMINI_MODEL = "gemini-2.5-flash"; // 무료 사용량이 있는 모델
-  const EMBEDDED_KEY = (window.GEMINI_API_KEY || "").trim(); // config.js에 내장한 키
-  const apiKeyInput = document.getElementById("apiKey");
-  const saveKeyCheckbox = document.getElementById("saveKey");
-
-  if (EMBEDDED_KEY) {
-    // 코드에 키가 내장돼 있으면 사용자 입력 UI는 필요 없음 — 숨김
-    const aiConfig = document.querySelector(".ai-config");
-    if (aiConfig) aiConfig.style.display = "none";
-  } else {
-    // 저장된 키 불러오기 (없으면 설정을 펼쳐 안내, 저장은 기본 ON)
-    const storedKey = localStorage.getItem(KEY_STORAGE);
-    if (storedKey) {
-      apiKeyInput.value = storedKey;
-      saveKeyCheckbox.checked = true;
-    } else {
-      saveKeyCheckbox.checked = true; // 처음 입력한 키가 바로 저장되도록
-      const aiConfig = document.querySelector(".ai-config");
-      if (aiConfig) aiConfig.open = true;
-    }
-    saveKeyCheckbox.addEventListener("change", () => {
-      if (!saveKeyCheckbox.checked) localStorage.removeItem(KEY_STORAGE);
-    });
+  // ── 저장 / 불러오기 ──────────────────────────────────
+  function saveConfig() {
+    const payload = {
+      config,
+      startDate: document.getElementById("startDate").value,
+      endDate: document.getElementById("endDate").value,
+    };
+    localStorage.setItem(CONFIG_KEY, JSON.stringify(payload));
+    flash("save", "💾 저장됨");
   }
-
-  // ── 사용 제한 (기기별 / localStorage 기반) ─────────
-  // 주의: 진짜 IP별 제한은 서버가 필요합니다. 이건 이 브라우저 기준이라
-  //       시크릿창·캐시삭제로 우회될 수 있습니다.
-  const LIMIT_STORAGE = "weekend_ai_usage";
-  const DAILY_LIMIT = 5; // 하루 5회
-  const COOLDOWN_MS = 30 * 60 * 1000; // 초과 시 30분 대기
-
-  function todayStr() {
-    return new Date().toLocaleDateString("sv-SE"); // YYYY-MM-DD (현지 기준)
-  }
-  function loadUsage() {
-    let u;
+  function loadConfig() {
+    const raw = localStorage.getItem(CONFIG_KEY);
+    if (!raw) return;
     try {
-      u = JSON.parse(localStorage.getItem(LIMIT_STORAGE)) || {};
-    } catch {
-      u = {};
-    }
-    if (u.date !== todayStr()) u = { date: todayStr(), count: 0, cooldownUntil: 0 };
-    return u;
-  }
-  function saveUsage(u) {
-    localStorage.setItem(LIMIT_STORAGE, JSON.stringify(u));
-  }
-  // 호출 가능 여부 확인 — { allowed, msg }
-  function checkLimit() {
-    const u = loadUsage();
-    const now = Date.now();
-    if (u.cooldownUntil && now < u.cooldownUntil) {
-      const mins = Math.ceil((u.cooldownUntil - now) / 60000);
-      return {
-        allowed: false,
-        msg: `오늘 AI 추천 ${DAILY_LIMIT}회를 모두 사용했어요.\n약 ${mins}분 후에 다시 시도할 수 있어요.`,
-      };
-    }
-    return { allowed: true };
-  }
-  // 성공한 호출 1회 기록
-  function recordUse() {
-    const u = loadUsage();
-    u.count = (u.count || 0) + 1;
-    if (u.count >= DAILY_LIMIT) u.cooldownUntil = Date.now() + COOLDOWN_MS;
-    saveUsage(u);
-  }
-
-  function buildPrompt() {
-    const tags = selectedSummary();
-    return (
-      "다음 조건에 맞는 한국 주말 나들이 '코스(동선)'를 3개 추천해 주세요.\n\n" +
-      "조건: " + (tags.length ? tags.join(", ") : "조건 없음") + "\n\n" +
-      "'기타'로 직접 입력한 지역·조건(소도시·특수 지역 등)이 있으면 반드시 그 내용을 " +
-      "우선해서 그 지역·조건에 맞는 코스를 만들어 주세요.\n\n" +
-      "각 코스는 시간 순서대로 이어지는 간단한 흐름으로 구성하세요. " +
-      "예) 성심당 → 엑스포타워 → 맛집 → 기념품가게\n" +
-      "- flow: 4~6개의 장소·활동을 순서대로 나열 (실제 존재하는 구체적인 장소명 사용)\n" +
-      "- 맛집 단계는 인기·유명하거나 최신 유행하는 식당의 실제 상호명을 넣어 주세요\n" +
-      "- title: 코스를 한마디로 부르는 이름\n" +
-      "- desc: 이 코스를 한 줄로 요약\n" +
-      "한국어로 답해 주세요."
-    );
-  }
-
-  // Gemini 구조화 출력 스키마 (타입은 대문자)
-  const GEMINI_SCHEMA = {
-    type: "OBJECT",
-    properties: {
-      recommendations: {
-        type: "ARRAY",
-        items: {
-          type: "OBJECT",
-          properties: {
-            title: { type: "STRING" },
-            flow: { type: "ARRAY", items: { type: "STRING" } },
-            desc: { type: "STRING" },
-          },
-          required: ["title", "flow", "desc"],
-        },
-      },
-    },
-    required: ["recommendations"],
-  };
-
-  // 브라우저에서 Gemini 직접 호출 — 본인 키 필요(개인용)
-  async function fetchGemini(apiKey) {
-    const url =
-      "https://generativelanguage.googleapis.com/v1beta/models/" +
-      GEMINI_MODEL +
-      ":generateContent?key=" +
-      encodeURIComponent(apiKey);
-    return fetch(url, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        systemInstruction: {
-          parts: [
-            {
-              text:
-                "당신은 한국의 주말 나들이를 추천하는 친절한 도우미입니다. " +
-                "사용자가 고른 지역·기간·테마·제한사항에 실제로 맞는 활동만 제안하세요.",
-            },
-          ],
-        },
-        contents: [{ parts: [{ text: buildPrompt() }] }],
-        generationConfig: {
-          responseMimeType: "application/json",
-          responseSchema: GEMINI_SCHEMA,
-        },
-      }),
-    });
-  }
-
-  async function recommendAi() {
-    const apiKey = EMBEDDED_KEY || apiKeyInput.value.trim();
-
-    if (!apiKey) {
-      renderMessage("🔑 아래 <strong>AI 설정</strong>을 열고 Gemini API 키를 입력해 주세요.");
-      return;
-    }
-    if (!hasRegion()) {
-      renderMessage("📍 먼저 <strong>지역</strong>을 선택하거나 기타에 입력해 주세요.");
-      return;
-    }
-
-    // 사용 제한 확인 (초과 시 경고창 + 30분 대기)
-    const limit = checkLimit();
-    if (!limit.allowed) {
-      alert("⚠️ " + limit.msg);
-      renderMessage("⏳ " + limit.msg.replace(/\n/g, "<br>"));
-      return;
-    }
-
-    if (!EMBEDDED_KEY && saveKeyCheckbox.checked) localStorage.setItem(KEY_STORAGE, apiKey);
-
-    renderMessage("🤖 AI가 추천을 고르는 중...");
-
-    try {
-      const res = await fetchGemini(apiKey);
-
-      if (!res.ok) {
-        const errText = await res.text();
-        throw new Error(`API ${res.status}: ${errText}`);
+      const payload = JSON.parse(raw);
+      if (payload.config) {
+        // 기존 구조에 안전하게 병합
+        DAYS.forEach((d) => {
+          MEALS.forEach((m) => {
+            const saved = payload.config?.[d.key]?.[m.key];
+            if (saved) config[d.key][m.key] = { enabled: !!saved.enabled, menu: saved.menu || "" };
+          });
+        });
       }
-
-      recordUse(); // 성공한 호출만 카운트
-
-      const data = await res.json();
-      const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (!text) throw new Error("응답에서 텍스트를 찾지 못했어요.");
-      const parsed = JSON.parse(text);
-      renderAiResults(parsed.recommendations || []);
-    } catch (err) {
-      renderMessage(
-        "😢 AI 추천에 실패했어요.<br><small>" +
-          String(err.message || err).replace(/</g, "&lt;") +
-          "</small>"
-      );
-    }
+      if (payload.startDate) document.getElementById("startDate").value = payload.startDate;
+      if (payload.endDate) document.getElementById("endDate").value = payload.endDate;
+    } catch (_) {}
   }
 
-  function renderAiResults(list) {
-    const results = document.getElementById("results");
-    if (!list.length) {
-      renderMessage("😢 AI가 조건에 맞는 활동을 찾지 못했어요.");
-      return;
-    }
-    const summary = selectedSummary()
-      .map((t) => `<span class="tag">${t}</span>`)
-      .join("");
-    const esc = (s) => String(s == null ? "" : s).replace(/</g, "&lt;");
-    const cards = list
-      .map((act) => {
-        const steps = (act.flow || [])
-          .map((s) => `<span class="flow__step">${esc(s)}</span>`)
-          .join('<span class="flow__arrow">→</span>');
-        return `
-        <article class="card">
-          <h3 class="card__title">${esc(act.title)}</h3>
-          ${act.desc ? `<p class="card__desc">${esc(act.desc)}</p>` : ""}
-          <div class="flow">${steps}</div>
-        </article>`;
-      })
-      .join("");
-    results.innerHTML = `
-      <div class="results__head">
-        <h2>🤖 AI 추천 결과</h2>
-        <div class="results__tags">${summary}</div>
-      </div>
-      <div class="cards">${cards}</div>
-    `;
-    results.scrollIntoView({ behavior: "smooth", block: "start" });
+  function resetAll() {
+    if (!confirm("설정을 모두 초기화할까요? (저장된 내용도 지워집니다)")) return;
+    config = emptyConfig();
+    localStorage.removeItem(CONFIG_KEY);
+    document.getElementById("startDate").value = "";
+    document.getElementById("endDate").value = "";
+    syncFormFromConfig();
+    document.getElementById("results").innerHTML = "";
   }
 
-  document.getElementById("recommendAi").addEventListener("click", recommendAi);
+  // ── 메뉴 관리 ────────────────────────────────────────
+  function openMenuEditor() {
+    document.getElementById("menuEditor").value = menuToText(getMenu());
+  }
+  function applyMenu() {
+    const text = document.getElementById("menuEditor").value;
+    const menu = textToMenu(text);
+    if (!menu.length) { alert("메뉴가 비어 있어요. 한 줄에 하나씩 적어 주세요."); return; }
+    localStorage.setItem(MENU_KEY, JSON.stringify(menu));
+    rebuildAfterMenuChange();
+    alert("✅ 메뉴를 적용했어요. 목록선택바가 갱신됐습니다.");
+  }
+  function restoreMenu() {
+    if (!confirm("기본 메뉴로 되돌릴까요? (편집한 메뉴는 사라집니다)")) return;
+    localStorage.removeItem(MENU_KEY);
+    openMenuEditor();
+    rebuildAfterMenuChange();
+  }
+  // 메뉴가 바뀌면 드롭다운을 다시 만들고 기존 선택을 복원
+  function rebuildAfterMenuChange() {
+    buildGrid();
+    syncFormFromConfig();
+  }
+
+  // ── 초기화 ──────────────────────────────────────────
+  function init() {
+    buildGrid();
+    loadConfig();
+    syncFormFromConfig();
+    openMenuEditor();
+
+    document.getElementById("generate").addEventListener("click", generatePlan);
+    document.getElementById("save").addEventListener("click", saveConfig);
+    document.getElementById("reset").addEventListener("click", resetAll);
+    document.getElementById("menuApply").addEventListener("click", applyMenu);
+    document.getElementById("menuRestore").addEventListener("click", restoreMenu);
+
+    document.querySelectorAll(".quickrange .chip").forEach((chip) => {
+      chip.addEventListener("click", () => setQuickRange(chip.dataset.range));
+    });
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", init);
+  } else {
+    init();
+  }
 })();

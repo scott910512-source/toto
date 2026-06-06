@@ -3,112 +3,80 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>주말 뭐하지? — 주말 활동 추천</title>
-  <link rel="stylesheet" href="style.css?v=9" />
+  <title>올리브식권 간편식 자동신청 설정</title>
+  <link rel="stylesheet" href="style.css?v=1" />
 </head>
 <body>
   <main class="app">
     <header class="app__header">
-      <h1>🗓️ 주말 뭐하지?</h1>
-      <p class="app__subtitle">지역 · 기간 · 테마 · 제한사항을 골라 주말 활동을 추천받아 보세요.</p>
+      <h1>🍱 올리브식권 간편식 신청 도우미</h1>
+      <p class="app__subtitle">
+        사전구매(간편식)를 <strong>요일별 · 끼니별</strong>로 설정하고,
+        날짜 범위를 지정하면 <strong>신청 계획표</strong>를 자동으로 만들어 드려요.
+      </p>
     </header>
 
-    <form id="selector" class="selector">
-      <!-- 지역 -->
-      <fieldset class="field">
-        <legend class="field__legend">지역 <span class="field__hint">하나 선택</span></legend>
-        <div class="chips" data-group="region" data-multi="false">
-          <button type="button" class="chip" data-value="seoul">서울</button>
-          <button type="button" class="chip" data-value="gyeonggi">경기·인천</button>
-          <button type="button" class="chip" data-value="gangwon">강원</button>
-          <button type="button" class="chip" data-value="chungcheong">충청</button>
-          <button type="button" class="chip" data-value="jeolla">전라</button>
-          <button type="button" class="chip" data-value="gyeongsang">경상</button>
-          <button type="button" class="chip" data-value="busan">부산</button>
-          <button type="button" class="chip" data-value="jeju">제주</button>
-        </div>
-        <input type="text" class="custom-input" data-group="region"
-          placeholder="기타 (직접입력) — 예: 통영, 영월, 거제 소도시" />
-      </fieldset>
-
-      <!-- 기간 -->
-      <fieldset class="field">
-        <legend class="field__legend">기간 <span class="field__hint">하나 선택</span></legend>
-        <div class="chips" data-group="duration" data-multi="false">
-          <button type="button" class="chip" data-value="half">반나절</button>
-          <button type="button" class="chip" data-value="day">당일치기</button>
-          <button type="button" class="chip" data-value="overnight">1박 2일</button>
-          <button type="button" class="chip" data-value="n2d3">2박 3일</button>
-          <button type="button" class="chip" data-value="n3d4">3박 4일</button>
-          <button type="button" class="chip" data-value="week">일주일</button>
-          <button type="button" class="chip" data-value="longstay">한 달 살기</button>
-        </div>
-        <input type="text" class="custom-input" data-group="duration"
-          placeholder="기타 (직접입력) — 예: 무박 2일, 5박 6일" />
-      </fieldset>
-
-      <!-- 테마 -->
-      <fieldset class="field">
-        <legend class="field__legend">테마 <span class="field__hint">여러 개 선택 가능</span></legend>
-        <div class="chips" data-group="theme" data-multi="true">
-          <button type="button" class="chip" data-value="nature">🌿 자연·힐링</button>
-          <button type="button" class="chip" data-value="active">🏃 액티비티</button>
-          <button type="button" class="chip" data-value="food">🍜 맛집·카페</button>
-          <button type="button" class="chip" data-value="culture">🎨 문화·예술</button>
-          <button type="button" class="chip" data-value="shopping">🛍️ 쇼핑·도심</button>
-          <button type="button" class="chip" data-value="healing">🧖 휴식·온천</button>
-        </div>
-        <input type="text" class="custom-input" data-group="theme"
-          placeholder="기타 (직접입력) — 예: 사진 출사, 별 보기, 서핑" />
-      </fieldset>
-
-      <!-- 제한사항 -->
-      <fieldset class="field">
-        <legend class="field__legend">제한사항 <span class="field__hint">해당되는 것 모두</span></legend>
-        <div class="chips" data-group="constraint" data-multi="true">
-          <button type="button" class="chip" data-value="budget">💸 저예산</button>
-          <button type="button" class="chip" data-value="kids">👶 아이 동반</button>
-          <button type="button" class="chip" data-value="pet">🐾 반려동물 동반</button>
-          <button type="button" class="chip" data-value="transit">🚆 대중교통</button>
-          <button type="button" class="chip" data-value="indoor">☔ 실내 위주</button>
-          <button type="button" class="chip" data-value="lowEnergy">🪑 체력 적게</button>
-        </div>
-        <input type="text" class="custom-input" data-group="constraint"
-          placeholder="기타 (직접입력) — 예: 휠체어 접근, 노키즈존 제외" />
-      </fieldset>
-
-      <div class="actions">
-        <button type="submit" class="btn btn--primary" id="recommend">추천받기 ✨</button>
-        <button type="button" class="btn btn--ai" id="recommendAi">🤖 AI 추천</button>
-        <button type="button" class="btn btn--ghost" id="reset">초기화</button>
-      </div>
-
-      <details class="ai-config">
-        <summary>🔑 AI 설정 (선택)</summary>
-        <p class="ai-config__note">
-          AI 추천(무료 <strong>Google Gemini</strong>)을 쓰려면 Gemini API 키가 필요합니다.
-          키를 한 번 붙여넣으면 이 브라우저에 저장돼 계속 쓰이고, 서버로는 전송되지 않습니다.
-          <strong>본인만 사용하세요</strong>. 키 무료 발급:
-          <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com</a>
-        </p>
-        <input
-          type="password"
-          id="apiKey"
-          class="ai-config__input"
-          placeholder="AIza..."
-          autocomplete="off"
-        />
-        <label class="ai-config__save">
-          <input type="checkbox" id="saveKey" /> 이 브라우저에 키 저장
+    <!-- ① 신청 기간 -->
+    <section class="field">
+      <h2 class="field__legend">① 신청 기간 <span class="field__hint">사전구매할 날짜 범위</span></h2>
+      <div class="daterange">
+        <label class="daterange__item">
+          시작일
+          <input type="date" id="startDate" />
         </label>
-      </details>
-    </form>
+        <span class="daterange__sep">~</span>
+        <label class="daterange__item">
+          종료일
+          <input type="date" id="endDate" />
+        </label>
+      </div>
+      <div class="quickrange">
+        <button type="button" class="chip" data-range="thisweek">이번 주</button>
+        <button type="button" class="chip" data-range="nextweek">다음 주</button>
+        <button type="button" class="chip" data-range="thismonth">이번 달</button>
+        <button type="button" class="chip" data-range="14">앞으로 14일</button>
+      </div>
+    </section>
+
+    <!-- ② 요일별 · 끼니별 설정 -->
+    <section class="field">
+      <h2 class="field__legend">② 요일별 · 끼니별 설정 <span class="field__hint">체크 → 메뉴 선택</span></h2>
+      <p class="field__desc">
+        신청할 끼니를 <strong>체크</strong>하고, 옆 <strong>목록선택바</strong>에서 메뉴를 고르세요.
+        여기서 정한 내용이 위 기간의 매주 같은 요일에 반복 적용됩니다.
+      </p>
+      <div id="weekGrid" class="weekgrid"><!-- JS로 생성 --></div>
+    </section>
+
+    <div class="actions">
+      <button type="button" class="btn btn--primary" id="generate">📋 신청 계획표 만들기</button>
+      <button type="button" class="btn btn--ghost" id="save">💾 설정 저장</button>
+      <button type="button" class="btn btn--ghost" id="reset">초기화</button>
+    </div>
+
+    <!-- 메뉴 관리 -->
+    <details class="panel" id="menuPanel">
+      <summary>🍱 메뉴 관리 (목록선택바에 나오는 항목 편집)</summary>
+      <p class="panel__note">
+        한 줄에 하나씩 적으세요. <code>그룹명: 항목1, 항목2</code> 형식으로 묶을 수도 있어요.<br />
+        실제 올리브식권 간편식 메뉴 이름을 그대로 넣어두면, 신청할 때 그대로 보고 고르면 됩니다.
+      </p>
+      <textarea id="menuEditor" class="panel__textarea" rows="10" spellcheck="false"></textarea>
+      <div class="panel__actions">
+        <button type="button" class="btn btn--small" id="menuApply">메뉴 적용</button>
+        <button type="button" class="btn btn--small btn--ghost" id="menuRestore">기본 메뉴로 복원</button>
+      </div>
+    </details>
 
     <section id="results" class="results" aria-live="polite"></section>
+
+    <p class="disclaimer">
+      ⚠️ 이 도우미는 신청 <strong>계획을 만들어 주는 도구</strong>입니다. 올리브식권은 모바일 전용 앱이라
+      앱 서버로 자동 전송하려면 별도 단계(안드로이드 매크로 등)가 필요합니다. 자세한 건 README를 참고하세요.
+    </p>
   </main>
 
-  <script src="config.js?v=9"></script>
-  <script src="data.js?v=9"></script>
-  <script src="app.js?v=9"></script>
+  <script src="data.js?v=1"></script>
+  <script src="app.js?v=1"></script>
 </body>
 </html>
