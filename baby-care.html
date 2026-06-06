@@ -18,6 +18,8 @@
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <!-- Recharts: 버전 고정(2.x UMD) — 'latest'가 v3로 바뀌면 UMD가 깨질 수 있어 고정 -->
   <script src="https://unpkg.com/recharts@2.12.7/umd/Recharts.js"></script>
+  <!-- exifr: 사진 EXIF에서 촬영일·GPS 좌표 추출 (위치/날짜 검색용) -->
+  <script src="https://cdn.jsdelivr.net/npm/exifr/dist/full.umd.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
   <script src="https://cdn.tailwindcss.com"></script>
 
@@ -57,6 +59,10 @@
     .fade-in { animation: fadeIn .18s ease-out; }
     @keyframes slideUp { from { transform: translateY(16px); opacity:0 } to { transform: translateY(0); opacity:1 } }
     .slide-up { animation: slideUp .22s ease-out; }
+    /* 슬라이드쇼: 부드러운 크로스페이드 + 느린 켄번즈 줌 */
+    @keyframes slideFade { from { opacity: 0 } to { opacity: 1 } }
+    @keyframes kenburns { from { transform: scale(1) } to { transform: scale(1.08) } }
+    .slide-img { animation: slideFade 1.6s ease-in-out, kenburns 60s ease-out forwards; }
     /* safe-area (아이폰 하단) */
     .pb-safe { padding-bottom: calc(env(safe-area-inset-bottom) + 4.75rem); }
     .nav-safe { padding-bottom: env(safe-area-inset-bottom); }
@@ -202,6 +208,10 @@
     "permission-denied": "접근 권한이 없습니다. 보안 규칙을 확인하세요.",
   };
   const errMsg = (e) => AUTH_ERRORS[e && e.code] || (e && e.message) || "알 수 없는 오류가 발생했습니다.";
+
+  // 계정 등급: 관리자 / 구성원(기록 가능) / 관람전용(사진만 보기, 이모·삼촌용)
+  const ROLE_LABEL = { admin: "관리자", member: "구성원", viewer: "관람전용" };
+  const roleLabel = (r) => ROLE_LABEL[r] || "구성원";
 
   // Firestore Timestamp ↔ JS Date 일관 변환 (시니어 검토 #9)
   const toDate = (v) => {
@@ -1396,6 +1406,24 @@
     });
 
   /* ========================================================================
+     17-b. 사진 EXIF에서 촬영일·GPS 추출 (없으면 null)
+     ======================================================================== */
+  const readPhotoMeta = async (file) => {
+    const meta = { takenAt: null, gps: null };
+    try {
+      if (window.exifr) {
+        const tags = await window.exifr.parse(file, { pick: ["DateTimeOriginal", "CreateDate"] }).catch(() => null);
+        if (tags) meta.takenAt = tags.DateTimeOriginal || tags.CreateDate || null;
+        const g = await window.exifr.gps(file).catch(() => null);
+        if (g && g.latitude != null && g.longitude != null) {
+          meta.gps = { lat: +g.latitude.toFixed(6), lng: +g.longitude.toFixed(6) };
+        }
+      }
+    } catch (e) { /* EXIF 없거나 읽기 실패 시 무시 */ }
+    return meta;
+  };
+
+  /* ========================================================================
      18. 사진 업로드 모달
      ======================================================================== */
   const UploadModal = ({ open, onClose, defaultCategory = "baby" }) => {
@@ -1404,30 +1432,68 @@
     const [files, setFiles] = useState([]);
     const [category, setCategory] = useState(defaultCategory);
     const [caption, setCaption] = useState("");
+    const [people, setPeople] = useState([]);     // 함께한 사람 이름들
+    const [personInput, setPersonInput] = useState("");
+    const [place, setPlace] = useState("");       // 장소/지역 (검색용)
+    const [takenAt, setTakenAt] = useState("");   // 촬영 시각 (EXIF 우선)
+    const [gps, setGps] = useState(null);         // {lat,lng}
+    const [familyNames, setFamilyNames] = useState([]);
     const [progress, setProgress] = useState(null); // {done,total,pct}
     const inputRef = useRef();
     const camRef = useRef();
 
-    useEffect(() => { if (open) { setFiles([]); setCaption(""); setCategory(defaultCategory); setProgress(null); } }, [open]);
+    useEffect(() => {
+      if (!open) return;
+      setFiles([]); setCaption(""); setCategory(defaultCategory); setProgress(null);
+      setPeople([]); setPersonInput(""); setPlace(""); setTakenAt(toLocalInput(new Date())); setGps(null);
+      // 가족 이름 후보 불러오기 (인물 태그용)
+      COL.users().get().then((s) => setFamilyNames(s.docs.map((d) => d.data().name).filter(Boolean)))
+        .catch(() => setFamilyNames([]));
+    }, [open]);
 
-    const pick = (e) => {
+    const pick = async (e) => {
       const list = Array.from(e.target.files || []).slice(0, 5); // 최대 5장
       setFiles(list);
+      if (list[0]) {
+        // 첫 사진 EXIF에서 촬영일·GPS 자동 채우기
+        const m = await readPhotoMeta(list[0]);
+        if (m.takenAt) setTakenAt(toLocalInput(m.takenAt));
+        if (m.gps) setGps(m.gps);
+      }
+    };
+
+    const togglePerson = (name) => setPeople((p) => p.includes(name) ? p.filter((x) => x !== name) : [...p, name]);
+    const addPerson = () => {
+      const n = personInput.trim();
+      if (n && !people.includes(n)) setPeople((p) => [...p, n]);
+      setPersonInput("");
     };
 
     const upload = async () => {
       if (files.length === 0) { toast("사진을 선택하세요.", "error"); return; }
       setProgress({ done: 0, total: files.length, pct: 0 });
+      const takenDate = fromLocalInput(takenAt);
       try {
         for (let i = 0; i < files.length; i++) {
           // 무료 방식: Storage 대신 Firestore에 압축 이미지(base64) 저장
           setProgress({ done: i, total: files.length, pct: 20 });
           const dataUrl = await compressToDataURL(files[i]);
+          // 여러 장이면 각 사진별 EXIF 촬영일/GPS 우선 사용
+          let perMeta = { takenAt: takenDate, gps };
+          if (files.length > 1) {
+            const m = await readPhotoMeta(files[i]);
+            if (m.takenAt) perMeta.takenAt = m.takenAt;
+            if (m.gps) perMeta.gps = m.gps;
+          }
           setProgress({ done: i, total: files.length, pct: 70 });
           await COL.photos().add({
             uploadedBy: user.uid,
             uploaderName: (profile && profile.name) || (user.email || "").split("@")[0],
             url: dataUrl, caption: caption || "", category,
+            people, place: place || "",
+            placeLower: (place || "").toLowerCase(),
+            gps: perMeta.gps || null,
+            takenAt: perMeta.takenAt || takenDate,
             likeCount: 0, createdAt: TS(),
           });
           setProgress({ done: i, total: files.length, pct: 100 });
@@ -1467,6 +1533,45 @@
           <ChipGroup label="카테고리" value={category} onChange={setCategory}
             options={[{ value: "ultrasound", label: "초음파" }, { value: "baby", label: "아기사진" }, { value: "milestone", label: "성장기록" }]} />
           <Field label="캡션"><input className={inputCls} value={caption} onChange={(e) => setCaption(e.target.value)} placeholder="사진 설명" /></Field>
+
+          {/* 함께한 사람 (인물 태그) */}
+          <div>
+            <span className="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1.5">함께한 사람</span>
+            <div className="flex flex-wrap gap-2 mb-2">
+              {familyNames.map((n) => (
+                <button key={n} type="button" onClick={() => togglePerson(n)}
+                  className={`px-3 py-1.5 rounded-full text-sm border ${people.includes(n)
+                    ? "bg-violet-400 border-violet-400 text-white" : "bg-white dark:bg-slate-700 border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300"}`}>
+                  {people.includes(n) ? "✓ " : ""}{n}
+                </button>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <input className={inputCls} value={personInput} onChange={(e) => setPersonInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addPerson())}
+                placeholder="직접 추가 (예: 이모, 삼촌)" aria-label="사람 직접 추가" />
+              <button type="button" onClick={addPerson} className="whitespace-nowrap px-3 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-sm">추가</button>
+            </div>
+            {people.filter((n) => !familyNames.includes(n)).length > 0 && (
+              <div className="flex flex-wrap gap-2 mt-2">
+                {people.filter((n) => !familyNames.includes(n)).map((n) => (
+                  <span key={n} className="px-3 py-1.5 rounded-full text-sm bg-violet-400 text-white flex items-center gap-1">
+                    {n}<button type="button" onClick={() => togglePerson(n)} aria-label={`${n} 제거`}>×</button>
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* 장소/지역 (날짜·지역 검색용) */}
+          <Field label="장소 / 지역">
+            <input className={inputCls} value={place} onChange={(e) => setPlace(e.target.value)} placeholder="예: 서울 할머니댁, 제주 여행" />
+          </Field>
+          {gps && <p className="text-[11px] text-teal-500">📍 사진에서 위치 좌표를 찾았어요 ({gps.lat}, {gps.lng}) — 지도 검색에 활용됩니다</p>}
+
+          {/* 촬영 시각 (EXIF 우선, 수정 가능) */}
+          <DateTimeField value={takenAt} onChange={setTakenAt} label="촬영 시각" />
+          <p className="text-[11px] text-slate-400">여러 장은 각 사진의 촬영정보(EXIF)가 있으면 자동 적용돼요.</p>
 
           {progress && (
             <div>
@@ -1563,33 +1668,70 @@
     </div>
   );
 
-  const Gallery = ({ openUpload }) => {
-    const { user } = useAuth();
+  // 사진 컬렉션 실시간 구독 (갤러리/슬라이드쇼 공용)
+  const usePhotos = (max = 300) => {
     const [photos, setPhotos] = useState(null);
-    const [cat, setCat] = useState("all");
-    const [sort, setSort] = useState("recent");
-    const [detail, setDetail] = useState(null); // index
-    const liked = useMyLikes(user.uid);
-    const { saved } = useMySaved(user.uid);
-
     useEffect(() => {
-      const unsub = COL.photos().orderBy("createdAt", "desc").limit(300)
+      const unsub = COL.photos().orderBy("createdAt", "desc").limit(max)
         .onSnapshot((snap) => setPhotos(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
           (e) => { console.error(e); setPhotos([]); });
       return () => unsub();
-    }, []);
+    }, [max]);
+    return photos;
+  };
+
+  const Gallery = ({ openUpload, canUpload = true }) => {
+    const { user } = useAuth();
+    const photos = usePhotos(300);
+    const [cat, setCat] = useState("all");
+    const [sort, setSort] = useState("recent");
+    const [q, setQ] = useState("");
+    const [from, setFrom] = useState("");
+    const [to, setTo] = useState("");
+    const [detail, setDetail] = useState(null); // index
+    const [showSlide, setShowSlide] = useState(false);
+    const liked = useMyLikes(user.uid);
+    const { saved } = useMySaved(user.uid);
 
     const list = useMemo(() => {
       if (!photos) return [];
       let l = cat === "all" ? photos : photos.filter((p) => p.category === cat);
+      const kw = q.trim().toLowerCase();
+      if (kw) {
+        l = l.filter((p) =>
+          (p.caption || "").toLowerCase().includes(kw) ||
+          (p.place || "").toLowerCase().includes(kw) ||
+          (p.uploaderName || "").toLowerCase().includes(kw) ||
+          (p.people || []).some((n) => (n || "").toLowerCase().includes(kw))
+        );
+      }
+      const dayOf = (p) => toDate(p.takenAt || p.createdAt);
+      if (from) l = l.filter((p) => { const d = dayOf(p); return d && ymd(d) >= from; });
+      if (to) l = l.filter((p) => { const d = dayOf(p); return d && ymd(d) <= to; });
       if (sort === "likes") l = [...l].sort((a, b) => (b.likeCount || 0) - (a.likeCount || 0));
+      else l = [...l].sort((a, b) => (toDate(b.takenAt || b.createdAt) - toDate(a.takenAt || a.createdAt)));
       return l;
-    }, [photos, cat, sort]);
+    }, [photos, cat, sort, q, from, to]);
 
     const cats = [{ v: "all", l: "전체" }, { v: "ultrasound", l: "초음파" }, { v: "baby", l: "아기사진" }, { v: "milestone", l: "성장기록" }];
 
     return (
       <div className="p-4 space-y-3 pb-safe">
+        {/* 검색 */}
+        <div className="flex gap-2">
+          <input className={inputCls + " flex-1"} value={q} onChange={(e) => setQ(e.target.value)}
+            placeholder="🔍 사람·장소·설명 검색" aria-label="사진 검색" />
+          <button onClick={() => setShowSlide(true)} aria-label="슬라이드쇼 시작"
+            className="whitespace-nowrap px-3 rounded-xl bg-violet-400 text-white text-sm font-medium">▶ 슬라이드쇼</button>
+        </div>
+        {/* 날짜 범위 */}
+        <div className="flex items-center gap-2 text-xs text-slate-500">
+          <input type="date" className={inputCls + " py-2 text-sm"} value={from} onChange={(e) => setFrom(e.target.value)} aria-label="시작 날짜" />
+          <span>~</span>
+          <input type="date" className={inputCls + " py-2 text-sm"} value={to} onChange={(e) => setTo(e.target.value)} aria-label="끝 날짜" />
+          {(from || to || q) && <button onClick={() => { setFrom(""); setTo(""); setQ(""); }} className="whitespace-nowrap text-slate-400">초기화</button>}
+        </div>
+
         <div className="flex items-center justify-between gap-2">
           <div className="flex gap-1.5 overflow-x-auto no-scrollbar" role="tablist" aria-label="카테고리 필터">
             {cats.map((c) => (
@@ -1604,7 +1746,7 @@
         </div>
 
         {!photos ? <Spinner /> : list.length === 0 ? (
-          <Card className="p-8 text-center text-sm text-slate-400">아직 사진이 없어요.<br />아래 + 버튼으로 추가해보세요.</Card>
+          <Card className="p-8 text-center text-sm text-slate-400">{q || from || to ? "검색 결과가 없어요." : <>아직 사진이 없어요.<br />아래 + 버튼으로 추가해보세요.</>}</Card>
         ) : (
           <div className="grid grid-cols-3 gap-2">
             {list.map((p, i) => (
@@ -1614,12 +1756,107 @@
         )}
 
         {/* 업로드 FAB */}
-        <button onClick={openUpload} aria-label="사진 업로드"
-          className="fixed bottom-24 right-1/2 translate-x-[195px] sm:right-[calc(50%-215px)] w-14 h-14 rounded-full bg-teal-500 text-white text-3xl shadow-lg flex items-center justify-center active:scale-95 z-20">+</button>
+        {canUpload && (
+          <button onClick={openUpload} aria-label="사진 업로드"
+            className="fixed bottom-24 right-1/2 translate-x-[195px] sm:right-[calc(50%-215px)] w-14 h-14 rounded-full bg-teal-500 text-white text-3xl shadow-lg flex items-center justify-center active:scale-95 z-20">+</button>
+        )}
 
         {detail != null && (
           <PhotoDetail list={list} index={detail} setIndex={setDetail} uid={user.uid} liked={liked} saved={saved} onClose={() => setDetail(null)} />
         )}
+        {showSlide && <Slideshow photos={photos} onClose={() => setShowSlide(false)} />}
+      </div>
+    );
+  };
+
+  /* ========================================================================
+     20-b. 슬라이드쇼 (최신 + 좋아요 많은 사진 30장, 각 1분, 크로스페이드)
+     ======================================================================== */
+  const SLIDE_MS = 60000; // 한 장당 1분 유지
+  const buildSlideDeck = (photos) => {
+    if (!photos || photos.length === 0) return [];
+    const byRecent = [...photos].sort((a, b) => toDate(b.takenAt || b.createdAt) - toDate(a.takenAt || a.createdAt)).slice(0, 20);
+    const byLikes = [...photos].sort((a, b) => (b.likeCount || 0) - (a.likeCount || 0)).slice(0, 15);
+    const map = new Map();
+    [...byRecent, ...byLikes].forEach((p) => map.set(p.id, p)); // 중복 제거(최신 우선)
+    return [...map.values()].slice(0, 30);
+  };
+
+  const Slideshow = ({ photos, onClose }) => {
+    const deck = useMemo(() => buildSlideDeck(photos), [photos]);
+    const [idx, setIdx] = useState(0);
+    const [prevIdx, setPrevIdx] = useState(null);
+    const [paused, setPaused] = useState(false);
+    const [progress, setProgress] = useState(0);
+
+    const go = useCallback((dir) => {
+      setIdx((i) => {
+        setPrevIdx(i);
+        const n = (i + dir + deck.length) % deck.length;
+        return n;
+      });
+      setProgress(0);
+    }, [deck.length]);
+
+    // 자동 전환 (1분) + 진행 막대
+    useEffect(() => {
+      if (paused || deck.length <= 1) return;
+      const tick = setInterval(() => setProgress((p) => Math.min(100, p + 100 / (SLIDE_MS / 200))), 200);
+      const next = setTimeout(() => go(1), SLIDE_MS);
+      return () => { clearInterval(tick); clearTimeout(next); };
+    }, [idx, paused, deck.length, go]);
+
+    // 화면 꺼짐 방지 (지원 브라우저)
+    useEffect(() => {
+      let lock;
+      if (navigator.wakeLock) navigator.wakeLock.request("screen").then((l) => lock = l).catch(() => {});
+      const onKey = (e) => { if (e.key === "Escape") onClose(); if (e.key === "ArrowRight") go(1); if (e.key === "ArrowLeft") go(-1); if (e.key === " ") setPaused((p) => !p); };
+      window.addEventListener("keydown", onKey);
+      document.body.style.overflow = "hidden";
+      return () => { window.removeEventListener("keydown", onKey); document.body.style.overflow = ""; if (lock) lock.release().catch(() => {}); };
+    }, [go, onClose]);
+
+    if (deck.length === 0) {
+      return (
+        <div className="fixed inset-0 z-[60] bg-black flex flex-col items-center justify-center text-white gap-4">
+          <p>표시할 사진이 없어요.</p>
+          <Btn variant="ghost" onClick={onClose}>닫기</Btn>
+        </div>
+      );
+    }
+
+    const cur = deck[idx];
+    const prev = prevIdx != null ? deck[prevIdx] : null;
+    const meta = [cur.uploaderName, (cur.people || []).join(", "), cur.place, fmtDate(cur.takenAt || cur.createdAt)].filter(Boolean).join(" · ");
+
+    return (
+      <div className="fixed inset-0 z-[60] bg-black overflow-hidden" role="dialog" aria-modal="true" aria-label="슬라이드쇼">
+        {/* 진행 막대 */}
+        <div className="absolute top-0 inset-x-0 h-1 bg-white/20 z-20">
+          <div className="h-full bg-violet-400 transition-all duration-200 ease-linear" style={{ width: `${progress}%` }}></div>
+        </div>
+
+        {/* 크로스페이드: 이전 사진(뒤) + 현재 사진(앞, 페이드인 + 느린 줌) */}
+        {prev && <img key={"p" + prevIdx} src={prev.url} alt="" className="absolute inset-0 w-full h-full object-contain" />}
+        <img key={"c" + idx} src={cur.url} alt={cur.caption || "사진"} className="absolute inset-0 w-full h-full object-contain slide-img" />
+
+        {/* 정보 오버레이 */}
+        <div className="absolute bottom-0 inset-x-0 z-20 bg-gradient-to-t from-black/80 to-transparent p-6 pb-10 text-white">
+          {cur.caption && <p className="text-xl font-bold mb-1 drop-shadow">{cur.caption}</p>}
+          <p className="text-sm text-white/80">{meta}</p>
+          <p className="text-xs text-white/50 mt-1">❤️ {cur.likeCount || 0} · {idx + 1} / {deck.length}</p>
+        </div>
+
+        {/* 컨트롤 */}
+        <button onClick={onClose} aria-label="슬라이드쇼 닫기" className="absolute top-4 right-4 z-30 text-white text-3xl w-11 h-11 bg-black/30 rounded-full">×</button>
+        <div className="absolute top-1/2 -translate-y-1/2 left-3 z-30">
+          <button onClick={() => go(-1)} aria-label="이전" className="text-white/70 text-4xl w-12 h-12 bg-black/20 rounded-full">‹</button>
+        </div>
+        <div className="absolute top-1/2 -translate-y-1/2 right-3 z-30">
+          <button onClick={() => go(1)} aria-label="다음" className="text-white/70 text-4xl w-12 h-12 bg-black/20 rounded-full">›</button>
+        </div>
+        <button onClick={() => setPaused((p) => !p)} aria-label={paused ? "재생" : "일시정지"}
+          className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 text-white text-2xl w-12 h-12 bg-black/30 rounded-full">{paused ? "▶" : "⏸"}</button>
       </div>
     );
   };
@@ -1686,6 +1923,13 @@
             </div>
           </div>
           {p.caption && <p className="text-sm text-slate-600 dark:text-slate-300">{p.caption}</p>}
+          {(p.people && p.people.length > 0) && (
+            <p className="text-sm text-slate-500 dark:text-slate-400">👨‍👩‍👧 함께: {p.people.join(", ")}</p>
+          )}
+          {p.place && <p className="text-sm text-slate-500 dark:text-slate-400">📍 {p.place}
+            {p.gps && <a href={`https://maps.google.com/?q=${p.gps.lat},${p.gps.lng}`} target="_blank" rel="noopener" className="text-teal-500 ml-1 underline">지도</a>}
+          </p>}
+          {p.takenAt && <p className="text-xs text-slate-400">📅 촬영: {fmtDateTime(p.takenAt)}</p>}
           <div className="flex gap-2">
             <Btn variant="ghost" onClick={download} className="flex-1 text-sm py-2.5">⬇️ 다운로드</Btn>
             {(isAdmin || p.uploadedBy === user.uid) &&
@@ -1765,8 +2009,8 @@
       catch (e) { toast(errMsg(e), "error"); }
     };
 
-    const toggleRole = async (u) => {
-      try { await COL.users().doc(u.uid).update({ role: u.role === "admin" ? "member" : "admin" }); toast("역할을 변경했어요.", "success"); }
+    const setRole = async (u, role) => {
+      try { await COL.users().doc(u.uid).update({ role }); toast(`${u.name}님을 ${roleLabel(role)}(으)로 변경했어요.`, "success"); }
       catch (e) { toast(errMsg(e), "error"); }
     };
     const toggleDisabled = async (u) => {
@@ -1786,7 +2030,7 @@
           <h3 className="font-bold text-slate-800 dark:text-white mb-2">내 계정</h3>
           <p className="text-sm text-slate-600 dark:text-slate-300">{profile && profile.name} · {user.email}</p>
           <span className={`inline-block mt-1 text-xs px-2 py-0.5 rounded-full ${isAdmin ? "bg-violet-100 text-violet-600 dark:bg-violet-900/40" : "bg-slate-100 text-slate-500 dark:bg-slate-700"}`}>
-            {isAdmin ? "관리자" : "구성원"}
+            {isAdmin ? "관리자" : roleLabel(profile && profile.role)}
           </span>
         </Card>
 
@@ -1817,10 +2061,20 @@
                         <p className="font-medium text-slate-800 dark:text-white truncate">{u.name} {u.disabled && <span className="text-xs text-rose-400">(비활성)</span>}</p>
                         <p className="text-xs text-slate-400 truncate">{u.email}</p>
                       </div>
-                      <span className={`text-xs px-2 py-0.5 rounded-full ${u.role === "admin" ? "bg-violet-100 text-violet-600 dark:bg-violet-900/40" : "bg-slate-100 text-slate-500 dark:bg-slate-700"}`}>{u.role === "admin" ? "관리자" : "구성원"}</span>
+                      <span className={`text-xs px-2 py-0.5 rounded-full ${u.role === "admin" ? "bg-violet-100 text-violet-600 dark:bg-violet-900/40" : u.role === "viewer" ? "bg-amber-100 text-amber-600 dark:bg-amber-900/40" : "bg-slate-100 text-slate-500 dark:bg-slate-700"}`}>{roleLabel(u.role)}</span>
+                    </div>
+                    <div className="mt-2">
+                      <span className="block text-[11px] text-slate-400 mb-1">등급</span>
+                      <div className="flex gap-1.5">
+                        {["member", "admin", "viewer"].map((r) => (
+                          <button key={r} onClick={() => setRole(u, r)}
+                            className={`text-xs px-2.5 py-1.5 rounded-lg border ${u.role === r ? "bg-teal-500 border-teal-500 text-white" : "bg-white dark:bg-slate-700 border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300"}`}>
+                            {roleLabel(r)}
+                          </button>
+                        ))}
+                      </div>
                     </div>
                     <div className="flex flex-wrap gap-1.5 mt-2">
-                      <button onClick={() => toggleRole(u)} className="text-xs px-2.5 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300">역할 변경</button>
                       <button onClick={() => resetPw(u)} className="text-xs px-2.5 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300">비번 재설정</button>
                       <button onClick={() => toggleDisabled(u)} className="text-xs px-2.5 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300">{u.disabled ? "활성화" : "비활성화"}</button>
                     </div>
@@ -1873,8 +2127,9 @@
           <Field label="이메일"><input className={inputCls} type="email" value={f.email} onChange={set("email")} placeholder="grandma1@baby.app" /></Field>
           <Field label="비밀번호 (6자 이상)"><input className={inputCls} type="text" value={f.pw} onChange={set("pw")} placeholder="초기 비밀번호" /></Field>
           <Field label="이름"><input className={inputCls} value={f.name} onChange={set("name")} placeholder="외할머니" /></Field>
-          <ChipGroup label="역할" value={f.role} onChange={(v) => setF((p) => ({ ...p, role: v }))}
-            options={[{ value: "member", label: "구성원" }, { value: "admin", label: "관리자" }]} />
+          <ChipGroup label="등급" value={f.role} onChange={(v) => setF((p) => ({ ...p, role: v }))}
+            options={[{ value: "member", label: "구성원" }, { value: "admin", label: "관리자" }, { value: "viewer", label: "관람전용" }]} />
+          <p className="text-[11px] text-slate-400">관람전용: 기록 입력 없이 사진 갤러리·슬라이드쇼만 볼 수 있어요 (이모·삼촌용).</p>
           <Btn onClick={create} disabled={busy} className="w-full">{busy ? "생성 중..." : "계정 생성"}</Btn>
         </div>
       </Modal>
@@ -1914,7 +2169,7 @@
      25. 메인 앱 셸
      ======================================================================== */
   const MainApp = () => {
-    const { profile } = useAuth();
+    const { profile, isAdmin } = useAuth();
     const [dark, setDark] = useDarkMode();
     const [tab, setTab] = useState("dashboard");
     const [recSub, setRecSub] = useState("feeding");
@@ -1932,6 +2187,22 @@
           <p className="text-slate-700 dark:text-white font-bold">비활성화된 계정입니다.</p>
           <p className="text-sm text-slate-400 mt-1">관리자에게 문의하세요.</p>
           <Btn variant="ghost" className="mt-5" onClick={() => auth.signOut()}>로그아웃</Btn>
+        </div>
+      );
+    }
+
+    // 관람전용(이모·삼촌): 사진 갤러리 + 슬라이드쇼만 (기록/설정 숨김)
+    const isViewer = profile && profile.role === "viewer" && !isAdmin;
+    if (isViewer) {
+      return (
+        <div className="app-shell bg-warm min-h-screen">
+          <Header dark={dark} setDark={setDark} />
+          <main>
+            <div className="px-4 pt-3">
+              <p className="text-xs text-slate-400">관람 전용 계정 · 사진을 감상하고 좋아요를 남길 수 있어요 ❤️</p>
+            </div>
+            <Gallery canUpload={false} openUpload={() => {}} />
+          </main>
         </div>
       );
     }
