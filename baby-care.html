@@ -219,6 +219,14 @@
   const ymd = (d) => { d = toDate(d) || new Date(); return d.toLocaleDateString("sv-SE"); }; // YYYY-MM-DD(로컬)
   const isSameDay = (a, b) => ymd(a) === ymd(b);
 
+  // datetime-local 입력값(로컬 기준) ↔ Date 변환
+  const pad2 = (n) => String(n).padStart(2, "0");
+  const toLocalInput = (d) => {
+    d = toDate(d) || new Date();
+    return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+  };
+  const fromLocalInput = (s) => (s ? new Date(s) : new Date());
+
   // 경과 시간 사람이 읽기 좋게
   const ago = (d) => {
     d = toDate(d); if (!d) return "";
@@ -325,6 +333,17 @@
     </label>
   );
   const inputCls = "w-full rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 dark:text-white px-3.5 py-3 text-base focus:outline-none focus:ring-2 focus:ring-teal-400";
+
+  // 기록 시간 입력 (기본=지금, 직접 수정 가능)
+  const DateTimeField = ({ value, onChange, label = "기록 시간" }) => (
+    <Field label={label}>
+      <div className="flex gap-2">
+        <input className={inputCls} type="datetime-local" value={value} onChange={(e) => onChange(e.target.value)} aria-label={label} />
+        <button type="button" onClick={() => onChange(toLocalInput(new Date()))}
+          className="whitespace-nowrap px-3 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-sm">지금</button>
+      </div>
+    </Field>
+  );
 
   // 선택 칩 그룹 (큰 버튼, 한 손 조작)
   const ChipGroup = ({ options, value, onChange, label }) => (
@@ -475,13 +494,16 @@
   const useRecords = (type, max = 200) => {
     const [items, setItems] = useState(null);
     useEffect(() => {
-      // onSnapshot 실시간 동기화 — 언마운트 시 해제 (시니어 검토 #7)
+      // 복합 색인 없이 동작하도록: 전체 records를 at 내림차순으로 구독 후 클라이언트에서 type 필터
+      // (where + orderBy 조합은 Firestore 복합 색인을 요구하므로 회피)
       const unsub = COL.records()
-        .where("type", "==", type)
         .orderBy("at", "desc")
-        .limit(max)
+        .limit(800)
         .onSnapshot(
-          (snap) => setItems(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+          (snap) => {
+            const all = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+            setItems(all.filter((r) => r.type === type).slice(0, max));
+          },
           (err) => { console.error(type, err); setItems([]); }
         );
       return () => unsub();
@@ -499,6 +521,7 @@
     });
   };
   const deleteRecord = (id) => COL.records().doc(id).delete();
+  const updateRecordAt = (id, date) => COL.records().doc(id).update({ at: date });
 
   /* ========================================================================
      6. 로그인 화면
@@ -709,6 +732,7 @@
     const [side, setSide] = useState("left");
     const [amount, setAmount] = useState("");
     const [dur, setDur] = useState("");
+    const [at, setAt] = useState(toLocalInput(new Date()));
     const [busy, setBusy] = useState(false);
 
     const save = async () => {
@@ -718,9 +742,9 @@
           kind, side: kind === "breast" ? side : null,
           amount: amount ? Number(amount) : null,
           durationMin: dur ? Number(dur) : null,
-          at: TS(),
+          at: fromLocalInput(at),
         }, user, profile);
-        setAmount(""); setDur("");
+        setAmount(""); setDur(""); setAt(toLocalInput(new Date()));
         toast("수유 기록을 추가했어요.", "success");
       } catch (e) { toast(errMsg(e), "error"); } finally { setBusy(false); }
     };
@@ -752,7 +776,8 @@
             <Field label="수유량 (ml)"><input className={inputCls} type="number" inputMode="numeric" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="120" /></Field>
             <Field label="시간 (분)"><input className={inputCls} type="number" inputMode="numeric" value={dur} onChange={(e) => setDur(e.target.value)} placeholder="15" /></Field>
           </div>
-          <Btn onClick={save} disabled={busy} className="w-full">{busy ? "저장 중..." : "지금 수유 기록"}</Btn>
+          <DateTimeField value={at} onChange={setAt} />
+          <Btn onClick={save} disabled={busy} className="w-full">{busy ? "저장 중..." : "수유 기록 저장"}</Btn>
         </Card>
 
         <RecordList items={items} render={(r) => (
@@ -874,6 +899,7 @@
     const items = useRecords("diaper");
     const [type, setType] = useState("pee");
     const [color, setColor] = useState("");
+    const [at, setAt] = useState(toLocalInput(new Date()));
     const [busy, setBusy] = useState(false);
 
     // 비정상 색상/혈변 경고 키워드 (육아 전문가 검토 #6)
@@ -883,8 +909,8 @@
     const save = async () => {
       setBusy(true);
       try {
-        await addRecord("diaper", { diaperType: type, color: color || null, at: TS() }, user, profile);
-        setColor("");
+        await addRecord("diaper", { diaperType: type, color: color || null, at: fromLocalInput(at) }, user, profile);
+        setColor(""); setAt(toLocalInput(new Date()));
         toast("기저귀 기록을 추가했어요.", "success");
       } catch (e) { toast(errMsg(e), "error"); } finally { setBusy(false); }
     };
@@ -910,6 +936,7 @@
             <input className={inputCls} value={color} onChange={(e) => setColor(e.target.value)} placeholder="노란색, 황금색 등" />
           </Field>
           {colorWarn && <p role="alert" className="text-xs text-rose-600 bg-rose-50 dark:bg-rose-900/30 rounded-lg px-3 py-2">🚨 비정상 색상이 의심됩니다(혈변·흰색·검은색 변 등). 사진을 찍어 소아과 상담을 권장합니다.</p>}
+          <DateTimeField value={at} onChange={setAt} />
           <Btn onClick={save} disabled={busy} className="w-full">{busy ? "저장 중..." : "기저귀 기록"}</Btn>
         </Card>
 
@@ -930,6 +957,7 @@
     const [height, setHeight] = useState("");
     const [weight, setWeight] = useState("");
     const [head, setHead] = useState("");
+    const [at, setAt] = useState(toLocalInput(new Date()));
     const [busy, setBusy] = useState(false);
 
     const save = async () => {
@@ -939,9 +967,9 @@
         await addRecord("growth", {
           height: height ? Number(height) : null,
           weight: weight ? Number(weight) : null,
-          head: head ? Number(head) : null, at: TS(),
+          head: head ? Number(head) : null, at: fromLocalInput(at),
         }, user, profile);
-        setHeight(""); setWeight(""); setHead("");
+        setHeight(""); setWeight(""); setHead(""); setAt(toLocalInput(new Date()));
         toast("성장 기록을 추가했어요.", "success");
       } catch (e) { toast(errMsg(e), "error"); } finally { setBusy(false); }
     };
@@ -961,6 +989,7 @@
             <Field label="몸무게 (kg)"><input className={inputCls} type="number" inputMode="decimal" value={weight} onChange={(e) => setWeight(e.target.value)} placeholder="3.4" /></Field>
             <Field label="머리둘레"><input className={inputCls} type="number" inputMode="decimal" value={head} onChange={(e) => setHead(e.target.value)} placeholder="35" /></Field>
           </div>
+          <DateTimeField value={at} onChange={setAt} label="측정 시간" />
           <Btn onClick={save} disabled={busy} className="w-full">{busy ? "저장 중..." : "성장 기록 추가"}</Btn>
         </Card>
 
@@ -1036,6 +1065,7 @@
     const [temp, setTemp] = useState("");
     const [symptom, setSymptom] = useState("");
     const [hospital, setHospital] = useState("");
+    const [at, setAt] = useState(toLocalInput(new Date()));
     const [busy, setBusy] = useState(false);
     const [vacDone, setVacDone] = useState({});
 
@@ -1056,9 +1086,9 @@
       setBusy(true);
       try {
         await addRecord("health", {
-          temp: temp ? Number(temp) : null, symptom: symptom || null, hospital: hospital || null, at: TS(),
+          temp: temp ? Number(temp) : null, symptom: symptom || null, hospital: hospital || null, at: fromLocalInput(at),
         }, user, profile);
-        setTemp(""); setSymptom(""); setHospital("");
+        setTemp(""); setSymptom(""); setHospital(""); setAt(toLocalInput(new Date()));
         toast("건강 기록을 추가했어요.", "success");
       } catch (e) { toast(errMsg(e), "error"); } finally { setBusy(false); }
     };
@@ -1073,6 +1103,7 @@
           {stage && <p role="alert" className={`text-sm rounded-lg px-3 py-2 ${stage.bg} ${stage.color}`}><b>{stage.label}</b> · {stage.msg}</p>}
           <Field label="증상 메모"><input className={inputCls} value={symptom} onChange={(e) => setSymptom(e.target.value)} placeholder="콧물, 기침 등" /></Field>
           <Field label="병원 방문 기록"><input className={inputCls} value={hospital} onChange={(e) => setHospital(e.target.value)} placeholder="○○소아과 방문, 처방 등" /></Field>
+          <DateTimeField value={at} onChange={setAt} label="기록 시간" />
           <Btn onClick={save} disabled={busy} className="w-full">{busy ? "저장 중..." : "건강 기록 추가"}</Btn>
         </Card>
 
@@ -1153,6 +1184,7 @@
     const items = useRecords("prenatal", 100);
     const [open, setOpen] = useState(false);
     const [f, setF] = useState({ week: "", crl: "", bpd: "", hc: "", ac: "", fl: "", efw: "", fhr: "", afi: "", note: "" });
+    const [at, setAt] = useState(toLocalInput(new Date()));
     const [busy, setBusy] = useState(false);
     const set = (k) => (e) => setF((p) => ({ ...p, [k]: e.target.value }));
 
@@ -1165,9 +1197,10 @@
       try {
         const data = {};
         Object.keys(f).forEach((k) => { data[k] = f[k] === "" ? null : (k === "note" ? f[k] : Number(f[k])); });
-        await addRecord("prenatal", { ...data, at: TS() }, user, profile);
+        await addRecord("prenatal", { ...data, at: fromLocalInput(at) }, user, profile);
         setOpen(false);
         setF({ week: "", crl: "", bpd: "", hc: "", ac: "", fl: "", efw: "", fhr: "", afi: "", note: "" });
+        setAt(toLocalInput(new Date()));
         toast("초음파 기록을 추가했어요.", "success");
       } catch (e) { toast(errMsg(e), "error"); } finally { setBusy(false); }
     };
@@ -1217,6 +1250,7 @@
 
         <Modal open={open} onClose={() => setOpen(false)} title="🔬 초음파 기록 추가">
           <div className="space-y-3">
+            <DateTimeField value={at} onChange={setAt} label="검사 날짜·시간" />
             <Field label="임신 주수 *"><input className={inputCls} type="number" inputMode="numeric" value={f.week} onChange={set("week")} placeholder="12" /></Field>
             {crl && <p className={`text-xs rounded-lg px-3 py-2 ${crl.ok ? "text-teal-600 bg-teal-50 dark:bg-teal-900/30" : "text-amber-600 bg-amber-50 dark:bg-amber-900/30"}`}>{crl.msg}</p>}
             <div className="grid grid-cols-2 gap-3">
@@ -1243,24 +1277,48 @@
      ======================================================================== */
   const RecordList = ({ items, render }) => {
     const { user, isAdmin } = useAuth();
+    const toast = useToast();
+    const [editing, setEditing] = useState(null); // {id, at}
     if (!items) return <Spinner />;
     if (items.length === 0) return <Card className="p-6 text-center text-sm text-slate-400">아직 기록이 없어요.</Card>;
+
+    const saveTime = async () => {
+      try { await updateRecordAt(editing.id, fromLocalInput(editing.at)); toast("시간을 수정했어요.", "success"); setEditing(null); }
+      catch (e) { toast(errMsg(e), "error"); }
+    };
+
     return (
       <Card className="p-2">
         <ul className="divide-y divide-slate-100 dark:divide-slate-700">
-          {items.slice(0, 50).map((r) => (
-            <li key={r.id} className="flex items-center gap-3 px-2 py-3">
-              <div className="flex-1 min-w-0">
-                <p className="text-sm text-slate-700 dark:text-slate-200 truncate">{render(r)}</p>
-                <p className="text-[11px] text-slate-400">{fmtDateTime(r.at)} · {r.creatorName}</p>
-              </div>
-              {(isAdmin || r.createdBy === user.uid) && (
-                <button onClick={() => { if (confirm("삭제할까요?")) deleteRecord(r.id); }}
-                  aria-label="기록 삭제" className="text-slate-300 hover:text-rose-500 text-lg px-1">🗑️</button>
-              )}
-            </li>
-          ))}
+          {items.slice(0, 50).map((r) => {
+            const mine = isAdmin || r.createdBy === user.uid;
+            return (
+              <li key={r.id} className="flex items-center gap-2 px-2 py-3">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm text-slate-700 dark:text-slate-200 truncate">{render(r)}</p>
+                  <p className="text-[11px] text-slate-400">{fmtDateTime(r.at)} · {r.creatorName}</p>
+                </div>
+                {mine && (
+                  <button onClick={() => setEditing({ id: r.id, at: toLocalInput(r.at) })}
+                    aria-label="시간 수정" className="text-slate-300 hover:text-teal-500 text-base px-1">✏️</button>
+                )}
+                {mine && (
+                  <button onClick={() => { if (confirm("삭제할까요?")) deleteRecord(r.id); }}
+                    aria-label="기록 삭제" className="text-slate-300 hover:text-rose-500 text-base px-1">🗑️</button>
+                )}
+              </li>
+            );
+          })}
         </ul>
+
+        <Modal open={!!editing} onClose={() => setEditing(null)} title="기록 시간 수정">
+          {editing && (
+            <div className="space-y-4">
+              <DateTimeField value={editing.at} onChange={(v) => setEditing({ ...editing, at: v })} />
+              <Btn onClick={saveTime} className="w-full">저장</Btn>
+            </div>
+          )}
+        </Modal>
       </Card>
     );
   };
