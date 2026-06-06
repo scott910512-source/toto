@@ -603,10 +603,36 @@
     return [dark, setDark];
   };
 
+  // 닉네임 변경 모달 (본인이 직접 설정)
+  const NicknameModal = ({ open, onClose }) => {
+    const { user, profile } = useAuth();
+    const toast = useToast();
+    const [name, setName] = useState("");
+    const [busy, setBusy] = useState(false);
+    useEffect(() => { if (open) setName((profile && profile.name) || ""); }, [open, profile && profile.name]);
+    const save = async () => {
+      const n = name.trim();
+      if (!n) { toast("닉네임을 입력해주세요.", "error"); return; }
+      setBusy(true);
+      try { await COL.users().doc(user.uid).set({ name: n }, { merge: true }); toast("닉네임을 변경했어요.", "success"); onClose(); }
+      catch (e) { toast(errMsg(e), "error"); } finally { setBusy(false); }
+    };
+    return (
+      <Modal open={open} onClose={onClose} title="닉네임 설정">
+        <div className="space-y-4">
+          <p className="text-sm text-slate-500 dark:text-slate-400">기록·사진·편지에 표시될 내 이름이에요. 자유롭게 바꿀 수 있어요.</p>
+          <Field label="닉네임"><input className={inputCls} value={name} onChange={(e) => setName(e.target.value)} placeholder="예: 엄마, 아빠, 외할머니" maxLength={20} /></Field>
+          <Btn onClick={save} disabled={busy} className="w-full">{busy ? "저장 중..." : "저장"}</Btn>
+        </div>
+      </Modal>
+    );
+  };
+
   const Header = ({ dark, setDark }) => {
     const { profile } = useAuth();
     const baby = useBaby();
     const toast = useToast();
+    const [nickOpen, setNickOpen] = useState(false);
     return (
       <header className="sticky top-0 z-30 bg-white/90 dark:bg-slate-800/90 backdrop-blur border-b border-slate-100 dark:border-slate-700">
         <div className="px-4 h-14 flex items-center justify-between">
@@ -620,13 +646,14 @@
           <div className="flex items-center gap-1">
             <button onClick={() => setDark(!dark)} aria-label={dark ? "라이트 모드로 전환" : "다크 모드로 전환"}
               className="w-10 h-10 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 text-xl">{dark ? "☀️" : "🌙"}</button>
-            <div className="text-right mr-1">
-              <p className="text-xs font-medium text-slate-600 dark:text-slate-300 leading-tight">{profile ? profile.name : "..."}</p>
-            </div>
+            <button onClick={() => setNickOpen(true)} aria-label="닉네임 설정" className="text-right mr-1">
+              <p className="text-xs font-medium text-slate-600 dark:text-slate-300 leading-tight">{profile ? profile.name : "..."} ✏️</p>
+            </button>
             <button onClick={() => { auth.signOut(); toast("로그아웃 되었습니다."); }} aria-label="로그아웃"
               className="text-xs px-2.5 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300">로그아웃</button>
           </div>
         </div>
+        <NicknameModal open={nickOpen} onClose={() => setNickOpen(false)} />
       </header>
     );
   };
@@ -2208,6 +2235,7 @@
     const [users, setUsers] = useState(null);
     const [babyForm, setBabyForm] = useState({ name: baby.name, birthDate: baby.birthDate || "", dueDate: baby.dueDate || "" });
     const [addOpen, setAddOpen] = useState(false);
+    const [nickOpen, setNickOpen] = useState(false);
 
     useEffect(() => setBabyForm({ name: baby.name, birthDate: baby.birthDate || "", dueDate: baby.dueDate || "" }), [baby]);
 
@@ -2240,12 +2268,17 @@
       <div className="p-4 space-y-4 pb-safe">
         {/* 내 정보 */}
         <Card className="p-4">
-          <h3 className="font-bold text-slate-800 dark:text-white mb-2">내 계정</h3>
-          <p className="text-sm text-slate-600 dark:text-slate-300">{profile && profile.name} · {user.email}</p>
-          <span className={`inline-block mt-1 text-xs px-2 py-0.5 rounded-full ${isAdmin ? "bg-violet-100 text-violet-600 dark:bg-violet-900/40" : "bg-slate-100 text-slate-500 dark:bg-slate-700"}`}>
+          <div className="flex items-start justify-between">
+            <h3 className="font-bold text-slate-800 dark:text-white mb-2">내 계정</h3>
+            <button onClick={() => setNickOpen(true)} className="text-xs px-2.5 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300">✏️ 닉네임 변경</button>
+          </div>
+          <p className="text-sm text-slate-700 dark:text-slate-200"><b>{profile && profile.name}</b> <span className="text-slate-400">(닉네임)</span></p>
+          <p className="text-xs text-slate-400 mt-0.5">{user.email}</p>
+          <span className={`inline-block mt-1.5 text-xs px-2 py-0.5 rounded-full ${isAdmin ? "bg-violet-100 text-violet-600 dark:bg-violet-900/40" : "bg-slate-100 text-slate-500 dark:bg-slate-700"}`}>
             {isAdmin ? "관리자" : roleLabel(profile && profile.role)}
           </span>
         </Card>
+        <NicknameModal open={nickOpen} onClose={() => setNickOpen(false)} />
 
         {/* 아기 정보 */}
         <Card className="p-4 space-y-3">
@@ -2339,7 +2372,8 @@
         <div className="space-y-3">
           <Field label="이메일"><input className={inputCls} type="email" value={f.email} onChange={set("email")} placeholder="grandma1@baby.app" /></Field>
           <Field label="비밀번호 (6자 이상)"><input className={inputCls} type="text" value={f.pw} onChange={set("pw")} placeholder="초기 비밀번호" /></Field>
-          <Field label="이름"><input className={inputCls} value={f.name} onChange={set("name")} placeholder="외할머니" /></Field>
+          <Field label="닉네임"><input className={inputCls} value={f.name} onChange={set("name")} placeholder="외할머니" /></Field>
+          <p className="text-[11px] text-slate-400 -mt-1">닉네임은 본인이 로그인 후 직접 바꿀 수도 있어요.</p>
           <ChipGroup label="등급" value={f.role} onChange={(v) => setF((p) => ({ ...p, role: v }))}
             options={[{ value: "member", label: "구성원" }, { value: "admin", label: "관리자" }, { value: "viewer", label: "관람전용" }]} />
           <p className="text-[11px] text-slate-400">관람전용: 기록 입력 없이 사진 갤러리·슬라이드쇼만 볼 수 있어요 (이모·삼촌용).</p>
