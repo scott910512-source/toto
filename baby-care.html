@@ -1867,9 +1867,11 @@
   const PhotoDetail = ({ list, index, setIndex, uid, liked, saved, onClose }) => {
     const { user, isAdmin } = useAuth();
     const toast = useToast();
+    const [editOpen, setEditOpen] = useState(false);
     const p = list[index];
     const touch = useRef(null);
     if (!p) return null;
+    const canEdit = isAdmin || p.uploadedBy === user.uid; // 등록자 또는 관리자
 
     const prev = () => setIndex((i) => (i > 0 ? i - 1 : i));
     const next = () => setIndex((i) => (i < list.length - 1 ? i + 1 : i));
@@ -1932,11 +1934,77 @@
           {p.takenAt && <p className="text-xs text-slate-400">📅 촬영: {fmtDateTime(p.takenAt)}</p>}
           <div className="flex gap-2">
             <Btn variant="ghost" onClick={download} className="flex-1 text-sm py-2.5">⬇️ 다운로드</Btn>
-            {(isAdmin || p.uploadedBy === user.uid) &&
-              <Btn variant="danger" onClick={remove} className="flex-1 text-sm py-2.5">🗑️ 삭제</Btn>}
+            {canEdit && <Btn variant="lavender" onClick={() => setEditOpen(true)} className="flex-1 text-sm py-2.5">✏️ 수정</Btn>}
+            {canEdit && <Btn variant="danger" onClick={remove} className="flex-1 text-sm py-2.5">🗑️ 삭제</Btn>}
           </div>
+          {!canEdit && <p className="text-[11px] text-slate-400 text-center">수정·삭제는 사진을 올린 사람 또는 관리자만 할 수 있어요.</p>}
         </div>
+        <EditPhotoModal open={editOpen} onClose={() => setEditOpen(false)} photo={p} />
       </div>
+    );
+  };
+
+  /* ========================================================================
+     21-b. 사진 정보 수정 모달 (등록자 또는 관리자)
+     ======================================================================== */
+  const EditPhotoModal = ({ open, onClose, photo }) => {
+    const toast = useToast();
+    const [caption, setCaption] = useState("");
+    const [category, setCategory] = useState("baby");
+    const [people, setPeople] = useState([]);
+    const [personInput, setPersonInput] = useState("");
+    const [place, setPlace] = useState("");
+    const [busy, setBusy] = useState(false);
+
+    useEffect(() => {
+      if (!open || !photo) return;
+      setCaption(photo.caption || ""); setCategory(photo.category || "baby");
+      setPeople(photo.people || []); setPersonInput(""); setPlace(photo.place || "");
+    }, [open, photo && photo.id]);
+
+    const addPerson = () => {
+      const n = personInput.trim();
+      if (n && !people.includes(n)) setPeople((p) => [...p, n]);
+      setPersonInput("");
+    };
+    const save = async () => {
+      setBusy(true);
+      try {
+        await COL.photos().doc(photo.id).update({
+          caption, category, people, place, placeLower: (place || "").toLowerCase(),
+        });
+        toast("사진 정보를 수정했어요.", "success");
+        onClose();
+      } catch (e) { toast(errMsg(e), "error"); } finally { setBusy(false); }
+    };
+
+    return (
+      <Modal open={open} onClose={onClose} title="✏️ 사진 정보 수정">
+        <div className="space-y-4">
+          <ChipGroup label="카테고리" value={category} onChange={setCategory}
+            options={[{ value: "ultrasound", label: "초음파" }, { value: "baby", label: "아기사진" }, { value: "milestone", label: "성장기록" }]} />
+          <Field label="캡션"><input className={inputCls} value={caption} onChange={(e) => setCaption(e.target.value)} placeholder="사진 설명" /></Field>
+          <div>
+            <span className="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1.5">함께한 사람</span>
+            {people.length > 0 && (
+              <div className="flex flex-wrap gap-2 mb-2">
+                {people.map((n) => (
+                  <span key={n} className="px-3 py-1.5 rounded-full text-sm bg-violet-400 text-white flex items-center gap-1">
+                    {n}<button type="button" onClick={() => setPeople((p) => p.filter((x) => x !== n))} aria-label={`${n} 제거`}>×</button>
+                  </span>
+                ))}
+              </div>
+            )}
+            <div className="flex gap-2">
+              <input className={inputCls} value={personInput} onChange={(e) => setPersonInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addPerson())} placeholder="이름 추가" />
+              <button type="button" onClick={addPerson} className="whitespace-nowrap px-3 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-sm">추가</button>
+            </div>
+          </div>
+          <Field label="장소 / 지역"><input className={inputCls} value={place} onChange={(e) => setPlace(e.target.value)} placeholder="예: 서울 할머니댁" /></Field>
+          <Btn onClick={save} disabled={busy} className="w-full">{busy ? "저장 중..." : "저장"}</Btn>
+        </div>
+      </Modal>
     );
   };
 
