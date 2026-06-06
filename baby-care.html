@@ -16,13 +16,26 @@
   <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-  <script src="https://unpkg.com/recharts/umd/Recharts.js"></script>
+  <!-- Recharts: 버전 고정(2.x UMD) — 'latest'가 v3로 바뀌면 UMD가 깨질 수 있어 고정 -->
+  <script src="https://unpkg.com/recharts@2.12.7/umd/Recharts.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
   <script src="https://cdn.tailwindcss.com"></script>
 
   <script>
     // 다크모드: Tailwind class 전략
     tailwind.config = { darkMode: 'class' };
+
+    // 빈 화면(JS 오류) 디버깅용: 오류를 화면에 표시
+    window.addEventListener("error", function (e) {
+      var root = document.getElementById("root");
+      if (root && root.childElementCount === 0) {
+        root.innerHTML = '<div style="padding:24px;font-family:sans-serif;color:#b91c1c">'
+          + '<h2>⚠️ 앱 로딩 중 오류</h2><p>아래 내용을 캡처해서 알려주세요.</p>'
+          + '<pre style="white-space:pre-wrap;background:#fef2f2;padding:12px;border-radius:8px;font-size:12px">'
+          + (e.message || e.error || e) + '\n' + (e.filename || '') + ':' + (e.lineno || '') + '</pre>'
+          + '<p style="color:#64748b;font-size:13px">CDN 차단(회사/학교 와이파이) 또는 인터넷 연결 문제일 수 있어요.</p></div>';
+      }
+    });
   </script>
 
   <style>
@@ -142,10 +155,22 @@
   <script type="text/babel" data-presets="react">
   /* global React, ReactDOM, firebase, Recharts, firebaseConfig, BABY_DEFAULTS */
   const { useState, useEffect, useRef, useMemo, useCallback, createContext, useContext } = React;
-  const {
-    LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid,
-    Tooltip, ResponsiveContainer, ReferenceLine, ReferenceArea, Legend
-  } = Recharts;
+  // Recharts가 CDN에서 안 떠도 앱 전체가 멈추지 않도록 대체 컴포넌트 사용
+  const RC = window.Recharts || {};
+  const chartsOK = !!RC.ResponsiveContainer;
+  const NullCmp = () => null; // 차트 미로딩 시 내부 요소는 무시
+  const ChartFallback = () => (
+    <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "#94a3b8", fontSize: 12 }}>
+      차트를 불러오지 못했어요 (인터넷 연결 확인)
+    </div>
+  );
+  const LineChart = RC.LineChart || ChartFallback;
+  const BarChart = RC.BarChart || ChartFallback;
+  const ResponsiveContainer = RC.ResponsiveContainer || (({ children }) => <div style={{ width: "100%", height: "100%" }}>{children}</div>);
+  const Line = RC.Line || NullCmp, Bar = RC.Bar || NullCmp;
+  const XAxis = RC.XAxis || NullCmp, YAxis = RC.YAxis || NullCmp;
+  const CartesianGrid = RC.CartesianGrid || NullCmp, Tooltip = RC.Tooltip || NullCmp;
+  const ReferenceLine = RC.ReferenceLine || NullCmp, ReferenceArea = RC.ReferenceArea || NullCmp, Legend = RC.Legend || NullCmp;
 
   /* ========================================================================
      0. 유틸리티 & 상수
