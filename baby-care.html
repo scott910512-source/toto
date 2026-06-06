@@ -1296,30 +1296,44 @@
   };
 
   /* ========================================================================
-     17. 이미지 리사이즈 (Canvas, 최대 1200px) — 시니어 검토 #5
+     17. 이미지 압축 → base64 데이터URL (Firestore 무료 저장용) — 시니어 검토 #5
+        Firestore 문서 1MB 한도 안에 들어가도록 화질/크기를 점진 축소
      ======================================================================== */
-  const resizeImage = (file, maxSize = 1200, quality = 0.82) =>
+  const MAX_PHOTO_BYTES = 900 * 1024; // base64 길이 상한 (1MB 한도 대비 여유)
+  const compressToDataURL = (file) =>
     new Promise((resolve, reject) => {
-      // HEIC 등 브라우저 미지원 포맷은 디코딩 실패 → 원본 업로드로 폴백
       const img = new Image();
       const url = URL.createObjectURL(file);
       img.onload = () => {
         URL.revokeObjectURL(url);
-        let { width, height } = img;
-        if (width > maxSize || height > maxSize) {
-          if (width > height) { height = Math.round(height * maxSize / width); width = maxSize; }
-          else { width = Math.round(width * maxSize / height); height = maxSize; }
+        const render = (maxDim, q) => {
+          let { width, height } = img;
+          if (width > maxDim || height > maxDim) {
+            if (width > height) { height = Math.round(height * maxDim / width); width = maxDim; }
+            else { width = Math.round(width * maxDim / height); height = maxDim; }
+          }
+          const canvas = document.createElement("canvas");
+          canvas.width = width; canvas.height = height;
+          const ctx = canvas.getContext("2d");
+          ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, width, height); // 투명 PNG 대비 흰 배경
+          ctx.drawImage(img, 0, 0, width, height);
+          return canvas.toDataURL("image/jpeg", q);
+        };
+        let maxDim = 1000, quality = 0.72;
+        let dataUrl = render(maxDim, quality);
+        // 1MB 안에 들어갈 때까지 점진적으로 줄이기
+        let guard = 0;
+        while (dataUrl.length > MAX_PHOTO_BYTES && guard < 10) {
+          guard++;
+          if (quality > 0.4) quality -= 0.1;
+          else { maxDim = Math.round(maxDim * 0.85); quality = 0.6; }
+          dataUrl = render(maxDim, quality);
         }
-        const canvas = document.createElement("canvas");
-        canvas.width = width; canvas.height = height;
-        canvas.getContext("2d").drawImage(img, 0, 0, width, height);
-        // JPEG로 변환(HEIC도 디코딩되면 여기서 JPEG로 출력됨)
-        canvas.toBlob((blob) => {
-          if (!blob || blob.size >= file.size) resolve(file); // 압축 효과 없으면 원본 사용
-          else resolve(new File([blob], file.name.replace(/\.\w+$/, ".jpg"), { type: "image/jpeg" }));
-        }, "image/jpeg", quality);
+        if (dataUrl.length > MAX_PHOTO_BYTES) { reject(new Error("사진 용량이 너무 커요. 더 작은 사진을 사용해주세요.")); return; }
+        resolve(dataUrl);
       };
-      img.onerror = () => { URL.revokeObjectURL(url); resolve(file); }; // HEIC 폴백
+      // HEIC 등 브라우저가 못 읽는 형식
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("이 사진 형식을 읽을 수 없어요. (HEIC라면 설정에서 '호환성 우선'으로 촬영하거나 JPG로 변환해주세요)")); };
       img.src = url;
     });
 
@@ -1348,23 +1362,17 @@
       setProgress({ done: 0, total: files.length, pct: 0 });
       try {
         for (let i = 0; i < files.length; i++) {
-          const resized = await resizeImage(files[i]);
-          const path = `photos/${user.uid}/${Date.now()}_${i}.jpg`;
-          const ref = storage.ref(path);
-          // uploadBytesResumable 로 진행률 (주의사항)
-          const task = ref.put(resized, { contentType: "image/jpeg" });
-          await new Promise((res, rej) => {
-            task.on("state_changed",
-              (s) => setProgress({ done: i, total: files.length, pct: Math.round((s.bytesTransferred / s.totalBytes) * 100) }),
-              rej, res);
-          });
-          const url = await ref.getDownloadURL();
+          // 무료 방식: Storage 대신 Firestore에 압축 이미지(base64) 저장
+          setProgress({ done: i, total: files.length, pct: 20 });
+          const dataUrl = await compressToDataURL(files[i]);
+          setProgress({ done: i, total: files.length, pct: 70 });
           await COL.photos().add({
             uploadedBy: user.uid,
             uploaderName: (profile && profile.name) || (user.email || "").split("@")[0],
-            url, storagePath: path, caption: caption || "", category,
+            url: dataUrl, caption: caption || "", category,
             likeCount: 0, createdAt: TS(),
           });
+          setProgress({ done: i, total: files.length, pct: 100 });
         }
         toast(`${files.length}장 업로드 완료!`, "success");
         onClose();
