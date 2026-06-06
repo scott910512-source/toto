@@ -86,6 +86,10 @@
       birthDate: "",      // 예: "2026-05-01" (출생 후) — 비우면 임신 모드
       dueDate: "2026-09-01" // 출산 예정일 (임신 주수 계산용)
     };
+
+    // 👑 항상 관리자로 처리할 이메일 목록 (여기에 이메일을 추가하면 무조건 관리자)
+    //    소문자로 적어주세요. 기존에 구성원으로 저장돼 있어도 자동으로 관리자로 승격됩니다.
+    const ADMIN_EMAILS = ["admin@baby.app", "scott7259@naver.com"];
   </script>
 
   <!--
@@ -387,20 +391,28 @@
     const [user, setUser] = useState(undefined); // undefined=로딩, null=비로그인
     const [profile, setProfile] = useState(null); // users/{uid} 문서
 
+    // 이메일이 ADMIN_EMAILS 에 있으면 무조건 관리자 (대소문자 무시)
+    const isAdminEmail = (email) =>
+      !!email && ADMIN_EMAILS.map((e) => e.toLowerCase()).includes(email.toLowerCase());
+
     useEffect(() => {
       // onAuthStateChanged 로 로그인 상태 관리 (주의사항)
       const unsub = auth.onAuthStateChanged(async (u) => {
         setUser(u);
         if (!u) { setProfile(null); return; }
-        // users/{uid} 프로필 보장 (없으면 생성)
+        // users/{uid} 프로필 보장 (없으면 생성, 있으면 관리자 이메일 자동 승격)
         const ref = COL.users().doc(u.uid);
         const snap = await ref.get();
-        if (!snap.exists) {
-          const name = (u.email || "").split("@")[0];
-          // 첫 사용자(admin@baby.app)는 admin, 그 외 member
-          const role = u.email === "admin@baby.app" ? "admin" : "member";
-          await ref.set({ email: u.email, name, role, disabled: false, createdAt: TS() });
-        }
+        const wantAdmin = isAdminEmail(u.email);
+        try {
+          if (!snap.exists) {
+            const name = (u.email || "").split("@")[0];
+            await ref.set({ email: u.email, name, role: wantAdmin ? "admin" : "member", disabled: false, createdAt: TS() });
+          } else if (wantAdmin && snap.data().role !== "admin") {
+            // 기존에 구성원으로 저장돼 있어도 자동 복구
+            await ref.update({ role: "admin" });
+          }
+        } catch (e) { console.warn("프로필 동기화 실패:", e.code); }
       });
       return () => unsub();
     }, []);
@@ -412,7 +424,10 @@
       return () => unsub(); // 언마운트 시 리스너 해제 (시니어 검토 #7)
     }, [user && user.uid]);
 
-    return <AuthCtx.Provider value={{ user, profile, isAdmin: profile && profile.role === "admin" }}>{children}</AuthCtx.Provider>;
+    // 클라이언트 관리자 판정: Firestore role 또는 ADMIN_EMAILS 둘 중 하나면 관리자
+    const isAdmin = (profile && profile.role === "admin") || (user && isAdminEmail(user.email));
+
+    return <AuthCtx.Provider value={{ user, profile, isAdmin }}>{children}</AuthCtx.Provider>;
   };
 
   /* ========================================================================
