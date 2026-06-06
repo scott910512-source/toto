@@ -2054,6 +2054,151 @@
   };
 
   /* ========================================================================
+     22-b. 💌 편지 (아기에게 보내는 편지 + 이미지 첨부)
+        records 컬렉션에 type:"letter" 로 저장 (보안규칙/리스너 재사용)
+     ======================================================================== */
+  const Letters = () => {
+    const { user, profile, isAdmin } = useAuth();
+    const items = useRecords("letter", 100);
+    const [editorOpen, setEditorOpen] = useState(false);
+    const [editing, setEditing] = useState(null); // 수정할 편지
+    const [viewing, setViewing] = useState(null); // 열람할 편지
+
+    const openNew = () => { setEditing(null); setEditorOpen(true); };
+    const openEdit = (l) => { setEditing(l); setEditorOpen(true); };
+
+    return (
+      <div className="p-4 space-y-4 pb-safe">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="font-bold text-lg text-slate-800 dark:text-white">💌 편지</h2>
+            <p className="text-xs text-slate-400">우리 아기에게 마음을 남겨보세요</p>
+          </div>
+          <Btn onClick={openNew} className="text-sm py-2 px-3">+ 편지 쓰기</Btn>
+        </div>
+
+        {!items ? <Spinner /> : items.length === 0 ? (
+          <Card className="p-8 text-center text-sm text-slate-400">아직 편지가 없어요.<br />첫 편지를 남겨보세요 💛</Card>
+        ) : (
+          <div className="space-y-3">
+            {items.map((l) => (
+              <Card key={l.id} className="overflow-hidden active:scale-[.99] transition">
+                <button onClick={() => setViewing(l)} className="block w-full text-left">
+                  {l.image && <img src={l.image} alt="" className="w-full max-h-48 object-cover" />}
+                  <div className="p-4">
+                    <div className="flex items-center justify-between mb-1">
+                      <h3 className="font-bold text-slate-800 dark:text-white">{l.title || "(제목 없음)"}</h3>
+                      {l.image && <span className="text-xs text-slate-300">🖼️</span>}
+                    </div>
+                    <p className="text-sm text-slate-500 dark:text-slate-300 line-clamp-2" style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{l.body}</p>
+                    <p className="text-[11px] text-slate-400 mt-2">💛 {l.creatorName} · {fmtDateTime(l.at)}</p>
+                  </div>
+                </button>
+              </Card>
+            ))}
+          </div>
+        )}
+
+        {/* 편지 열람 모달 */}
+        <Modal open={!!viewing} onClose={() => setViewing(null)} title="💌 편지">
+          {viewing && (
+            <div className="space-y-3">
+              {viewing.image && <img src={viewing.image} alt="첨부 이미지" className="w-full rounded-xl" />}
+              <h3 className="text-lg font-bold text-slate-800 dark:text-white">{viewing.title || "(제목 없음)"}</h3>
+              <p className="text-[11px] text-slate-400">💛 {viewing.creatorName} · {fmtDateTime(viewing.at)}</p>
+              <p className="text-sm text-slate-700 dark:text-slate-200 whitespace-pre-wrap leading-relaxed">{viewing.body}</p>
+              {(isAdmin || viewing.createdBy === user.uid) && (
+                <div className="flex gap-2 pt-2">
+                  <Btn variant="lavender" className="flex-1 text-sm py-2.5" onClick={() => { const l = viewing; setViewing(null); openEdit(l); }}>✏️ 수정</Btn>
+                  <Btn variant="danger" className="flex-1 text-sm py-2.5" onClick={() => { if (confirm("이 편지를 삭제할까요?")) { deleteRecord(viewing.id); setViewing(null); } }}>🗑️ 삭제</Btn>
+                </div>
+              )}
+            </div>
+          )}
+        </Modal>
+
+        <LetterEditor open={editorOpen} onClose={() => setEditorOpen(false)} letter={editing} />
+      </div>
+    );
+  };
+
+  // 편지 작성/수정 모달
+  const LetterEditor = ({ open, onClose, letter }) => {
+    const { user, profile } = useAuth();
+    const toast = useToast();
+    const [title, setTitle] = useState("");
+    const [body, setBody] = useState("");
+    const [image, setImage] = useState(null); // dataURL
+    const [busy, setBusy] = useState(false);
+    const fileRef = useRef();
+    const camRef = useRef();
+
+    useEffect(() => {
+      if (!open) return;
+      setTitle((letter && letter.title) || "");
+      setBody((letter && letter.body) || "");
+      setImage((letter && letter.image) || null);
+      setBusy(false);
+    }, [open, letter && letter.id]);
+
+    const pickImage = async (e) => {
+      const f = (e.target.files || [])[0];
+      if (!f) return;
+      try { setBusy(true); setImage(await compressToDataURL(f)); }
+      catch (ex) { toast(errMsg(ex), "error"); }
+      finally { setBusy(false); }
+    };
+
+    const save = async () => {
+      if (!body.trim() && !title.trim()) { toast("내용을 입력해주세요.", "error"); return; }
+      setBusy(true);
+      try {
+        if (letter) {
+          await COL.records().doc(letter.id).update({ title, body, image: image || null });
+          toast("편지를 수정했어요.", "success");
+        } else {
+          await addRecord("letter", { title, body, image: image || null, at: TS() }, user, profile);
+          toast("편지를 남겼어요 💛", "success");
+        }
+        onClose();
+      } catch (e) { toast(errMsg(e), "error"); } finally { setBusy(false); }
+    };
+
+    return (
+      <Modal open={open} onClose={onClose} title={letter ? "✏️ 편지 수정" : "💌 편지 쓰기"}>
+        <div className="space-y-4">
+          <Field label="제목"><input className={inputCls} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="사랑하는 우리 아기에게" /></Field>
+          <Field label="내용">
+            <textarea className={inputCls} rows="7" value={body} onChange={(e) => setBody(e.target.value)} placeholder="오늘 너에게 하고 싶은 이야기를 적어보세요..." />
+          </Field>
+
+          {/* 이미지 첨부 */}
+          <input ref={fileRef} type="file" accept="image/*" onChange={pickImage} className="hidden" />
+          <input ref={camRef} type="file" accept="image/*" capture="environment" onChange={pickImage} className="hidden" />
+          {image ? (
+            <div className="relative">
+              <img src={image} alt="첨부 미리보기" className="w-full rounded-xl" />
+              <button onClick={() => setImage(null)} aria-label="이미지 제거"
+                className="absolute top-2 right-2 w-8 h-8 rounded-full bg-black/50 text-white text-lg">×</button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-3">
+              <button onClick={() => fileRef.current.click()} className="border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-2xl py-5 text-center text-slate-400 hover:border-teal-400 hover:text-teal-500 transition">
+                <div className="text-2xl mb-1" aria-hidden="true">🖼️</div><p className="text-sm">사진 첨부</p>
+              </button>
+              <button onClick={() => camRef.current.click()} className="border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-2xl py-5 text-center text-slate-400 hover:border-teal-400 hover:text-teal-500 transition">
+                <div className="text-2xl mb-1" aria-hidden="true">📷</div><p className="text-sm">사진 촬영</p>
+              </button>
+            </div>
+          )}
+
+          <Btn onClick={save} disabled={busy} className="w-full">{busy ? "저장 중..." : (letter ? "수정 저장" : "편지 남기기")}</Btn>
+        </div>
+      </Modal>
+    );
+  };
+
+  /* ========================================================================
      23. 설정 탭 (관리자 계정 관리 + 아기 정보)
      ======================================================================== */
   const Settings = () => {
@@ -2212,6 +2357,7 @@
       { id: "dashboard", icon: "🏠", label: "홈" },
       { id: "records", icon: "📋", label: "기록" },
       { id: "gallery", icon: "🖼️", label: "갤러리" },
+      { id: "letters", icon: "💌", label: "편지" },
       { id: "saved", icon: "🔖", label: "저장" },
       { id: "settings", icon: "⚙️", label: "설정" },
     ];
@@ -2282,6 +2428,7 @@
           {tab === "dashboard" && <Dashboard go={go} />}
           {tab === "records" && <Records sub={recSub} setSub={setRecSub} openUpload={() => openUpload("ultrasound")} />}
           {tab === "gallery" && <Gallery openUpload={() => openUpload("baby")} />}
+          {tab === "letters" && <Letters />}
           {tab === "saved" && <Saved />}
           {tab === "settings" && <Settings />}
         </main>
