@@ -1319,6 +1319,7 @@
     const [caption, setCaption] = useState("");
     const [progress, setProgress] = useState(null); // {done,total,pct}
     const inputRef = useRef();
+    const camRef = useRef();
 
     useEffect(() => { if (open) { setFiles([]); setCaption(""); setCategory(defaultCategory); setProgress(null); } }, [open]);
 
@@ -1358,12 +1359,23 @@
     return (
       <Modal open={open} onClose={onClose} title="📷 사진 업로드">
         <div className="space-y-4">
-          <input ref={inputRef} type="file" accept="image/*" capture="environment" multiple onChange={pick} className="hidden" />
-          <button onClick={() => inputRef.current.click()}
-            className="w-full border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-2xl py-8 text-center text-slate-400 hover:border-teal-400 hover:text-teal-500 transition">
-            <div className="text-4xl mb-1" aria-hidden="true">📁</div>
-            <p className="text-sm">사진 선택 또는 촬영 (최대 5장)</p>
-          </button>
+          {/* 앨범: capture 없음 → iOS에서 사진 보관함/파일 선택 가능 */}
+          <input ref={inputRef} type="file" accept="image/*" multiple onChange={pick} className="hidden" />
+          {/* 촬영: capture 지정 → 카메라 바로 열기 */}
+          <input ref={camRef} type="file" accept="image/*" capture="environment" onChange={pick} className="hidden" />
+          <div className="grid grid-cols-2 gap-3">
+            <button onClick={() => inputRef.current.click()}
+              className="border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-2xl py-6 text-center text-slate-400 hover:border-teal-400 hover:text-teal-500 transition">
+              <div className="text-3xl mb-1" aria-hidden="true">🖼️</div>
+              <p className="text-sm">앨범에서 선택</p>
+            </button>
+            <button onClick={() => camRef.current.click()}
+              className="border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-2xl py-6 text-center text-slate-400 hover:border-teal-400 hover:text-teal-500 transition">
+              <div className="text-3xl mb-1" aria-hidden="true">📷</div>
+              <p className="text-sm">사진 촬영</p>
+            </button>
+          </div>
+          <p className="text-[11px] text-slate-400 text-center">최대 5장까지 업로드할 수 있어요</p>
 
           {files.length > 0 && (
             <div className="grid grid-cols-3 gap-2">
