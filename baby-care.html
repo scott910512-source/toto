@@ -17,6 +17,8 @@
   <script crossorigin="anonymous" src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
   <script crossorigin="anonymous" src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
   <script crossorigin="anonymous" src="https://unpkg.com/@babel/standalone@7.26.4/babel.min.js"></script>
+  <!-- prop-types: Recharts UMD가 window.PropTypes를 요구함 (없으면 차트 로드 실패) -->
+  <script crossorigin="anonymous" src="https://unpkg.com/prop-types@15.8.1/prop-types.min.js"></script>
   <!-- Recharts: 2.x UMD 고정 ('latest'가 v3로 바뀌면 깨짐) -->
   <script crossorigin="anonymous" src="https://unpkg.com/recharts@2.12.7/umd/Recharts.js"></script>
   <!-- exifr는 부팅을 막지 않도록 업로드 시 지연 로드 (아래 loadExifr) -->
@@ -695,10 +697,6 @@
     const feedings = useRecords("feeding");
     const sleeps = useRecords("sleep");
     const diapers = useRecords("diaper");
-    const growths = useRecords("growth", 50);
-    const healths = useRecords("health", 50);
-    const letters = useRecords("letter", 30);
-    const photos = usePhotos(20);
     const ageInfo = useBabyAge();
     const baby = useBaby();
     const now = useNow(30000);
@@ -723,14 +721,6 @@
     const avgMs = intervals.length ? Math.max(5400000, intervals.reduce((a, b) => a + b, 0) / intervals.length) : 3 * 3600000;
     const nextFeed = lastFeedDate ? new Date(lastFeedDate.getTime() + avgMs) : null;
     const overdue = lastFeedDate && (now - lastFeedDate.getTime()) > 3 * 3600000; // 3시간 초과(임상 권고)
-
-    // 활동 피드 (모든 기록 + 사진 합산) — 아직 로딩 안 된 항목은 [] 처리
-    const photoActs = (photos || []).map((p) => ({ ...p, type: "photo", at: p.createdAt, creatorName: p.uploaderName }));
-    const feed = [...feedings, ...sleeps, ...diapers, ...(growths || []), ...(healths || []), ...(letters || []), ...photoActs]
-      .sort((a, b) => (toDate(b.createdAt || b.at) - toDate(a.createdAt || a.at)))
-      .slice(0, 12);
-    const labelOf = (r) => ({ feeding: "수유 기록", sleep: "수면 기록", diaper: "기저귀 기록", growth: "성장 기록", health: "건강 기록", letter: "편지", photo: "사진" })[r.type] || "기록";
-    const iconOf = (r) => ({ feeding: "🍼", sleep: "😴", diaper: "👶", growth: "📏", health: "🩺", letter: "💌", photo: "🖼️" })[r.type] || "📋";
 
     // 최근 7일 통계
     const weekly = [];
@@ -816,23 +806,41 @@
             </ResponsiveContainer>
           </div>
         </Card>
+      </div>
+    );
+  };
 
-        {/* 활동 피드 */}
-        <Card className="p-4">
-          <h3 className="font-bold text-slate-800 dark:text-white mb-3">최근 활동</h3>
-          {feed.length === 0 ? <p className="text-sm text-slate-400 text-center py-4">아직 기록이 없어요.</p> : (
-            <ul className="space-y-3">
-              {feed.map((r) => (
-                <li key={r.type + "_" + r.id} className="flex items-center gap-3 text-sm">
-                  <span className="text-lg" aria-hidden="true">{iconOf(r)}</span>
-                  <span className="flex-1 text-slate-700 dark:text-slate-200">
-                    <b>{r.creatorName}</b>님이 {labelOf(r)} 추가함
-                  </span>
-                  <span className="text-xs text-slate-400 whitespace-nowrap">{ago(r.createdAt || r.at)}</span>
-                </li>
-              ))}
-            </ul>
-          )}
+  /* ========================================================================
+     8-b. 최근 활동 피드 (기록 탭 하단에 작게 표시)
+     ======================================================================== */
+  const ActivityFeed = ({ limit = 8 }) => {
+    const feedings = useRecords("feeding", 30);
+    const sleeps = useRecords("sleep", 30);
+    const diapers = useRecords("diaper", 30);
+    const growths = useRecords("growth", 20);
+    const healths = useRecords("health", 20);
+    const letters = useRecords("letter", 20);
+    const photos = usePhotos(15);
+    const photoActs = (photos || []).map((p) => ({ ...p, type: "photo", at: p.createdAt, creatorName: p.uploaderName }));
+    const feed = [...(feedings || []), ...(sleeps || []), ...(diapers || []), ...(growths || []), ...(healths || []), ...(letters || []), ...photoActs]
+      .sort((a, b) => (toDate(b.createdAt || b.at) - toDate(a.createdAt || a.at)))
+      .slice(0, limit);
+    const labelOf = (r) => ({ feeding: "수유", sleep: "수면", diaper: "기저귀", growth: "성장", health: "건강", letter: "편지", photo: "사진" })[r.type] || "기록";
+    const iconOf = (r) => ({ feeding: "🍼", sleep: "😴", diaper: "👶", growth: "📏", health: "🩺", letter: "💌", photo: "🖼️" })[r.type] || "📋";
+    if (feed.length === 0) return null;
+    return (
+      <div className="pt-2">
+        <h3 className="text-xs font-semibold text-slate-400 mb-2 px-1">최근 활동</h3>
+        <Card className="p-2">
+          <ul className="divide-y divide-slate-100 dark:divide-slate-700">
+            {feed.map((r) => (
+              <li key={r.type + "_" + r.id} className="flex items-center gap-2 px-2 py-2 text-xs">
+                <span aria-hidden="true">{iconOf(r)}</span>
+                <span className="flex-1 text-slate-600 dark:text-slate-300 truncate"><b>{r.creatorName}</b> · {labelOf(r)}</span>
+                <span className="text-[10px] text-slate-400 whitespace-nowrap">{ago(r.createdAt || r.at)}</span>
+              </li>
+            ))}
+          </ul>
         </Card>
       </div>
     );
@@ -1622,6 +1630,7 @@
         {sub === "growth" && <GrowthTracker />}
         {sub === "health" && <HealthLog />}
         {sub === "prenatal" && <PrenatalTracker openUpload={openUpload} />}
+        <ActivityFeed limit={8} />
       </div>
     );
   };
