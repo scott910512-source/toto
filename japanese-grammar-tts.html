@@ -110,7 +110,15 @@
   input[type=range]::-moz-range-thumb{
     width:18px;height:18px;border-radius:50%;background:#fff;border:3px solid var(--aka);cursor:pointer;
   }
-  .rate-val{font-variant-numeric:tabular-nums;font-weight:700;color:var(--kin);min-width:44px;text-align:right;}
+  .rate-val{font-variant-numeric:tabular-nums;font-weight:700;color:var(--kin);min-width:48px;text-align:right;}
+  .sel{
+    flex:1;min-width:140px;background:var(--sumi-3);color:var(--txt);
+    border:1.5px solid var(--line);border-radius:10px;padding:10px 12px;font-size:13px;
+    font-family:inherit;cursor:pointer;max-width:100%;
+  }
+  .sel:focus{outline:none;border-color:var(--aka);}
+  .hint{font-size:11.5px;color:var(--txt-dim);margin:8px 0 0;line-height:1.5;}
+  .hint b{color:var(--kin);}
 
   /* 토글 스위치 */
   .switch{display:inline-flex;align-items:center;gap:10px;cursor:pointer;user-select:none;font-size:13px;}
@@ -201,11 +209,36 @@
   <!-- 재생 설정 -->
   <section class="card">
     <h2>🔊 재생 설정</h2>
+
+    <div class="row">
+      <label class="lbl">일본어 음성</label>
+      <select id="jaVoiceSel" class="sel"></select>
+    </div>
+    <div class="row">
+      <label class="lbl">한국어 음성</label>
+      <select id="koVoiceSel" class="sel"></select>
+    </div>
+    <p class="hint" id="voiceHint">기기에 설치된 음성 중에서 고를 수 있어요. 안드로이드·크롬은 "Google 日本語", 아이폰은 "Kyoko/Siri" 음성이 가장 자연스럽습니다.</p>
+
     <div class="row">
       <label class="lbl">재생 속도</label>
-      <input type="range" id="rate" min="0.7" max="1.2" step="0.05" value="1">
-      <span class="rate-val" id="rateVal">1.00x</span>
+      <input type="range" id="rate" min="0.6" max="1.2" step="0.05" value="0.9">
+      <span class="rate-val" id="rateVal">0.90x</span>
     </div>
+    <div class="row">
+      <label class="lbl">문장 간격</label>
+      <input type="range" id="gap" min="0.6" max="4" step="0.2" value="1.6">
+      <span class="rate-val" id="gapVal">1.6초</span>
+    </div>
+    <div class="row">
+      <label class="lbl">각 항목 반복</label>
+      <div class="chips" id="repChips">
+        <label class="chip"><input type="radio" name="rep" value="1" checked>1회</label>
+        <label class="chip"><input type="radio" name="rep" value="2">2회</label>
+        <label class="chip"><input type="radio" name="rep" value="3">3회</label>
+      </div>
+    </div>
+
     <div class="row">
       <label class="switch">
         <input type="checkbox" id="repeat"><span class="track"></span>
@@ -216,6 +249,13 @@
         <span>순서 섞기</span>
       </label>
     </div>
+    <div class="row">
+      <label class="switch">
+        <input type="checkbox" id="bgMode"><span class="track"></span>
+        <span>화면 꺼짐 대비 모드</span>
+      </label>
+    </div>
+    <p class="hint">⚠️ 휴대폰은 화면이 완전히 꺼지면 브라우저가 음성을 멈춥니다(기기 정책). 이 모드는 화면을 켜둔 채 어둡게 유지하고, 백그라운드에서도 최대한 이어 재생하도록 버팁니다. 확실하게 들으려면 <b>자동 잠금을 "안 함"으로</b> 설정해 두세요.</p>
   </section>
 
   <!-- 플레이어 -->
@@ -509,15 +549,22 @@ const GRAMMARS = [
    3) 상태 & DOM
    ========================================================================= */
 const synth = window.speechSynthesis;
-const STORAGE_KEY = "jp-tts-settings-v1";
-const STEP_GAP = 250;     // 단어→뜻→문장 사이 짧은 간격(ms)
-const ITEM_GAP = 1200;    // 항목 간 1.2초 간격(ms)
+const STORAGE_KEY = "jp-tts-settings-v2";
+// 학습용 리듬: 단어→뜻, 뜻→문장, 문장→번역(생각할 시간) 사이 간격(ms)
+const STEP_GAPS = [550, 750, 1100];
+function itemGap(){ return Math.round(parseFloat(els.gap.value) * 1000); } // 항목 간 간격
+function repCount(){ const r=document.querySelector('input[name="rep"]:checked'); return r?parseInt(r.value,10):1; }
 
 const els = {
   grid: document.getElementById("grammarGrid"),
   catChips: document.getElementById("catChips"),
   rate: document.getElementById("rate"),
   rateVal: document.getElementById("rateVal"),
+  gap: document.getElementById("gap"),
+  gapVal: document.getElementById("gapVal"),
+  jaVoiceSel: document.getElementById("jaVoiceSel"),
+  koVoiceSel: document.getElementById("koVoiceSel"),
+  bgMode: document.getElementById("bgMode"),
   repeat: document.getElementById("repeat"),
   shuffle: document.getElementById("shuffle"),
   warn: document.getElementById("ttsWarn"),
@@ -542,27 +589,53 @@ const els = {
 let playlist = [];
 let idx = 0;          // 현재 항목 인덱스
 let step = 0;         // 0~3 (단어/뜻/문장/문장뜻)
+let repPass = 0;      // 현재 항목 반복 회차
 let state = "stopped";// stopped | playing | paused
 let timer = null;     // pause/step 타이머
 let jaVoice = null, koVoice = null;
+let savedJaURI = null, savedKoURI = null;
 let wakeLock = null;
+let keepAlive = null;        // speechSynthesis 정지 방지 인터벌
+let audioCtx = null, silentOsc = null; // 백그라운드 유지용 무음 오디오
 
 /* =========================================================================
    4) 음성 선택
    ========================================================================= */
-function pickVoice(voices, lang, prefs){
-  const langHit = voices.filter(v => v.lang && v.lang.toLowerCase().startsWith(lang));
+// 선호 키워드(google > microsoft > ...) 순으로 가장 자연스러운 음성 추천
+function pickPref(list, prefs){
   for(const p of prefs){
-    const m = langHit.find(v => v.name.toLowerCase().includes(p));
+    const m = list.find(v => v.name.toLowerCase().includes(p));
     if(m) return m;
   }
-  return langHit[0] || null;
+  return list[0] || null;
+}
+// 드롭다운 채우기 (사용자가 직접 고른 선택은 보존)
+function fillSel(sel, list, savedURI, prefs){
+  if(!list.length){ sel.innerHTML = '<option value="">(설치된 음성 없음)</option>'; sel.dataset.sig = ""; return; }
+  const sig = list.map(v=>v.voiceURI).join("|");
+  if(sel.dataset.sig !== sig){ // 목록이 바뀐 경우에만 옵션 다시 그림
+    sel.dataset.sig = sig;
+    sel.innerHTML = "";
+    list.forEach(v=>{
+      const o = document.createElement("option");
+      o.value = v.voiceURI;
+      o.textContent = v.name + " · " + v.lang + (v.localService ? "" : " ☁");
+      sel.appendChild(o);
+    });
+  }
+  // 저장된 선택(없으면 추천 음성)을 항상 반영
+  const want = (savedURI && list.some(v=>v.voiceURI===savedURI)) ? savedURI : (pickPref(list, prefs)||list[0]).voiceURI;
+  sel.value = want;
 }
 function loadVoices(){
   const voices = synth.getVoices();
   if(!voices.length) return;
-  jaVoice = pickVoice(voices, "ja", ["google","microsoft","kyoko","o-ren","ja-jp"]);
-  koVoice = pickVoice(voices, "ko", ["google","microsoft","yuna","ko-kr"]);
+  const ja = voices.filter(v => v.lang && v.lang.toLowerCase().startsWith("ja"));
+  const ko = voices.filter(v => v.lang && v.lang.toLowerCase().startsWith("ko"));
+  fillSel(els.jaVoiceSel, ja, savedJaURI, ["google","microsoft","kyoko","o-ren","ja-jp"]);
+  fillSel(els.koVoiceSel, ko, savedKoURI, ["google","microsoft","yuna","sora","ko-kr"]);
+  jaVoice = ja.find(v=>v.voiceURI===els.jaVoiceSel.value) || ja[0] || null;
+  koVoice = ko.find(v=>v.voiceURI===els.koVoiceSel.value) || ko[0] || null;
   if(!jaVoice){
     els.warn.classList.add("show");
     els.warn.innerHTML = "⚠️ 이 기기/브라우저에 <b>일본어 음성</b>이 없습니다. Chrome 또는 Edge를 사용하거나 OS에 일본어 TTS 음성을 추가해 주세요.";
@@ -609,6 +682,11 @@ function saveSettings(){
     grammars: getSelectedGrammars(),
     cats: getSelectedCats(),
     rate: parseFloat(els.rate.value),
+    gap: parseFloat(els.gap.value),
+    rep: repCount(),
+    jaURI: savedJaURI,
+    koURI: savedKoURI,
+    bgMode: els.bgMode.checked,
     repeat: els.repeat.checked,
     shuffle: els.shuffle.checked,
   };
@@ -625,7 +703,15 @@ function loadSettings(){
   els.catChips.querySelectorAll("input").forEach(i=>{
     i.checked = data.cats ? data.cats.includes(i.value) : true;
   });
-  if(typeof data.rate === "number"){ els.rate.value = data.rate; }
+  if(typeof data.rate === "number") els.rate.value = data.rate;
+  if(typeof data.gap === "number") els.gap.value = data.gap;
+  if(data.rep){
+    const r = document.querySelector('input[name="rep"][value="'+data.rep+'"]');
+    if(r) r.checked = true;
+  }
+  savedJaURI = data.jaURI || null;
+  savedKoURI = data.koURI || null;
+  els.bgMode.checked = !!data.bgMode;
   els.repeat.checked = !!data.repeat;
   els.shuffle.checked = !!data.shuffle;
 }
@@ -713,14 +799,20 @@ async function playStep(){
   if(state !== "playing") return; // 도중 일시정지/정지
 
   if(step < 3){
+    const g = STEP_GAPS[step] || 600;
     step++;
-    timer = setTimeout(playStep, STEP_GAP);
+    timer = setTimeout(playStep, g);
+  } else if(repPass < repCount() - 1){
+    // 같은 항목 반복(N회)
+    repPass++; step = 0;
+    timer = setTimeout(playStep, itemGap());
   } else {
     // 항목 완료 → 다음 항목
+    repPass = 0;
     if(idx < playlist.length - 1){
       idx++; step = 0;
       els.barFill.style.width = (idx / playlist.length * 100) + "%";
-      timer = setTimeout(playStep, ITEM_GAP);
+      timer = setTimeout(playStep, itemGap());
     } else {
       finishAll();
     }
@@ -730,9 +822,9 @@ async function playStep(){
 function finishAll(){
   els.barFill.style.width = "100%";
   if(els.repeat.checked && playlist.length){
-    idx = 0; step = 0;
+    idx = 0; step = 0; repPass = 0;
     if(els.shuffle.checked) playlist = shuffleArr(playlist);
-    timer = setTimeout(playStep, ITEM_GAP);
+    timer = setTimeout(playStep, itemGap());
     return;
   }
   stopPlayback();
@@ -755,6 +847,35 @@ function releaseWake(){
   if(wakeLock){ try{ wakeLock.release(); }catch(e){} wakeLock = null; }
 }
 
+// 일부 브라우저는 ~15초 후 음성 합성을 멈춤 → 주기적으로 resume() 호출
+function startKeepAlive(){
+  stopKeepAlive();
+  keepAlive = setInterval(()=>{ if(state==="playing"){ try{ synth.resume(); }catch(e){} } }, 4000);
+}
+function stopKeepAlive(){ if(keepAlive){ clearInterval(keepAlive); keepAlive = null; } }
+
+// 백그라운드 정지를 최대한 늦추는 무음 오디오 (안드로이드에서 특히 효과)
+function startBgAudio(){
+  if(!els.bgMode.checked) return;
+  try{
+    if(!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if(audioCtx.state === "suspended") audioCtx.resume();
+    if(!silentOsc){
+      const osc = audioCtx.createOscillator();
+      const g = audioCtx.createGain();
+      g.gain.value = 0.0008; // 거의 들리지 않는 수준
+      osc.frequency.value = 30;
+      osc.connect(g).connect(audioCtx.destination);
+      osc.start();
+      silentOsc = osc;
+    }
+  }catch(e){ /* 무시 */ }
+}
+function stopBgAudio(){
+  try{ if(silentOsc){ silentOsc.stop(); silentOsc = null; } }catch(e){ silentOsc = null; }
+  try{ if(audioCtx){ audioCtx.suspend(); } }catch(e){}
+}
+
 function startPlayback(){
   if(state === "playing") return;
 
@@ -762,8 +883,8 @@ function startPlayback(){
     // 재개
     state = "playing";
     setControls();
+    requestWake(); startKeepAlive(); startBgAudio();
     timer = setTimeout(playStep, 150);
-    requestWake();
     return;
   }
 
@@ -777,12 +898,12 @@ function startPlayback(){
     alert("일본어 음성을 찾을 수 없습니다. Chrome/Edge 사용 또는 OS 일본어 음성 설치 후 다시 시도해 주세요.");
     return;
   }
-  idx = 0; step = 0; state = "playing";
+  idx = 0; step = 0; repPass = 0; state = "playing";
   els.idle.style.display = "none";
   els.stage.style.display = "block";
   setControls();
   synth.cancel();
-  requestWake();
+  requestWake(); startKeepAlive(); startBgAudio();
   timer = setTimeout(playStep, 200);
 }
 
@@ -792,13 +913,14 @@ function pausePlayback(){
   clearTimer();
   synth.cancel();           // 안정성을 위해 cancel 사용(재개 시 현재 step부터)
   setControls();
-  releaseWake();
+  releaseWake(); stopKeepAlive(); stopBgAudio();
 }
 
 function nextItem(){
   if(state === "stopped" || !playlist.length) return;
   clearTimer();
   synth.cancel();
+  repPass = 0;
   if(idx < playlist.length - 1){
     idx++; step = 0;
     renderCurrent();
@@ -811,7 +933,7 @@ function nextItem(){
 function resetToStart(){
   clearTimer();
   synth.cancel();
-  idx = 0; step = 0;
+  idx = 0; step = 0; repPass = 0;
   if(playlist.length){
     renderCurrent();
     els.barFill.style.width = "0%";
@@ -826,7 +948,7 @@ function stopPlayback(){
   clearTimer();
   synth.cancel();
   setControls();
-  releaseWake();
+  releaseWake(); stopKeepAlive(); stopBgAudio();
   highlight(-1);
 }
 
@@ -853,6 +975,26 @@ els.rate.addEventListener("input", ()=>{
   els.rateVal.textContent = parseFloat(els.rate.value).toFixed(2) + "x";
   saveSettings();
 });
+els.gap.addEventListener("input", ()=>{
+  els.gapVal.textContent = parseFloat(els.gap.value).toFixed(1) + "초";
+  saveSettings();
+});
+document.getElementById("repChips").addEventListener("change", saveSettings);
+
+els.jaVoiceSel.addEventListener("change", ()=>{
+  const v = synth.getVoices().find(x=>x.voiceURI===els.jaVoiceSel.value);
+  if(v){ jaVoice = v; savedJaURI = v.voiceURI; }
+  saveSettings();
+});
+els.koVoiceSel.addEventListener("change", ()=>{
+  const v = synth.getVoices().find(x=>x.voiceURI===els.koVoiceSel.value);
+  if(v){ koVoice = v; savedKoURI = v.voiceURI; }
+  saveSettings();
+});
+els.bgMode.addEventListener("change", ()=>{
+  saveSettings();
+  if(state === "playing"){ if(els.bgMode.checked) startBgAudio(); else stopBgAudio(); }
+});
 
 // 설정 변경 시: 저장 + 풀 개수 갱신. 재생 중이면 멈춤(설정 충돌 방지)
 function onSettingsChange(){
@@ -871,16 +1013,22 @@ els.shuffle.addEventListener("change", ()=>{ saveSettings(); updatePoolCount(); 
 
 // 페이지 떠날 때 음성 정리
 window.addEventListener("beforeunload", ()=>synth.cancel());
-// 탭이 다시 보이면 wakeLock 재요청
+// 탭이 다시 보이면 wakeLock 재요청 + 음성/오디오 이어가기
 document.addEventListener("visibilitychange", ()=>{
-  if(document.visibilityState === "visible" && state === "playing") requestWake();
+  if(document.visibilityState === "visible" && state === "playing"){
+    requestWake();
+    try{ synth.resume(); }catch(e){}
+    if(audioCtx && audioCtx.state === "suspended") audioCtx.resume();
+  }
 });
 
 /* =========================================================================
    11) 초기화
    ========================================================================= */
 loadSettings();
+loadVoices(); // 저장된 음성 선택을 드롭다운에 반영
 els.rateVal.textContent = parseFloat(els.rate.value).toFixed(2) + "x";
+els.gapVal.textContent = parseFloat(els.gap.value).toFixed(1) + "초";
 updatePoolCount();
 setControls();
 </script>
