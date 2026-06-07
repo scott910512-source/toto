@@ -1,0 +1,888 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>日本語 文法 リスニング — 일본어 문법 듣기 학습</title>
+<style>
+  :root{
+    --sumi:#14110f;        /* 먹색 배경 */
+    --sumi-2:#1c1815;
+    --sumi-3:#252019;
+    --line:#3a3229;
+    --aka:#c1272d;         /* 적색 포인트 */
+    --aka-2:#e0454b;
+    --kin:#d8b46a;         /* 금색 보조 */
+    --txt:#ece6da;
+    --txt-dim:#9c9183;
+    --ok:#6fae5e;
+    --radius:14px;
+    --shadow:0 6px 24px rgba(0,0,0,.45);
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:
+      radial-gradient(1200px 600px at 50% -10%, #2a201c 0%, transparent 60%),
+      var(--sumi);
+    color:var(--txt);
+    font-family:"Hiragino Kaku Gothic ProN","Yu Gothic","Noto Sans JP","Apple SD Gothic Neo","Malgun Gothic",system-ui,sans-serif;
+    line-height:1.6;
+    min-height:100vh;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:760px;margin:0 auto;padding:18px 16px 60px;}
+
+  header.top{text-align:center;padding:14px 0 6px;}
+  header.top h1{
+    margin:0;font-size:26px;letter-spacing:2px;font-weight:800;
+  }
+  header.top h1 .aka{color:var(--aka-2);}
+  header.top p{margin:6px 0 0;color:var(--txt-dim);font-size:13px;}
+
+  .warn{
+    display:none;margin:12px 0;padding:10px 14px;border-radius:10px;
+    background:#3a1c1c;border:1px solid var(--aka);color:#ffd9d9;font-size:13px;
+  }
+  .warn.show{display:block;}
+
+  .card{
+    background:linear-gradient(180deg,var(--sumi-2),var(--sumi));
+    border:1px solid var(--line);
+    border-radius:var(--radius);
+    padding:16px;margin:14px 0;box-shadow:var(--shadow);
+  }
+  .card h2{
+    margin:0 0 12px;font-size:15px;color:var(--kin);
+    letter-spacing:1px;display:flex;align-items:center;gap:8px;
+  }
+  .card h2 small{color:var(--txt-dim);font-weight:400;letter-spacing:0;font-size:12px;}
+
+  /* 그리드 - 문법 카드 */
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;}
+  .gcard{
+    position:relative;display:block;cursor:pointer;
+    background:var(--sumi-3);border:1.5px solid var(--line);
+    border-radius:12px;padding:12px 12px 12px 12px;transition:.15s;
+    user-select:none;
+  }
+  .gcard:hover{border-color:#564a3c;}
+  .gcard input{position:absolute;opacity:0;pointer-events:none;}
+  .gcard .gtitle{font-weight:700;font-size:14px;margin-bottom:2px;}
+  .gcard .gdesc{font-size:11.5px;color:var(--txt-dim);}
+  .gcard .gcount{font-size:10.5px;color:#6f6557;margin-top:4px;}
+  .gcard input:checked ~ .gtick{opacity:1;transform:scale(1);}
+  .gtick{
+    position:absolute;top:8px;right:8px;width:20px;height:20px;border-radius:50%;
+    background:var(--aka);color:#fff;font-size:12px;display:flex;align-items:center;
+    justify-content:center;opacity:0;transform:scale(.4);transition:.15s;
+  }
+  .gcard:has(input:checked){
+    border-color:var(--aka);
+    background:linear-gradient(180deg,#2a1a1a,var(--sumi-3));
+    box-shadow:0 0 0 1px var(--aka) inset;
+  }
+
+  /* 칩 (카테고리) */
+  .chips{display:flex;flex-wrap:wrap;gap:8px;}
+  .chip{
+    cursor:pointer;user-select:none;border:1.5px solid var(--line);
+    background:var(--sumi-3);color:var(--txt-dim);border-radius:999px;
+    padding:7px 16px;font-size:13px;font-weight:600;transition:.15s;
+  }
+  .chip input{display:none;}
+  .chip:has(input:checked){
+    background:var(--aka);border-color:var(--aka);color:#fff;
+  }
+
+  /* 설정 행 */
+  .row{display:flex;align-items:center;gap:12px;flex-wrap:wrap;}
+  .row + .row{margin-top:14px;}
+  .row label.lbl{font-size:13px;color:var(--txt-dim);min-width:74px;}
+  input[type=range]{
+    -webkit-appearance:none;appearance:none;height:6px;border-radius:3px;
+    background:linear-gradient(90deg,var(--aka),var(--kin));flex:1;min-width:140px;
+  }
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none;width:22px;height:22px;border-radius:50%;
+    background:#fff;border:3px solid var(--aka);cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,.5);
+  }
+  input[type=range]::-moz-range-thumb{
+    width:18px;height:18px;border-radius:50%;background:#fff;border:3px solid var(--aka);cursor:pointer;
+  }
+  .rate-val{font-variant-numeric:tabular-nums;font-weight:700;color:var(--kin);min-width:44px;text-align:right;}
+
+  /* 토글 스위치 */
+  .switch{display:inline-flex;align-items:center;gap:10px;cursor:pointer;user-select:none;font-size:13px;}
+  .switch input{display:none;}
+  .track{width:46px;height:26px;border-radius:999px;background:var(--sumi-3);border:1px solid var(--line);position:relative;transition:.2s;}
+  .track::after{content:"";position:absolute;top:2px;left:2px;width:20px;height:20px;border-radius:50%;background:var(--txt-dim);transition:.2s;}
+  .switch input:checked + .track{background:var(--aka);border-color:var(--aka);}
+  .switch input:checked + .track::after{transform:translateX(20px);background:#fff;}
+
+  /* 플레이어 */
+  .player{text-align:center;padding:26px 16px;min-height:300px;display:flex;flex-direction:column;justify-content:center;}
+  .player .badge{
+    display:inline-block;font-size:12px;color:var(--kin);border:1px solid var(--kin);
+    border-radius:999px;padding:3px 12px;margin:0 auto 10px;letter-spacing:.5px;opacity:.85;
+  }
+  .progress{font-size:12px;color:var(--txt-dim);margin-bottom:14px;font-variant-numeric:tabular-nums;}
+  .bar{height:5px;background:var(--sumi-3);border-radius:3px;overflow:hidden;margin:0 auto 22px;max-width:420px;}
+  .bar > i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--aka),var(--kin));transition:width .3s;}
+
+  .steps{display:flex;flex-direction:column;gap:10px;max-width:520px;margin:0 auto;}
+  .step{
+    padding:12px 14px;border-radius:12px;background:var(--sumi-3);
+    border:1px solid transparent;transition:.2s;text-align:center;opacity:.5;
+  }
+  .step .tag{font-size:11px;color:var(--txt-dim);letter-spacing:.5px;display:block;margin-bottom:3px;}
+  .step .jp{font-size:24px;font-weight:700;}
+  .step .ko{font-size:18px;color:#cfe6c4;}
+  .step.s-jp .jp{font-size:30px;}
+  .step.active{
+    opacity:1;border-color:var(--aka);
+    background:linear-gradient(180deg,#2a1a1a,var(--sumi-3));
+    box-shadow:0 0 0 1px var(--aka) inset, 0 0 22px rgba(193,39,45,.25);
+    transform:scale(1.02);
+  }
+  .player .idle{color:var(--txt-dim);font-size:15px;}
+  .player .idle b{color:var(--kin);}
+
+  /* 컨트롤 */
+  .controls{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:18px;}
+  .btn{
+    cursor:pointer;border:none;border-radius:12px;padding:14px 6px;font-size:14px;font-weight:700;
+    color:var(--txt);background:var(--sumi-3);border:1px solid var(--line);transition:.15s;
+    display:flex;flex-direction:column;align-items:center;gap:3px;
+  }
+  .btn .ic{font-size:18px;}
+  .btn:hover{border-color:#564a3c;}
+  .btn:active{transform:scale(.96);}
+  .btn.primary{background:var(--aka);border-color:var(--aka);color:#fff;}
+  .btn.primary:hover{background:var(--aka-2);}
+  .btn:disabled{opacity:.4;cursor:not-allowed;}
+
+  footer{text-align:center;color:#5f564a;font-size:11.5px;margin-top:26px;}
+
+  @media (max-width:480px){
+    header.top h1{font-size:21px;}
+    .step .jp{font-size:21px;}
+    .step.s-jp .jp{font-size:26px;}
+    .controls{gap:7px;}
+    .btn{padding:12px 4px;font-size:12.5px;}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <h1>日本語 <span class="aka">文法</span> リスニング</h1>
+    <p>듣기로 익히는 일본어 문법 · 단어 → 뜻 → 문장 → 뜻 순으로 자동 재생</p>
+  </header>
+
+  <div id="ttsWarn" class="warn"></div>
+
+  <!-- 문법 선택 -->
+  <section class="card">
+    <h2>🎛️ 문법 선택 <small>여러 개 선택 가능</small></h2>
+    <div id="grammarGrid" class="grid"></div>
+  </section>
+
+  <!-- 단어 카테고리 -->
+  <section class="card">
+    <h2>🗂️ 단어 카테고리</h2>
+    <div class="chips" id="catChips">
+      <label class="chip"><input type="checkbox" value="verb" checked>동사</label>
+      <label class="chip"><input type="checkbox" value="adj" checked>형용사</label>
+      <label class="chip"><input type="checkbox" value="noun" checked>명사</label>
+    </div>
+  </section>
+
+  <!-- 재생 설정 -->
+  <section class="card">
+    <h2>🔊 재생 설정</h2>
+    <div class="row">
+      <label class="lbl">재생 속도</label>
+      <input type="range" id="rate" min="0.7" max="1.2" step="0.05" value="1">
+      <span class="rate-val" id="rateVal">1.00x</span>
+    </div>
+    <div class="row">
+      <label class="switch">
+        <input type="checkbox" id="repeat"><span class="track"></span>
+        <span>전체 반복 재생</span>
+      </label>
+      <label class="switch">
+        <input type="checkbox" id="shuffle"><span class="track"></span>
+        <span>순서 섞기</span>
+      </label>
+    </div>
+  </section>
+
+  <!-- 플레이어 -->
+  <section class="card">
+    <div class="player" id="player">
+      <div class="idle" id="idle">
+        문법과 카테고리를 고른 뒤 <b>재생 시작</b>을 누르세요.<br>
+        총 <b id="poolCount">0</b>개의 학습 문장이 준비됩니다.
+      </div>
+      <div id="stage" style="display:none">
+        <span class="badge" id="badge"></span>
+        <div class="progress" id="progress">0 / 0</div>
+        <div class="bar"><i id="barFill"></i></div>
+        <div class="steps">
+          <div class="step s-jp" data-step="0"><span class="tag">単語 · 단어</span><div class="jp" id="s0jp"></div></div>
+          <div class="step" data-step="1"><span class="tag">意味 · 뜻</span><div class="ko" id="s1ko"></div></div>
+          <div class="step" data-step="2"><span class="tag">例文 · 문장</span><div class="jp" id="s2jp"></div></div>
+          <div class="step" data-step="3"><span class="tag">訳 · 문장 뜻</span><div class="ko" id="s3ko"></div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="controls">
+      <button class="btn primary" id="btnPlay"><span class="ic">▶</span><span class="lab">재생 시작</span></button>
+      <button class="btn" id="btnPause" disabled><span class="ic">⏸</span>일시정지</button>
+      <button class="btn" id="btnNext" disabled><span class="ic">⏭</span>다음</button>
+      <button class="btn" id="btnReset" disabled><span class="ic">⏮</span>처음으로</button>
+    </div>
+  </section>
+
+  <footer>
+    Web Speech API · 외부 라이브러리 없음 · 설정은 이 브라우저에 자동 저장됩니다.<br>
+    음성이 나오지 않으면 기기에 일본어/한국어 TTS 음성이 설치되어 있는지 확인하세요.
+  </footer>
+</div>
+
+<script>
+"use strict";
+/* =========================================================================
+   1) 데이터 — 단어 카테고리 분류 (자동 cat 판별용)
+   ========================================================================= */
+const VERBS = new Set("たべる のむ みる きく はなす かく よむ あるく はしる おきる ねる かう つかう おしえる おぼえる わかる できる いく くる かえる あう まつ とる みせる もらう あげる かりる かす でかける やすむ そうじする りょうりする べんきょうする れんしゅうする".split(" "));
+const ADJS  = new Set("たのしい おもしろい むずかしい やさしい おいしい まずい あたらしい ふるい おおきい ちいさい たかい やすい いそがしい ひまだ げんきだ しずかだ にぎやかだ きれいだ べんりだ たいせつだ".split(" "));
+const NOUNS = new Set("がっこう かいしゃ えき みせ レストラン としょかん びょういん こうえん うち へや ともだち かぞく せんせい がくせい しごと べんきょう りょこう かいもの たべもの のみもの くすり てがみ にもつ".split(" "));
+function catOf(w){ if(ADJS.has(w))return"adj"; if(NOUNS.has(w))return"noun"; return"verb"; }
+
+/* =========================================================================
+   2) 문법별 예문 데이터 (각 문법 20문장 이상 하드코딩)
+      각 항목: { w:단어, wko:단어뜻, jp:예문, ko:예문뜻 }
+   ========================================================================= */
+const GRAMMARS = [
+  { id:"past", title:"과거형", desc:"~た / ~ました", ex:[
+    {w:"たべる",wko:"먹다",jp:"きのうすしをたべました。",ko:"어제 스시를 먹었습니다."},
+    {w:"のむ",wko:"마시다",jp:"あさコーヒーをのみました。",ko:"아침에 커피를 마셨습니다."},
+    {w:"みる",wko:"보다",jp:"えいがをみました。",ko:"영화를 봤습니다."},
+    {w:"きく",wko:"듣다",jp:"すきなおんがくをききました。",ko:"좋아하는 음악을 들었습니다."},
+    {w:"はなす",wko:"말하다",jp:"ともだちとたくさんはなしました。",ko:"친구와 많이 이야기했습니다."},
+    {w:"かく",wko:"쓰다",jp:"せんせいにてがみをかきました。",ko:"선생님에게 편지를 썼습니다."},
+    {w:"よむ",wko:"읽다",jp:"きのうほんをよみました。",ko:"어제 책을 읽었습니다."},
+    {w:"あるく",wko:"걷다",jp:"こうえんをあるきました。",ko:"공원을 걸었습니다."},
+    {w:"はしる",wko:"달리다",jp:"あさはやくはしりました。",ko:"아침 일찍 달렸습니다."},
+    {w:"おきる",wko:"일어나다",jp:"きょうはろくじにおきました。",ko:"오늘은 6시에 일어났습니다."},
+    {w:"ねる",wko:"자다",jp:"きのうははやくねました。",ko:"어제는 일찍 잤습니다."},
+    {w:"かう",wko:"사다",jp:"あたらしいくつをかいました。",ko:"새 신발을 샀습니다."},
+    {w:"つかう",wko:"사용하다",jp:"あたらしいパソコンをつかいました。",ko:"새 컴퓨터를 사용했습니다."},
+    {w:"おしえる",wko:"가르치다",jp:"がくせいににほんごをおしえました。",ko:"학생에게 일본어를 가르쳤습니다."},
+    {w:"おぼえる",wko:"기억하다",jp:"あたらしいたんごをおぼえました。",ko:"새 단어를 외웠습니다."},
+    {w:"いく",wko:"가다",jp:"ともだちとがっこうへいきました。",ko:"친구와 학교에 갔습니다."},
+    {w:"くる",wko:"오다",jp:"せんせいがうちにきました。",ko:"선생님이 집에 왔습니다."},
+    {w:"かえる",wko:"돌아가다",jp:"よるおそくうちへかえりました。",ko:"밤 늦게 집에 돌아갔습니다."},
+    {w:"あう",wko:"만나다",jp:"えきでともだちにあいました。",ko:"역에서 친구를 만났습니다."},
+    {w:"まつ",wko:"기다리다",jp:"えきでバスをまちました。",ko:"역에서 버스를 기다렸습니다."},
+    {w:"そうじする",wko:"청소하다",jp:"へやをきれいにそうじしました。",ko:"방을 깨끗하게 청소했습니다."},
+    {w:"べんきょうする",wko:"공부하다",jp:"きのうにほんごをべんきょうしました。",ko:"어제 일본어를 공부했습니다."},
+  ]},
+
+  { id:"prog", title:"진행형", desc:"~ている / ~ています", ex:[
+    {w:"たべる",wko:"먹다",jp:"いまごはんをたべています。",ko:"지금 밥을 먹고 있습니다."},
+    {w:"のむ",wko:"마시다",jp:"おちゃをのんでいます。",ko:"차를 마시고 있습니다."},
+    {w:"みる",wko:"보다",jp:"テレビをみています。",ko:"텔레비전을 보고 있습니다."},
+    {w:"きく",wko:"듣다",jp:"ラジオをきいています。",ko:"라디오를 듣고 있습니다."},
+    {w:"はなす",wko:"말하다",jp:"でんわでともだちとはなしています。",ko:"전화로 친구와 이야기하고 있습니다."},
+    {w:"かく",wko:"쓰다",jp:"いまレポートをかいています。",ko:"지금 리포트를 쓰고 있습니다."},
+    {w:"よむ",wko:"읽다",jp:"しんぶんをよんでいます。",ko:"신문을 읽고 있습니다."},
+    {w:"あるく",wko:"걷다",jp:"えきまであるいています。",ko:"역까지 걷고 있습니다."},
+    {w:"はしる",wko:"달리다",jp:"こうえんではしっています。",ko:"공원에서 달리고 있습니다."},
+    {w:"ねる",wko:"자다",jp:"あかちゃんがねています。",ko:"아기가 자고 있습니다."},
+    {w:"つかう",wko:"사용하다",jp:"いまスマホをつかっています。",ko:"지금 스마트폰을 사용하고 있습니다."},
+    {w:"おしえる",wko:"가르치다",jp:"せんせいがすうがくをおしえています。",ko:"선생님이 수학을 가르치고 있습니다."},
+    {w:"べんきょうする",wko:"공부하다",jp:"としょかんでべんきょうしています。",ko:"도서관에서 공부하고 있습니다."},
+    {w:"れんしゅうする",wko:"연습하다",jp:"ピアノをれんしゅうしています。",ko:"피아노를 연습하고 있습니다."},
+    {w:"まつ",wko:"기다리다",jp:"えきでバスをまっています。",ko:"역에서 버스를 기다리고 있습니다."},
+    {w:"りょうりする",wko:"요리하다",jp:"いまばんごはんをりょうりしています。",ko:"지금 저녁을 요리하고 있습니다."},
+    {w:"そうじする",wko:"청소하다",jp:"へやをそうじしています。",ko:"방을 청소하고 있습니다."},
+    {w:"わかる",wko:"알다",jp:"このことばのいみがわかっています。",ko:"이 단어의 의미를 알고 있습니다."},
+    {w:"やすむ",wko:"쉬다",jp:"かぜできょうはやすんでいます。",ko:"감기로 오늘은 쉬고 있습니다."},
+    {w:"かう",wko:"사다",jp:"デパートでふくをかっています。",ko:"백화점에서 옷을 사고 있습니다."},
+    {w:"みせる",wko:"보여주다",jp:"しゃしんをみんなにみせています。",ko:"사진을 모두에게 보여주고 있습니다."},
+  ]},
+
+  { id:"te", title:"て形", desc:"~て (의뢰·연결)", ex:[
+    {w:"たべる",wko:"먹다",jp:"やさいをたくさんたべてください。",ko:"채소를 많이 드세요."},
+    {w:"のむ",wko:"마시다",jp:"みずをのんでください。",ko:"물을 마시세요."},
+    {w:"みる",wko:"보다",jp:"こっちをみてください。",ko:"이쪽을 봐 주세요."},
+    {w:"きく",wko:"듣다",jp:"はなしをよくきいてください。",ko:"이야기를 잘 들어 주세요."},
+    {w:"はなす",wko:"말하다",jp:"もうすこしゆっくりはなしてください。",ko:"조금 더 천천히 말해 주세요."},
+    {w:"かく",wko:"쓰다",jp:"ここになまえをかいてください。",ko:"여기에 이름을 써 주세요."},
+    {w:"よむ",wko:"읽다",jp:"このほんをよんでください。",ko:"이 책을 읽어 주세요."},
+    {w:"あるく",wko:"걷다",jp:"きをつけてあるいてください。",ko:"조심해서 걸어 주세요."},
+    {w:"まつ",wko:"기다리다",jp:"ちょっとまってください。",ko:"잠깐 기다려 주세요."},
+    {w:"かう",wko:"사다",jp:"パンをかってきてください。",ko:"빵을 사 와 주세요."},
+    {w:"つかう",wko:"사용하다",jp:"このペンをつかってください。",ko:"이 펜을 사용해 주세요."},
+    {w:"おしえる",wko:"가르치다",jp:"でんわばんごうをおしえてください。",ko:"전화번호를 가르쳐 주세요."},
+    {w:"くる",wko:"오다",jp:"あしたはやくきてください。",ko:"내일 빨리 와 주세요."},
+    {w:"いく",wko:"가다",jp:"つぎのかどをみぎへいってください。",ko:"다음 모퉁이를 오른쪽으로 가 주세요."},
+    {w:"かえる",wko:"돌아가다",jp:"きをつけてかえってください。",ko:"조심해서 돌아가세요."},
+    {w:"やすむ",wko:"쉬다",jp:"きょうはゆっくりやすんでください。",ko:"오늘은 푹 쉬세요."},
+    {w:"みせる",wko:"보여주다",jp:"きっぷをみせてください。",ko:"표를 보여 주세요."},
+    {w:"かす",wko:"빌려주다",jp:"ノートをかしてください。",ko:"노트를 빌려 주세요."},
+    {w:"そうじする",wko:"청소하다",jp:"へやをそうじしてください。",ko:"방을 청소해 주세요."},
+    {w:"おきる",wko:"일어나다",jp:"あしたははやくおきてください。",ko:"내일은 일찍 일어나 주세요."},
+    {w:"おぼえる",wko:"기억하다",jp:"このたんごをおぼえてください。",ko:"이 단어를 외워 주세요."},
+  ]},
+
+  { id:"nakereba", title:"なければならない", desc:"~해야 한다", ex:[
+    {w:"べんきょうする",wko:"공부하다",jp:"まいにちべんきょうしなければなりません。",ko:"매일 공부해야 합니다."},
+    {w:"いく",wko:"가다",jp:"あしたびょういんへいかなければなりません。",ko:"내일 병원에 가야 합니다."},
+    {w:"のむ",wko:"마시다",jp:"くすりをのまなければなりません。",ko:"약을 먹어야 합니다."},
+    {w:"かく",wko:"쓰다",jp:"レポートをかかなければなりません。",ko:"리포트를 써야 합니다."},
+    {w:"よむ",wko:"읽다",jp:"このほんをよまなければなりません。",ko:"이 책을 읽어야 합니다."},
+    {w:"おきる",wko:"일어나다",jp:"あさはやくおきなければなりません。",ko:"아침 일찍 일어나야 합니다."},
+    {w:"ねる",wko:"자다",jp:"こんやははやくねなければなりません。",ko:"오늘 밤은 일찍 자야 합니다."},
+    {w:"かえる",wko:"돌아가다",jp:"もううちへかえらなければなりません。",ko:"이제 집에 돌아가야 합니다."},
+    {w:"まつ",wko:"기다리다",jp:"ここでまたなければなりません。",ko:"여기서 기다려야 합니다."},
+    {w:"はなす",wko:"말하다",jp:"にほんごではなさなければなりません。",ko:"일본어로 말해야 합니다."},
+    {w:"そうじする",wko:"청소하다",jp:"へやをそうじしなければなりません。",ko:"방을 청소해야 합니다."},
+    {w:"りょうりする",wko:"요리하다",jp:"ばんごはんをりょうりしなければなりません。",ko:"저녁을 요리해야 합니다."},
+    {w:"おぼえる",wko:"기억하다",jp:"たんごをぜんぶおぼえなければなりません。",ko:"단어를 전부 외워야 합니다."},
+    {w:"かう",wko:"사다",jp:"きっぷをかわなければなりません。",ko:"표를 사야 합니다."},
+    {w:"れんしゅうする",wko:"연습하다",jp:"もっとれんしゅうしなければなりません。",ko:"더 연습해야 합니다."},
+    {w:"あう",wko:"만나다",jp:"あしたせんせいにあわなければなりません。",ko:"내일 선생님을 만나야 합니다."},
+    {w:"あるく",wko:"걷다",jp:"えきまであるかなければなりません。",ko:"역까지 걸어야 합니다."},
+    {w:"つかう",wko:"사용하다",jp:"にほんごのじしょをつかわなければなりません。",ko:"일본어 사전을 사용해야 합니다."},
+    {w:"やすむ",wko:"쉬다",jp:"すこしやすまなければなりません。",ko:"조금 쉬어야 합니다."},
+    {w:"たべる",wko:"먹다",jp:"やさいもたべなければなりません。",ko:"채소도 먹어야 합니다."},
+    {w:"かす",wko:"빌려주다",jp:"ともだちにおかねをかさなければなりません。",ko:"친구에게 돈을 빌려줘야 합니다."},
+  ]},
+
+  { id:"tari", title:"たり〜たりする", desc:"하거나 하거나", ex:[
+    {w:"たべる",wko:"먹다",jp:"たべたりのんだりしました。",ko:"먹거나 마시거나 했습니다."},
+    {w:"みる",wko:"보다",jp:"テレビをみたりほんをよんだりします。",ko:"텔레비전을 보거나 책을 읽거나 합니다."},
+    {w:"あるく",wko:"걷다",jp:"あるいたりはしったりします。",ko:"걷거나 달리거나 합니다."},
+    {w:"かく",wko:"쓰다",jp:"てがみをかいたりえをかいたりします。",ko:"편지를 쓰거나 그림을 그리거나 합니다."},
+    {w:"きく",wko:"듣다",jp:"おんがくをきいたりうたをうたったりします。",ko:"음악을 듣거나 노래를 부르거나 합니다."},
+    {w:"かう",wko:"사다",jp:"ふくをかったりごはんをたべたりしました。",ko:"옷을 사거나 밥을 먹거나 했습니다."},
+    {w:"そうじする",wko:"청소하다",jp:"そうじしたりせんたくしたりします。",ko:"청소하거나 빨래하거나 합니다."},
+    {w:"はなす",wko:"말하다",jp:"わらったりはなしたりしました。",ko:"웃거나 이야기하거나 했습니다."},
+    {w:"ねる",wko:"자다",jp:"ねたりおきたりしています。",ko:"자거나 일어나거나 합니다."},
+    {w:"べんきょうする",wko:"공부하다",jp:"べんきょうしたりあそんだりします。",ko:"공부하거나 놀거나 합니다."},
+    {w:"いく",wko:"가다",jp:"こうえんへいったりみせへいったりしました。",ko:"공원에 가거나 가게에 가거나 했습니다."},
+    {w:"りょうりする",wko:"요리하다",jp:"りょうりしたりそうじしたりしました。",ko:"요리하거나 청소하거나 했습니다."},
+    {w:"みせる",wko:"보여주다",jp:"しゃしんをみせたりはなしたりしました。",ko:"사진을 보여주거나 이야기하거나 했습니다."},
+    {w:"やすむ",wko:"쉬다",jp:"やすんだりはたらいたりします。",ko:"쉬거나 일하거나 합니다."},
+    {w:"まつ",wko:"기다리다",jp:"まったりあるいたりしました。",ko:"기다리거나 걷거나 했습니다."},
+    {w:"のむ",wko:"마시다",jp:"コーヒーをのんだりおちゃをのんだりします。",ko:"커피를 마시거나 차를 마시거나 합니다."},
+    {w:"よむ",wko:"읽다",jp:"ほんをよんだりおんがくをきいたりします。",ko:"책을 읽거나 음악을 듣거나 합니다."},
+    {w:"かりる",wko:"빌리다",jp:"ほんをかりたりかえしたりします。",ko:"책을 빌리거나 돌려주거나 합니다."},
+    {w:"れんしゅうする",wko:"연습하다",jp:"うたをれんしゅうしたりおどったりしました。",ko:"노래를 연습하거나 춤추거나 했습니다."},
+    {w:"でかける",wko:"외출하다",jp:"でかけたりうちにいたりします。",ko:"외출하거나 집에 있거나 합니다."},
+  ]},
+
+  { id:"toori", title:"とおり / とおりに", desc:"~대로 하다", ex:[
+    {w:"はなす",wko:"말하다",jp:"せんせいがはなしたとおりにします。",ko:"선생님이 말한 대로 합니다."},
+    {w:"おしえる",wko:"가르치다",jp:"おしえてくれたとおりにつくりました。",ko:"가르쳐 준 대로 만들었습니다."},
+    {w:"かく",wko:"쓰다",jp:"ノートにかいたとおりにいいました。",ko:"노트에 쓴 대로 말했습니다."},
+    {w:"みる",wko:"보다",jp:"みたとおりにせつめいしました。",ko:"본 대로 설명했습니다."},
+    {w:"きく",wko:"듣다",jp:"きいたとおりにかきました。",ko:"들은 대로 썼습니다."},
+    {w:"おぼえる",wko:"기억하다",jp:"おぼえたとおりにこたえました。",ko:"외운 대로 대답했습니다."},
+    {w:"よむ",wko:"읽다",jp:"ほんをよんだとおりにつくりました。",ko:"책을 읽은 대로 만들었습니다."},
+    {w:"つかう",wko:"사용하다",jp:"せつめいしょのとおりにつかいました。",ko:"설명서대로 사용했습니다."},
+    {w:"れんしゅうする",wko:"연습하다",jp:"れんしゅうしたとおりにうたいました。",ko:"연습한 대로 노래했습니다."},
+    {w:"いく",wko:"가다",jp:"ちずのとおりにいきました。",ko:"지도대로 갔습니다."},
+    {w:"かう",wko:"사다",jp:"リストのとおりにかいものをしました。",ko:"리스트대로 쇼핑을 했습니다."},
+    {w:"りょうりする",wko:"요리하다",jp:"レシピのとおりにりょうりしました。",ko:"레시피대로 요리했습니다."},
+    {w:"あるく",wko:"걷다",jp:"やじるしのとおりにあるきました。",ko:"화살표대로 걸었습니다."},
+    {w:"かえる",wko:"돌아가다",jp:"きたみちのとおりにかえりました。",ko:"왔던 길대로 돌아갔습니다."},
+    {w:"みせる",wko:"보여주다",jp:"せんせいがみせたとおりにかきました。",ko:"선생님이 보여준 대로 썼습니다."},
+    {w:"そうじする",wko:"청소하다",jp:"いわれたとおりにそうじしました。",ko:"말한 대로 청소했습니다."},
+    {w:"かく",wko:"쓰다",jp:"こくばんにかいてあるとおりにかきました。",ko:"칠판에 쓰여 있는 대로 썼습니다."},
+    {w:"おしえる",wko:"가르치다",jp:"おしえたとおりにできました。",ko:"가르친 대로 할 수 있었습니다."},
+    {w:"みる",wko:"보다",jp:"ビデオでみたとおりにれんしゅうしました。",ko:"비디오에서 본 대로 연습했습니다."},
+    {w:"きく",wko:"듣다",jp:"せんせいにきいたとおりにこたえました。",ko:"선생님에게 들은 대로 대답했습니다."},
+  ]},
+
+  { id:"node", title:"ので / から", desc:"이유, ~이어서", ex:[
+    {w:"たべる",wko:"먹다",jp:"たくさんたべたのでおなかがいっぱいです。",ko:"많이 먹어서 배가 부릅니다."},
+    {w:"いそがしい",wko:"바쁘다",jp:"きょうはいそがしいのでいけません。",ko:"오늘은 바빠서 갈 수 없습니다."},
+    {w:"たかい",wko:"비싸다",jp:"このみせはたかいのでかいません。",ko:"이 가게는 비싸서 사지 않습니다."},
+    {w:"むずかしい",wko:"어렵다",jp:"テストがむずかしかったのでべんきょうします。",ko:"시험이 어려웠어서 공부합니다."},
+    {w:"おいしい",wko:"맛있다",jp:"このみせはおいしいのでまたきます。",ko:"이 가게는 맛있어서 또 옵니다."},
+    {w:"げんきだ",wko:"건강하다",jp:"いまはげんきなのでだいじょうぶです。",ko:"지금은 건강해서 괜찮습니다."},
+    {w:"しずかだ",wko:"조용하다",jp:"としょかんはしずかなのですきです。",ko:"도서관은 조용해서 좋아합니다."},
+    {w:"べんりだ",wko:"편리하다",jp:"このアプリはべんりなのでつかいます。",ko:"이 앱은 편리해서 사용합니다."},
+    {w:"やすい",wko:"싸다",jp:"やすかったからかいました。",ko:"쌌으니까 샀습니다."},
+    {w:"のむ",wko:"마시다",jp:"くすりをのんだからもうだいじょうぶです。",ko:"약을 먹었으니까 이제 괜찮습니다."},
+    {w:"いく",wko:"가다",jp:"がっこうへいくからはやくおきます。",ko:"학교에 가니까 일찍 일어납니다."},
+    {w:"ひまだ",wko:"한가하다",jp:"きょうはひまなのでえいがをみます。",ko:"오늘은 한가해서 영화를 봅니다."},
+    {w:"にぎやかだ",wko:"활기차다",jp:"このまちはにぎやかなのでたのしいです。",ko:"이 동네는 활기차서 즐겁습니다."},
+    {w:"たのしい",wko:"즐겁다",jp:"たのしかったのでまたいきたいです。",ko:"즐거웠어서 또 가고 싶습니다."},
+    {w:"はしる",wko:"달리다",jp:"たくさんはしったのでつかれました。",ko:"많이 달려서 피곤합니다."},
+    {w:"ともだち",wko:"친구",jp:"ともだちがくるのでそうじします。",ko:"친구가 와서 청소합니다."},
+    {w:"しごと",wko:"일",jp:"しごとがあるのでいけません。",ko:"일이 있어서 갈 수 없습니다."},
+    {w:"やさしい",wko:"친절하다",jp:"せんせいはやさしいのですきです。",ko:"선생님은 친절해서 좋아합니다."},
+    {w:"おもしろい",wko:"재미있다",jp:"このほんはおもしろいのでよみます。",ko:"이 책은 재미있어서 읽습니다."},
+    {w:"べんきょうする",wko:"공부하다",jp:"べんきょうしたのでテストはだいじょうぶです。",ko:"공부했으니까 시험은 괜찮습니다."},
+    {w:"おおきい",wko:"크다",jp:"にもつがおおきいのでタクシーでかえります。",ko:"짐이 커서 택시로 돌아갑니다."},
+  ]},
+
+  { id:"deshou", title:"でしょう / だろう", desc:"추측", ex:[
+    {w:"たかい",wko:"비싸다",jp:"このとけいはたかいでしょう。",ko:"이 시계는 비싸겠죠."},
+    {w:"おいしい",wko:"맛있다",jp:"このりょうりはおいしいでしょう。",ko:"이 요리는 맛있겠죠."},
+    {w:"むずかしい",wko:"어렵다",jp:"このもんだいはむずかしいでしょう。",ko:"이 문제는 어렵겠죠."},
+    {w:"たのしい",wko:"즐겁다",jp:"こんどのりょこうはたのしいでしょう。",ko:"이번 여행은 즐겁겠죠."},
+    {w:"いそがしい",wko:"바쁘다",jp:"あしたはいそがしいでしょう。",ko:"내일은 바쁘겠죠."},
+    {w:"げんきだ",wko:"건강하다",jp:"かれはげんきでしょう。",ko:"그는 건강하겠죠."},
+    {w:"しずかだ",wko:"조용하다",jp:"よるはしずかでしょう。",ko:"밤에는 조용하겠죠."},
+    {w:"にぎやかだ",wko:"활기차다",jp:"まつりはにぎやかでしょう。",ko:"축제는 활기차겠죠."},
+    {w:"くる",wko:"오다",jp:"せんせいもくるでしょう。",ko:"선생님도 오겠죠."},
+    {w:"いく",wko:"가다",jp:"かれもパーティーへいくだろう。",ko:"그도 파티에 가겠지."},
+    {w:"たべる",wko:"먹다",jp:"みんなもうたべたでしょう。",ko:"모두 이미 먹었겠죠."},
+    {w:"かえる",wko:"돌아가다",jp:"かのじょはもうかえっただろう。",ko:"그녀는 이미 돌아갔겠지."},
+    {w:"わかる",wko:"알다",jp:"きっとわかるでしょう。",ko:"분명 알겠죠."},
+    {w:"できる",wko:"할 수 있다",jp:"あしたはできるでしょう。",ko:"내일은 할 수 있겠죠."},
+    {w:"やすい",wko:"싸다",jp:"あのみせはやすいでしょう。",ko:"저 가게는 싸겠죠."},
+    {w:"ふるい",wko:"오래되다",jp:"このたてものはふるいでしょう。",ko:"이 건물은 오래됐겠죠."},
+    {w:"あたらしい",wko:"새롭다",jp:"あのくるまはあたらしいでしょう。",ko:"저 차는 새것이겠죠."},
+    {w:"べんりだ",wko:"편리하다",jp:"このみせはべんりでしょう。",ko:"이 가게는 편리하겠죠."},
+    {w:"まつ",wko:"기다리다",jp:"ともだちはまっているでしょう。",ko:"친구는 기다리고 있겠죠."},
+    {w:"やすむ",wko:"쉬다",jp:"かれはきょうやすむでしょう。",ko:"그는 오늘 쉬겠죠."},
+    {w:"ちいさい",wko:"작다",jp:"このへやはちいさいでしょう。",ko:"이 방은 작겠죠."},
+  ]},
+
+  { id:"nagara", title:"ながら", desc:"하면서", ex:[
+    {w:"あるく",wko:"걷다",jp:"あるきながらおんがくをききます。",ko:"걸으면서 음악을 듣습니다."},
+    {w:"はしる",wko:"달리다",jp:"はしりながらおんがくをきいています。",ko:"달리면서 음악을 듣고 있습니다."},
+    {w:"たべる",wko:"먹다",jp:"テレビをみながらたべます。",ko:"텔레비전을 보면서 먹습니다."},
+    {w:"のむ",wko:"마시다",jp:"コーヒーをのみながらほんをよみます。",ko:"커피를 마시면서 책을 읽습니다."},
+    {w:"きく",wko:"듣다",jp:"おんがくをききながらべんきょうします。",ko:"음악을 들으면서 공부합니다."},
+    {w:"はなす",wko:"말하다",jp:"はなしながらこうえんをあるきました。",ko:"이야기하면서 공원을 걸었습니다."},
+    {w:"みる",wko:"보다",jp:"ちずをみながらいきます。",ko:"지도를 보면서 갑니다."},
+    {w:"かく",wko:"쓰다",jp:"メモをかきながらはなしをききます。",ko:"메모를 쓰면서 이야기를 듣습니다."},
+    {w:"よむ",wko:"읽다",jp:"ほんをよみながらメモをとります。",ko:"책을 읽으면서 메모를 합니다."},
+    {w:"りょうりする",wko:"요리하다",jp:"うたをうたいながらりょうりします。",ko:"노래를 부르면서 요리합니다."},
+    {w:"べんきょうする",wko:"공부하다",jp:"おんがくをききながらべんきょうしています。",ko:"음악을 들으면서 공부하고 있습니다."},
+    {w:"まつ",wko:"기다리다",jp:"ほんをよみながらバスをまちます。",ko:"책을 읽으면서 버스를 기다립니다."},
+    {w:"みせる",wko:"보여주다",jp:"しゃしんをみせながらはなしました。",ko:"사진을 보여주면서 이야기했습니다."},
+    {w:"のむ",wko:"마시다",jp:"おちゃをのみながらはなしましょう。",ko:"차를 마시면서 이야기합시다."},
+    {w:"あるく",wko:"걷다",jp:"でんわをしながらあるかないでください。",ko:"전화하면서 걷지 마세요."},
+    {w:"おぼえる",wko:"기억하다",jp:"かきながらたんごをおぼえます。",ko:"쓰면서 단어를 외웁니다."},
+    {w:"れんしゅうする",wko:"연습하다",jp:"うたをききながられんしゅうします。",ko:"노래를 들으면서 연습합니다."},
+    {w:"そうじする",wko:"청소하다",jp:"うたをうたいながらそうじします。",ko:"노래를 부르면서 청소합니다."},
+    {w:"みる",wko:"보다",jp:"スマホをみながらたべないでください。",ko:"스마트폰을 보면서 먹지 마세요."},
+    {w:"きく",wko:"듣다",jp:"ニュースをききながらあさごはんをたべます。",ko:"뉴스를 들으면서 아침을 먹습니다."},
+  ]},
+
+  { id:"batara", title:"ば / たら", desc:"조건, ~하면", ex:[
+    {w:"やすい",wko:"싸다",jp:"やすければかいます。",ko:"싸면 삽니다."},
+    {w:"たべる",wko:"먹다",jp:"たべたらげんきになります。",ko:"먹으면 기운이 납니다."},
+    {w:"いく",wko:"가다",jp:"がっこうへいったらともだちにあいます。",ko:"학교에 가면 친구를 만납니다."},
+    {w:"のむ",wko:"마시다",jp:"くすりをのんだらなおります。",ko:"약을 먹으면 낫습니다."},
+    {w:"できる",wko:"할 수 있다",jp:"できればてつだいます。",ko:"가능하면 돕겠습니다."},
+    {w:"みる",wko:"보다",jp:"このえいがをみたらわかります。",ko:"이 영화를 보면 압니다."},
+    {w:"よむ",wko:"읽다",jp:"このほんをよめばわかります。",ko:"이 책을 읽으면 압니다."},
+    {w:"やすむ",wko:"쉬다",jp:"ゆっくりやすんだらげんきになります。",ko:"푹 쉬면 건강해집니다."},
+    {w:"べんきょうする",wko:"공부하다",jp:"べんきょうしたらできます。",ko:"공부하면 할 수 있습니다."},
+    {w:"れんしゅうする",wko:"연습하다",jp:"れんしゅうすればじょうずになります。",ko:"연습하면 잘하게 됩니다."},
+    {w:"たかい",wko:"비싸다",jp:"たかければかいません。",ko:"비싸면 사지 않습니다."},
+    {w:"ひまだ",wko:"한가하다",jp:"ひまだったらえいがをみます。",ko:"한가하면 영화를 봅니다."},
+    {w:"げんきだ",wko:"건강하다",jp:"げんきになったらあそびにいきます。",ko:"건강해지면 놀러 갑니다."},
+    {w:"くる",wko:"오다",jp:"ともだちがきたらでかけます。",ko:"친구가 오면 외출합니다."},
+    {w:"かえる",wko:"돌아가다",jp:"うちへかえったらでんわします。",ko:"집에 돌아가면 전화합니다."},
+    {w:"おきる",wko:"일어나다",jp:"はやくおきたらさんぽします。",ko:"일찍 일어나면 산책합니다."},
+    {w:"わかる",wko:"알다",jp:"わからなかったらきいてください。",ko:"모르면 물어봐 주세요."},
+    {w:"あう",wko:"만나다",jp:"せんせいにあったらいいます。",ko:"선생님을 만나면 말하겠습니다."},
+    {w:"かく",wko:"쓰다",jp:"なまえをかいたらだしてください。",ko:"이름을 쓰면 제출해 주세요."},
+    {w:"おいしい",wko:"맛있다",jp:"おいしかったらまたかいます。",ko:"맛있으면 또 사겠습니다."},
+  ]},
+];
+
+/* =========================================================================
+   3) 상태 & DOM
+   ========================================================================= */
+const synth = window.speechSynthesis;
+const STORAGE_KEY = "jp-tts-settings-v1";
+const STEP_GAP = 250;     // 단어→뜻→문장 사이 짧은 간격(ms)
+const ITEM_GAP = 1200;    // 항목 간 1.2초 간격(ms)
+
+const els = {
+  grid: document.getElementById("grammarGrid"),
+  catChips: document.getElementById("catChips"),
+  rate: document.getElementById("rate"),
+  rateVal: document.getElementById("rateVal"),
+  repeat: document.getElementById("repeat"),
+  shuffle: document.getElementById("shuffle"),
+  warn: document.getElementById("ttsWarn"),
+  poolCount: document.getElementById("poolCount"),
+  idle: document.getElementById("idle"),
+  stage: document.getElementById("stage"),
+  badge: document.getElementById("badge"),
+  progress: document.getElementById("progress"),
+  barFill: document.getElementById("barFill"),
+  s0jp: document.getElementById("s0jp"),
+  s1ko: document.getElementById("s1ko"),
+  s2jp: document.getElementById("s2jp"),
+  s3ko: document.getElementById("s3ko"),
+  steps: document.querySelectorAll(".step"),
+  btnPlay: document.getElementById("btnPlay"),
+  btnPlayLab: document.querySelector("#btnPlay .lab"),
+  btnPause: document.getElementById("btnPause"),
+  btnNext: document.getElementById("btnNext"),
+  btnReset: document.getElementById("btnReset"),
+};
+
+let playlist = [];
+let idx = 0;          // 현재 항목 인덱스
+let step = 0;         // 0~3 (단어/뜻/문장/문장뜻)
+let state = "stopped";// stopped | playing | paused
+let timer = null;     // pause/step 타이머
+let jaVoice = null, koVoice = null;
+let wakeLock = null;
+
+/* =========================================================================
+   4) 음성 선택
+   ========================================================================= */
+function pickVoice(voices, lang, prefs){
+  const langHit = voices.filter(v => v.lang && v.lang.toLowerCase().startsWith(lang));
+  for(const p of prefs){
+    const m = langHit.find(v => v.name.toLowerCase().includes(p));
+    if(m) return m;
+  }
+  return langHit[0] || null;
+}
+function loadVoices(){
+  const voices = synth.getVoices();
+  if(!voices.length) return;
+  jaVoice = pickVoice(voices, "ja", ["google","microsoft","kyoko","o-ren","ja-jp"]);
+  koVoice = pickVoice(voices, "ko", ["google","microsoft","yuna","ko-kr"]);
+  if(!jaVoice){
+    els.warn.classList.add("show");
+    els.warn.innerHTML = "⚠️ 이 기기/브라우저에 <b>일본어 음성</b>이 없습니다. Chrome 또는 Edge를 사용하거나 OS에 일본어 TTS 음성을 추가해 주세요.";
+  } else {
+    els.warn.classList.remove("show");
+  }
+}
+loadVoices();
+if(synth.onvoiceschanged !== undefined) synth.onvoiceschanged = loadVoices;
+// Safari 등 onvoiceschanged 미발화 대비
+let voiceTries = 0;
+const voicePoll = setInterval(()=>{ if(jaVoice || voiceTries++>20) clearInterval(voicePoll); else loadVoices(); }, 250);
+
+/* =========================================================================
+   5) 문법 카드 렌더
+   ========================================================================= */
+function renderGrammars(savedIds){
+  els.grid.innerHTML = "";
+  GRAMMARS.forEach(g=>{
+    const checked = savedIds ? savedIds.includes(g.id) : false;
+    const label = document.createElement("label");
+    label.className = "gcard";
+    label.innerHTML = `
+      <input type="checkbox" value="${g.id}" ${checked?"checked":""}>
+      <span class="gtick">✓</span>
+      <div class="gtitle">${g.title}</div>
+      <div class="gdesc">${g.desc}</div>
+      <div class="gcount">예문 ${g.ex.length}개</div>`;
+    els.grid.appendChild(label);
+  });
+}
+
+/* =========================================================================
+   6) 설정 저장 / 불러오기
+   ========================================================================= */
+function getSelectedGrammars(){
+  return [...els.grid.querySelectorAll("input:checked")].map(i=>i.value);
+}
+function getSelectedCats(){
+  return [...els.catChips.querySelectorAll("input:checked")].map(i=>i.value);
+}
+function saveSettings(){
+  const data = {
+    grammars: getSelectedGrammars(),
+    cats: getSelectedCats(),
+    rate: parseFloat(els.rate.value),
+    repeat: els.repeat.checked,
+    shuffle: els.shuffle.checked,
+  };
+  try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); }catch(e){}
+}
+function loadSettings(){
+  let data = null;
+  try{ data = JSON.parse(localStorage.getItem(STORAGE_KEY)); }catch(e){}
+  if(!data){
+    renderGrammars(["past"]); // 기본 1개 선택
+    return;
+  }
+  renderGrammars(data.grammars && data.grammars.length ? data.grammars : ["past"]);
+  els.catChips.querySelectorAll("input").forEach(i=>{
+    i.checked = data.cats ? data.cats.includes(i.value) : true;
+  });
+  if(typeof data.rate === "number"){ els.rate.value = data.rate; }
+  els.repeat.checked = !!data.repeat;
+  els.shuffle.checked = !!data.shuffle;
+}
+
+/* =========================================================================
+   7) 플레이리스트 생성
+   ========================================================================= */
+function shuffleArr(a){
+  for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; }
+  return a;
+}
+function buildPlaylist(){
+  const gids = getSelectedGrammars();
+  const cats = getSelectedCats();
+  const list = [];
+  GRAMMARS.forEach(g=>{
+    if(!gids.includes(g.id)) return;
+    g.ex.forEach(e=>{
+      if(cats.includes(catOf(e.w))){
+        list.push({ ...e, grammar: g.title });
+      }
+    });
+  });
+  return els.shuffle.checked ? shuffleArr(list) : list;
+}
+function updatePoolCount(){
+  els.poolCount.textContent = buildPlaylist().length;
+}
+
+/* =========================================================================
+   8) TTS 재생 엔진
+   ========================================================================= */
+function speak(text, lang){
+  return new Promise(resolve=>{
+    if(!text){ resolve(); return; }
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = lang === "ja" ? "ja-JP" : "ko-KR";
+    const v = lang === "ja" ? jaVoice : koVoice;
+    if(v) u.voice = v;
+    u.rate = parseFloat(els.rate.value);
+    u.pitch = 1;
+    u.onend = ()=>resolve();
+    u.onerror = ()=>resolve(); // 에러여도 다음으로 진행
+    // 직전 발화 확실히 정리
+    synth.speak(u);
+  });
+}
+
+function renderCurrent(){
+  const item = playlist[idx];
+  if(!item) return;
+  els.badge.textContent = "文法: " + item.grammar;
+  els.progress.textContent = (idx+1) + " / " + playlist.length;
+  els.barFill.style.width = ((idx) / playlist.length * 100) + "%";
+  els.s0jp.textContent = item.w;
+  els.s1ko.textContent = item.wko;
+  els.s2jp.textContent = item.jp;
+  els.s3ko.textContent = item.ko;
+  highlight(step);
+}
+function highlight(s){
+  els.steps.forEach(el=>{
+    el.classList.toggle("active", parseInt(el.dataset.step,10) === s);
+  });
+}
+
+// 현재 step 한 개를 재생하고 다음으로
+async function playStep(){
+  if(state !== "playing") return;
+  const item = playlist[idx];
+  if(!item){ finishAll(); return; }
+
+  renderCurrent();
+  highlight(step);
+
+  const seq = [
+    [item.w,   "ja"],
+    [item.wko, "ko"],
+    [item.jp,  "ja"],
+    [item.ko,  "ko"],
+  ];
+  const [text, lang] = seq[step];
+  await speak(text, lang);
+
+  if(state !== "playing") return; // 도중 일시정지/정지
+
+  if(step < 3){
+    step++;
+    timer = setTimeout(playStep, STEP_GAP);
+  } else {
+    // 항목 완료 → 다음 항목
+    if(idx < playlist.length - 1){
+      idx++; step = 0;
+      els.barFill.style.width = (idx / playlist.length * 100) + "%";
+      timer = setTimeout(playStep, ITEM_GAP);
+    } else {
+      finishAll();
+    }
+  }
+}
+
+function finishAll(){
+  els.barFill.style.width = "100%";
+  if(els.repeat.checked && playlist.length){
+    idx = 0; step = 0;
+    if(els.shuffle.checked) playlist = shuffleArr(playlist);
+    timer = setTimeout(playStep, ITEM_GAP);
+    return;
+  }
+  stopPlayback();
+}
+
+/* =========================================================================
+   9) 컨트롤
+   ========================================================================= */
+function clearTimer(){ if(timer){ clearTimeout(timer); timer=null; } }
+
+async function requestWake(){
+  try{
+    if("wakeLock" in navigator && !wakeLock){
+      wakeLock = await navigator.wakeLock.request("screen");
+      wakeLock.addEventListener("release", ()=>{ wakeLock = null; });
+    }
+  }catch(e){ /* 무시 */ }
+}
+function releaseWake(){
+  if(wakeLock){ try{ wakeLock.release(); }catch(e){} wakeLock = null; }
+}
+
+function startPlayback(){
+  if(state === "playing") return;
+
+  if(state === "paused"){
+    // 재개
+    state = "playing";
+    setControls();
+    timer = setTimeout(playStep, 150);
+    requestWake();
+    return;
+  }
+
+  // 새로 시작
+  playlist = buildPlaylist();
+  if(!playlist.length){
+    alert("재생할 문장이 없습니다. 문법과 단어 카테고리를 하나 이상 선택해 주세요.");
+    return;
+  }
+  if(!jaVoice){
+    alert("일본어 음성을 찾을 수 없습니다. Chrome/Edge 사용 또는 OS 일본어 음성 설치 후 다시 시도해 주세요.");
+    return;
+  }
+  idx = 0; step = 0; state = "playing";
+  els.idle.style.display = "none";
+  els.stage.style.display = "block";
+  setControls();
+  synth.cancel();
+  requestWake();
+  timer = setTimeout(playStep, 200);
+}
+
+function pausePlayback(){
+  if(state !== "playing") return;
+  state = "paused";
+  clearTimer();
+  synth.cancel();           // 안정성을 위해 cancel 사용(재개 시 현재 step부터)
+  setControls();
+  releaseWake();
+}
+
+function nextItem(){
+  if(state === "stopped" || !playlist.length) return;
+  clearTimer();
+  synth.cancel();
+  if(idx < playlist.length - 1){
+    idx++; step = 0;
+    renderCurrent();
+    if(state === "playing") timer = setTimeout(playStep, 150);
+  } else {
+    finishAll();
+  }
+}
+
+function resetToStart(){
+  clearTimer();
+  synth.cancel();
+  idx = 0; step = 0;
+  if(playlist.length){
+    renderCurrent();
+    els.barFill.style.width = "0%";
+  }
+  if(state === "playing"){
+    timer = setTimeout(playStep, 150);
+  }
+}
+
+function stopPlayback(){
+  state = "stopped";
+  clearTimer();
+  synth.cancel();
+  setControls();
+  releaseWake();
+  highlight(-1);
+}
+
+function setControls(){
+  const playing = state === "playing";
+  const paused  = state === "paused";
+  const active  = playing || paused;
+  els.btnPlayLab.textContent = paused ? "이어서" : (playing ? "재생 중" : "재생 시작");
+  els.btnPlay.disabled = playing;
+  els.btnPause.disabled = !playing;
+  els.btnNext.disabled = !active;
+  els.btnReset.disabled = !active;
+}
+
+/* =========================================================================
+   10) 이벤트 바인딩
+   ========================================================================= */
+els.btnPlay.addEventListener("click", startPlayback);
+els.btnPause.addEventListener("click", pausePlayback);
+els.btnNext.addEventListener("click", nextItem);
+els.btnReset.addEventListener("click", resetToStart);
+
+els.rate.addEventListener("input", ()=>{
+  els.rateVal.textContent = parseFloat(els.rate.value).toFixed(2) + "x";
+  saveSettings();
+});
+
+// 설정 변경 시: 저장 + 풀 개수 갱신. 재생 중이면 멈춤(설정 충돌 방지)
+function onSettingsChange(){
+  saveSettings();
+  updatePoolCount();
+  if(state !== "stopped"){
+    stopPlayback();
+    els.stage.style.display = "none";
+    els.idle.style.display = "block";
+  }
+}
+els.grid.addEventListener("change", onSettingsChange);
+els.catChips.addEventListener("change", onSettingsChange);
+els.repeat.addEventListener("change", saveSettings);
+els.shuffle.addEventListener("change", ()=>{ saveSettings(); updatePoolCount(); });
+
+// 페이지 떠날 때 음성 정리
+window.addEventListener("beforeunload", ()=>synth.cancel());
+// 탭이 다시 보이면 wakeLock 재요청
+document.addEventListener("visibilitychange", ()=>{
+  if(document.visibilityState === "visible" && state === "playing") requestWake();
+});
+
+/* =========================================================================
+   11) 초기화
+   ========================================================================= */
+loadSettings();
+els.rateVal.textContent = parseFloat(els.rate.value).toFixed(2) + "x";
+updatePoolCount();
+setControls();
+</script>
+</body>
+</html>
