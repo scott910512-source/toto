@@ -119,6 +119,18 @@
   .sel:focus{outline:none;border-color:var(--aka);}
   .hint{font-size:11.5px;color:var(--txt-dim);margin:8px 0 0;line-height:1.5;}
   .hint b{color:var(--kin);}
+  .aibox{margin:0 0 12px;border:1px solid var(--line);border-radius:10px;padding:4px 10px;background:var(--sumi);}
+  .aibox summary{cursor:pointer;font-size:13px;color:var(--kin);padding:6px 0;}
+  .aibox .row{margin-top:8px;}
+  .ailist{margin-top:12px;display:flex;flex-direction:column;gap:8px;}
+  .aiitem{background:var(--sumi-3);border:1px solid var(--line);border-radius:10px;padding:10px 12px;position:relative;}
+  .aiitem .jp{font-size:15px;font-weight:700;}
+  .aiitem .ko{font-size:13px;color:#cfe6c4;}
+  .aiitem .qz{font-size:12px;color:var(--txt-dim);margin-top:4px;}
+  .aiitem .del{position:absolute;top:8px;right:8px;background:none;border:1px solid var(--line);color:var(--txt-dim);border-radius:8px;font-size:11px;padding:3px 8px;cursor:pointer;}
+  .aiitem .del:hover{border-color:var(--aka);color:var(--aka-2);}
+  .ai-spin{display:inline-block;width:13px;height:13px;border:2px solid var(--line);border-top-color:var(--kin);border-radius:50%;animation:spin .7s linear infinite;vertical-align:-2px;margin-right:6px;}
+  @keyframes spin{to{transform:rotate(360deg);}}
 
   /* 토글 스위치 */
   .switch{display:inline-flex;align-items:center;gap:10px;cursor:pointer;user-select:none;font-size:13px;}
@@ -209,6 +221,36 @@
       <label class="chip"><input type="checkbox" value="adj" checked>형용사</label>
       <label class="chip"><input type="checkbox" value="noun" checked>명사</label>
     </div>
+  </section>
+
+  <!-- AI 단어 추가 -->
+  <section class="card">
+    <h2>✨ AI 단어 추가 <small>저가형 LLM(Gemini)으로 예문·퀴즈 생성</small></h2>
+    <details class="aibox">
+      <summary>🔑 AI 설정 (Gemini API 키 입력)</summary>
+      <p class="hint">무료 키 발급: <b>aistudio.google.com/apikey</b> · 키는 <b>이 브라우저에만</b> 저장되고 서버로 전송되지 않습니다. 본인용으로만 사용하세요.</p>
+      <div class="row"><label class="lbl">API 키</label><input id="aiKey" class="sel" type="password" placeholder="AIza..." autocomplete="off" spellcheck="false"></div>
+      <div class="row"><label class="lbl">모델</label>
+        <select id="aiModel" class="sel">
+          <option value="gemini-2.5-flash">gemini-2.5-flash (자연스러움·권장)</option>
+          <option value="gemini-2.5-flash-lite">gemini-2.5-flash-lite (가장 저렴·빠름)</option>
+          <option value="gemini-2.0-flash">gemini-2.0-flash</option>
+        </select></div>
+      <label class="switch" style="margin-top:8px"><input type="checkbox" id="aiSaveKey"><span class="track"></span><span>이 브라우저에 키 저장</span></label>
+    </details>
+
+    <div class="row"><label class="lbl">단어</label><input id="aiWord" class="sel" placeholder="예: たべる" spellcheck="false"></div>
+    <div class="row"><label class="lbl">뜻(한국어)</label><input id="aiMeaning" class="sel" placeholder="예: 먹다" spellcheck="false"></div>
+    <div class="row"><label class="lbl">예문 개수</label>
+      <select id="aiCount" class="sel" style="max-width:130px">
+        <option>2</option><option selected>3</option><option>4</option><option>5</option>
+      </select></div>
+    <button class="btn primary" id="aiGen" style="width:100%;margin-top:10px"><span class="ic">✨</span><span class="lab">AI 예문 생성</span></button>
+    <p class="hint" id="aiStatus"></p>
+
+    <div id="aiList" class="ailist"></div>
+    <button class="btn" id="aiClear" style="margin-top:10px;display:none">🗑️ 내 단어(AI) 전체 삭제</button>
+    <p class="hint">생성된 예문은 위 <b>문법 선택</b>의 「✨ 내 단어(AI)」 카드에 모여 재생됩니다(카테고리 필터와 무관하게 항상 포함).</p>
   </section>
 
   <!-- 재생 설정 -->
@@ -697,6 +739,15 @@ const N4_EX = {
 // N5 기본 예문 + N4 추가 예문 병합
 GRAMMARS.forEach(g=>{ if(N4_EX[g.id]) g.ex = g.ex.concat(N4_EX[g.id]); });
 
+// AI(Gemini)로 생성한 내 단어 그룹 — localStorage에서 불러와 합류
+const CUSTOM_KEY = "jp-tts-custom-v1";
+function loadCustom(){
+  try{ const a = JSON.parse(localStorage.getItem(CUSTOM_KEY)); return Array.isArray(a) ? a : []; }
+  catch(e){ return []; }
+}
+const customGrammar = { id:"custom", title:"✨ 내 단어(AI)", desc:"AI 생성 예문", ex: loadCustom() };
+GRAMMARS.push(customGrammar);
+
 /* =========================================================================
    3) 상태 & DOM
    ========================================================================= */
@@ -737,6 +788,17 @@ const els = {
   btnPause: document.getElementById("btnPause"),
   btnNext: document.getElementById("btnNext"),
   btnReset: document.getElementById("btnReset"),
+  // AI 단어 추가
+  aiKey: document.getElementById("aiKey"),
+  aiModel: document.getElementById("aiModel"),
+  aiSaveKey: document.getElementById("aiSaveKey"),
+  aiWord: document.getElementById("aiWord"),
+  aiMeaning: document.getElementById("aiMeaning"),
+  aiCount: document.getElementById("aiCount"),
+  aiGen: document.getElementById("aiGen"),
+  aiStatus: document.getElementById("aiStatus"),
+  aiList: document.getElementById("aiList"),
+  aiClear: document.getElementById("aiClear"),
 };
 
 let playlist = [];
@@ -885,7 +947,8 @@ function buildPlaylist(){
   GRAMMARS.forEach(g=>{
     if(!gids.includes(g.id)) return;
     g.ex.forEach(e=>{
-      if(cats.includes(catOf(e.w))){
+      // 내 단어(AI)는 카테고리 필터와 무관하게 항상 포함
+      if(g.id === "custom" || cats.includes(catOf(e.w))){
         list.push({ ...e, grammar: g.title });
       }
     });
@@ -1188,9 +1251,187 @@ document.addEventListener("visibilitychange", ()=>{
 });
 
 /* =========================================================================
+   10.5) AI(Gemini) 단어 예문 생성
+   ========================================================================= */
+const KEY_STORE = "jp-tts-gemini-key";
+
+function getApiKey(){
+  const typed = els.aiKey.value.trim();
+  if(typed) return typed;
+  if(window.GEMINI_API_KEY) return String(window.GEMINI_API_KEY).trim();
+  return "";
+}
+function geminiUrl(model, key){
+  return "https://generativelanguage.googleapis.com/v1beta/models/"
+    + encodeURIComponent(model) + ":generateContent?key=" + encodeURIComponent(key);
+}
+// LLM 프롬프트 (퀴즈용 예문 생성)
+function buildPrompt(word, meaning, n){
+  return [
+    "당신은 일본어(JLPT N5~N4) 선생님입니다.",
+    "아래 단어를 사용한 자연스러운 학습용 예문 " + n + "개를 만드세요.",
+    "단어: 「" + word + "」" + (meaning ? " (뜻: " + meaning + ")" : ""),
+    "규칙:",
+    "- 각 문장은 반드시 그 단어를 포함할 것",
+    "- 일본어 문장은 초급자가 읽도록 히라가나/가타카나로만 작성(한자 사용 금지)",
+    "- 실제 일본인이 쓰는 자연스러운 표현일 것",
+    "- ko: 그 문장의 한국어 번역",
+    "- quiz: 같은 문장에서 대상 단어 부분만 ___(빈칸)으로 가린 퀴즈 문장",
+    "반드시 JSON 배열만 출력. 각 원소는 {\"jp\":\"\",\"ko\":\"\",\"quiz\":\"\"}.",
+  ].join("\n");
+}
+// Gemini 요청 본문 (구조화 출력 강제)
+function buildBody(prompt){
+  return {
+    contents: [{ parts: [{ text: prompt }] }],
+    generationConfig: {
+      temperature: 0.85,
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: "ARRAY",
+        items: {
+          type: "OBJECT",
+          properties: { jp:{type:"STRING"}, ko:{type:"STRING"}, quiz:{type:"STRING"} },
+          required: ["jp","ko"],
+        },
+      },
+    },
+  };
+}
+// Gemini 응답 → 예문 배열 추출 (코드펜스/깨진 JSON 방어)
+function extractItems(json){
+  try{
+    if(json && json.error) return { ok:false, items:[], error:(json.error.message||"API 오류") };
+    const cand = json && json.candidates && json.candidates[0];
+    if(cand && cand.finishReason === "SAFETY") return { ok:false, items:[], error:"안전 필터에 의해 차단됨" };
+    const parts = cand && cand.content && cand.content.parts;
+    let text = parts ? parts.map(p=>p.text||"").join("") : "";
+    if(!text.trim()) return { ok:false, items:[], error:"빈 응답" };
+    text = text.trim().replace(/^```(?:json)?/i,"").replace(/```$/,"").trim();
+    const arr = JSON.parse(text);
+    if(!Array.isArray(arr)) return { ok:false, items:[], error:"배열 형식이 아님" };
+    const items = arr.filter(x => x && typeof x.jp==="string" && typeof x.ko==="string" && x.jp.trim() && x.ko.trim());
+    if(!items.length) return { ok:false, items:[], error:"유효한 예문 없음" };
+    return { ok:true, items, error:null };
+  }catch(e){ return { ok:false, items:[], error:"JSON 해석 실패: " + e.message }; }
+}
+function normalizeItem(raw, word, meaning){
+  return {
+    w: word, wko: meaning || "",
+    jp: String(raw.jp).trim(),
+    ko: String(raw.ko).trim(),
+    quiz: raw.quiz ? String(raw.quiz).trim() : "",
+  };
+}
+function saveCustom(){
+  try{ localStorage.setItem(CUSTOM_KEY, JSON.stringify(customGrammar.ex)); }catch(e){}
+}
+// 새 예문 합치기(중복 jp 제거) → 반환: 실제 추가된 개수
+function addCustomItems(items){
+  const seen = new Set(customGrammar.ex.map(e=>e.jp));
+  let added = 0;
+  items.forEach(it=>{ if(it.jp && !seen.has(it.jp)){ customGrammar.ex.push(it); seen.add(it.jp); added++; } });
+  if(added){ saveCustom(); refreshAfterCustomChange(true); }
+  return added;
+}
+function deleteCustom(i){
+  if(i>=0 && i<customGrammar.ex.length){ customGrammar.ex.splice(i,1); saveCustom(); refreshAfterCustomChange(false); }
+}
+function clearCustom(){
+  customGrammar.ex = []; saveCustom(); refreshAfterCustomChange(false);
+}
+// 커스텀 변경 후 UI 갱신 (문법 그리드 카운트/리스트/풀 개수)
+function refreshAfterCustomChange(autoSelect){
+  let sel = getSelectedGrammars();
+  if(autoSelect && customGrammar.ex.length && !sel.includes("custom")) sel.push("custom");
+  renderGrammars(sel);
+  renderCustomList();
+  updatePoolCount();
+  saveSettings();
+}
+function renderCustomList(){
+  const ex = customGrammar.ex;
+  els.aiClear.style.display = ex.length ? "block" : "none";
+  els.aiList.innerHTML = "";
+  ex.forEach((e,i)=>{
+    const div = document.createElement("div");
+    div.className = "aiitem";
+    div.innerHTML =
+      '<button class="del" data-i="'+i+'">삭제</button>' +
+      '<div class="jp">'+escapeHtml(e.jp)+'</div>' +
+      '<div class="ko">'+escapeHtml(e.ko)+'</div>' +
+      (e.quiz ? '<div class="qz">📝 '+escapeHtml(e.quiz)+'</div>' : '');
+    els.aiList.appendChild(div);
+  });
+}
+function escapeHtml(s){ return String(s).replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+function aiStatus(msg, spin){
+  els.aiStatus.innerHTML = (spin ? '<span class="ai-spin"></span>' : "") + escapeHtml(msg);
+}
+
+async function generateAI(){
+  const key = getApiKey();
+  const word = els.aiWord.value.trim();
+  const meaning = els.aiMeaning.value.trim();
+  const n = parseInt(els.aiCount.value,10) || 3;
+  if(!key){ aiStatus("먼저 Gemini API 키를 입력하세요. (🔑 AI 설정)"); return; }
+  if(!word){ aiStatus("생성할 단어를 입력하세요."); return; }
+
+  els.aiGen.disabled = true;
+  aiStatus("AI가 예문을 생성하는 중…", true);
+  try{
+    const res = await fetch(geminiUrl(els.aiModel.value, key), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(buildBody(buildPrompt(word, meaning, n))),
+    });
+    const json = await res.json().catch(()=>null);
+    if(!res.ok){
+      const m = (json && json.error && json.error.message) || ("HTTP " + res.status);
+      aiStatus("오류: " + m);
+      return;
+    }
+    const parsed = extractItems(json);
+    if(!parsed.ok){ aiStatus("생성 실패: " + parsed.error); return; }
+    const items = parsed.items.map(it=>normalizeItem(it, word, meaning));
+    const added = addCustomItems(items);
+    aiStatus("✅ " + added + "개 예문 추가됨" + (added<items.length ? " (중복 "+(items.length-added)+"개 제외)" : "") + " · 「✨ 내 단어(AI)」에서 재생하세요.");
+    els.aiWord.value = ""; els.aiMeaning.value = "";
+  }catch(e){
+    aiStatus("네트워크 오류: " + e.message);
+  }finally{
+    els.aiGen.disabled = false;
+  }
+}
+
+// AI 관련 이벤트
+els.aiGen.addEventListener("click", generateAI);
+els.aiClear.addEventListener("click", ()=>{
+  if(confirm("AI로 만든 내 단어 예문을 모두 삭제할까요?")) clearCustom();
+});
+els.aiList.addEventListener("click", (ev)=>{
+  const b = ev.target.closest(".del");
+  if(b) deleteCustom(parseInt(b.dataset.i,10));
+});
+els.aiSaveKey.addEventListener("change", ()=>{
+  if(els.aiSaveKey.checked){ try{ localStorage.setItem(KEY_STORE, els.aiKey.value.trim()); }catch(e){} }
+  else { try{ localStorage.removeItem(KEY_STORE); }catch(e){} }
+});
+els.aiKey.addEventListener("change", ()=>{
+  if(els.aiSaveKey.checked){ try{ localStorage.setItem(KEY_STORE, els.aiKey.value.trim()); }catch(e){} }
+});
+function loadApiKey(){
+  let k = null;
+  try{ k = localStorage.getItem(KEY_STORE); }catch(e){}
+  if(k){ els.aiKey.value = k; els.aiSaveKey.checked = true; }
+}
+
+/* =========================================================================
    11) 초기화
    ========================================================================= */
 loadSettings();
+loadApiKey();
+renderCustomList();
 loadVoices(); // 저장된 음성 선택을 드롭다운에 반영
 els.rateVal.textContent = parseFloat(els.rate.value).toFixed(2) + "x";
 els.gapVal.textContent = parseFloat(els.gap.value).toFixed(1) + "초";
