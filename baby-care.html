@@ -724,9 +724,9 @@
     const nextFeed = lastFeedDate ? new Date(lastFeedDate.getTime() + avgMs) : null;
     const overdue = lastFeedDate && (now - lastFeedDate.getTime()) > 3 * 3600000; // 3시간 초과(임상 권고)
 
-    // 활동 피드 (모든 기록 + 사진 합산)
+    // 활동 피드 (모든 기록 + 사진 합산) — 아직 로딩 안 된 항목은 [] 처리
     const photoActs = (photos || []).map((p) => ({ ...p, type: "photo", at: p.createdAt, creatorName: p.uploaderName }));
-    const feed = [...feedings, ...sleeps, ...diapers, ...growths, ...healths, ...letters, ...photoActs]
+    const feed = [...feedings, ...sleeps, ...diapers, ...(growths || []), ...(healths || []), ...(letters || []), ...photoActs]
       .sort((a, b) => (toDate(b.createdAt || b.at) - toDate(a.createdAt || a.at)))
       .slice(0, 12);
     const labelOf = (r) => ({ feeding: "수유 기록", sleep: "수면 기록", diaper: "기저귀 기록", growth: "성장 기록", health: "건강 기록", letter: "편지", photo: "사진" })[r.type] || "기록";
