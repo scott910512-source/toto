@@ -153,6 +153,11 @@
     box-shadow:0 0 0 1px var(--aka) inset, 0 0 22px rgba(193,39,45,.25);
     transform:scale(1.02);
   }
+  .step.active.replay{
+    border-color:var(--kin);
+    box-shadow:0 0 0 1px var(--kin) inset, 0 0 22px rgba(216,180,106,.3);
+  }
+  .step.active.replay .tag::after{content:" 🔁 다시";color:var(--kin);}
   .player .idle{color:var(--txt-dim);font-size:15px;}
   .player .idle b{color:var(--kin);}
 
@@ -249,6 +254,13 @@
         <span>순서 섞기</span>
       </label>
     </div>
+    <div class="row">
+      <label class="switch">
+        <input type="checkbox" id="replayJa" checked><span class="track"></span>
+        <span>문장 일본어 한 번 더</span>
+      </label>
+    </div>
+    <p class="hint">켜면 한 문장을 <b>일본어 → 한국어 뜻 → 일본어</b> 순서로 들려줍니다(번역을 듣고 다시 일본어로 확인).</p>
     <div class="row">
       <label class="switch">
         <input type="checkbox" id="bgMode"><span class="track"></span>
@@ -550,8 +562,8 @@ const GRAMMARS = [
    ========================================================================= */
 const synth = window.speechSynthesis;
 const STORAGE_KEY = "jp-tts-settings-v2";
-// 학습용 리듬: 단어→뜻, 뜻→문장, 문장→번역(생각할 시간) 사이 간격(ms)
-const STEP_GAPS = [550, 750, 1100];
+// 학습용 리듬: 단어→뜻, 뜻→문장, 문장→번역(생각할 시간), 번역→일본어 다시
+const STEP_GAPS = [550, 750, 1100, 900];
 function itemGap(){ return Math.round(parseFloat(els.gap.value) * 1000); } // 항목 간 간격
 function repCount(){ const r=document.querySelector('input[name="rep"]:checked'); return r?parseInt(r.value,10):1; }
 
@@ -565,6 +577,7 @@ const els = {
   jaVoiceSel: document.getElementById("jaVoiceSel"),
   koVoiceSel: document.getElementById("koVoiceSel"),
   bgMode: document.getElementById("bgMode"),
+  replayJa: document.getElementById("replayJa"),
   repeat: document.getElementById("repeat"),
   shuffle: document.getElementById("shuffle"),
   warn: document.getElementById("ttsWarn"),
@@ -686,6 +699,7 @@ function saveSettings(){
     rep: repCount(),
     jaURI: savedJaURI,
     koURI: savedKoURI,
+    replayJa: els.replayJa.checked,
     bgMode: els.bgMode.checked,
     repeat: els.repeat.checked,
     shuffle: els.shuffle.checked,
@@ -711,6 +725,7 @@ function loadSettings(){
   }
   savedJaURI = data.jaURI || null;
   savedKoURI = data.koURI || null;
+  if(typeof data.replayJa === "boolean") els.replayJa.checked = data.replayJa;
   els.bgMode.checked = !!data.bgMode;
   els.repeat.checked = !!data.repeat;
   els.shuffle.checked = !!data.shuffle;
@@ -760,6 +775,18 @@ function speak(text, lang){
   });
 }
 
+// 한 항목의 재생 순서(서브스텝)를 구성. row = 강조할 화면 줄(data-step)
+function buildSeq(item){
+  const seq = [
+    {text:item.w,   lang:"ja", row:0},
+    {text:item.wko, lang:"ko", row:1},
+    {text:item.jp,  lang:"ja", row:2},
+    {text:item.ko,  lang:"ko", row:3},
+  ];
+  if(els.replayJa.checked) seq.push({text:item.jp, lang:"ja", row:2, replay:true});
+  return seq;
+}
+
 function renderCurrent(){
   const item = playlist[idx];
   if(!item) return;
@@ -770,11 +797,12 @@ function renderCurrent(){
   els.s1ko.textContent = item.wko;
   els.s2jp.textContent = item.jp;
   els.s3ko.textContent = item.ko;
-  highlight(step);
 }
-function highlight(s){
+function highlight(s, replay){
   els.steps.forEach(el=>{
-    el.classList.toggle("active", parseInt(el.dataset.step,10) === s);
+    const on = parseInt(el.dataset.step,10) === s;
+    el.classList.toggle("active", on);
+    el.classList.toggle("replay", on && !!replay);
   });
 }
 
@@ -785,21 +813,17 @@ async function playStep(){
   if(!item){ finishAll(); return; }
 
   renderCurrent();
-  highlight(step);
+  const seq = buildSeq(item);
+  if(step > seq.length - 1) step = seq.length - 1; // 토글 변경 등 방어
+  const cur = seq[step];
+  highlight(cur.row, cur.replay);
 
-  const seq = [
-    [item.w,   "ja"],
-    [item.wko, "ko"],
-    [item.jp,  "ja"],
-    [item.ko,  "ko"],
-  ];
-  const [text, lang] = seq[step];
-  await speak(text, lang);
+  await speak(cur.text, cur.lang);
 
   if(state !== "playing") return; // 도중 일시정지/정지
 
-  if(step < 3){
-    const g = STEP_GAPS[step] || 600;
+  if(step < seq.length - 1){
+    const g = STEP_GAPS[step] || 700;
     step++;
     timer = setTimeout(playStep, g);
   } else if(repPass < repCount() - 1){
@@ -923,7 +947,7 @@ function nextItem(){
   repPass = 0;
   if(idx < playlist.length - 1){
     idx++; step = 0;
-    renderCurrent();
+    renderCurrent(); highlight(0);
     if(state === "playing") timer = setTimeout(playStep, 150);
   } else {
     finishAll();
@@ -935,7 +959,7 @@ function resetToStart(){
   synth.cancel();
   idx = 0; step = 0; repPass = 0;
   if(playlist.length){
-    renderCurrent();
+    renderCurrent(); highlight(0);
     els.barFill.style.width = "0%";
   }
   if(state === "playing"){
@@ -995,6 +1019,7 @@ els.bgMode.addEventListener("change", ()=>{
   saveSettings();
   if(state === "playing"){ if(els.bgMode.checked) startBgAudio(); else stopBgAudio(); }
 });
+els.replayJa.addEventListener("change", saveSettings);
 
 // 설정 변경 시: 저장 + 풀 개수 갱신. 재생 중이면 멈춤(설정 충돌 방지)
 function onSettingsChange(){
