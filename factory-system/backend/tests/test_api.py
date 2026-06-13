@@ -62,6 +62,41 @@ def test_requires_auth(client):
     assert client.get("/api/v1/production").status_code == 401
 
 
+def test_raw_material_crud_and_tabs(client, admin_token):
+    """원부재료 등록 → 자재명 탭 목록 → 구분 검증 → 탭 필터."""
+    h = _auth(admin_token)
+    payload = {
+        "occurred_at": datetime.now(timezone.utc).isoformat(),
+        "category": "입고", "material_name": "TEOS", "material_code": "RM-1024",
+        "lot_number": "B2606-101", "grade": "Grade 5N", "quantity": 25, "unit": "L",
+        "maker": "OO케미칼", "mfg_date": "2026-05-01", "expiry_date": "2027-05-01",
+        "process_equipment": "증착 / Reactor-101", "location": "약품보관소 A-3",
+        "operator": "김철수", "remark": "정상",
+    }
+    res = client.post("/api/v1/materials", json=payload, headers=h)
+    assert res.status_code == 201, res.text
+
+    # 자재명 탭 목록에 TEOS 가 포함
+    names = client.get("/api/v1/materials/material-names", headers=h).json()
+    assert "TEOS" in names
+
+    # 잘못된 구분값 거부(422)
+    bad = {**payload, "category": "잘못된값"}
+    assert client.post("/api/v1/materials", json=bad, headers=h).status_code == 422
+
+    # 탭 필터(material_name 정확히 일치)
+    res = client.get("/api/v1/materials?material_name=TEOS", headers=h)
+    assert res.json()["total"] >= 1
+    assert all(it["material_name"] == "TEOS" for it in res.json()["items"])
+
+
+def test_material_export(client, admin_token):
+    """원부재료 엑셀/CSV export 동작."""
+    h = _auth(admin_token)
+    for fmt in ("xlsx", "csv"):
+        assert client.get(f"/api/v1/export/material?fmt={fmt}", headers=h).status_code == 200
+
+
 def _prod(**kw):
     base = {
         "produced_at": datetime.now(timezone.utc).isoformat(),

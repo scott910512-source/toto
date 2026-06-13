@@ -3,6 +3,7 @@ import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard,
   Factory,
+  Package,
   Wrench,
   FlaskConical,
   ShieldAlert,
@@ -22,6 +23,7 @@ import { cn } from "@/lib/utils";
 
 const NAV = [
   { to: "/", label: "대시보드", icon: LayoutDashboard, end: true },
+  { to: "/materials", label: "원부재료 관리", icon: Package },
   { to: "/production", label: "생산 정보", icon: Factory },
   { to: "/equipment", label: "설비 점검", icon: Wrench },
   { to: "/quality", label: "품질 데이터", icon: FlaskConical },

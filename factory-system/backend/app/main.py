@@ -16,6 +16,7 @@ from app.api import (
     export,
     production,
     quality,
+    raw_material,
     safety,
     users,
 )
@@ -65,6 +66,7 @@ for r in (
     auth.router,
     users.router,
     production.router,
+    raw_material.router,
     equipment.router,
     quality.router,
     safety.router,

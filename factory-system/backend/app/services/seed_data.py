@@ -26,8 +26,19 @@ from app.core.security import get_password_hash
 from app.models.equipment import EquipmentCheck, Judgement
 from app.models.production import Production
 from app.models.quality import Quality, QualityResult
+from app.models.raw_material import MATERIAL_CATEGORIES, RawMaterial
 from app.models.safety import Safety
 from app.models.user import User, UserRole
+
+# 원부재료 샘플(자재명, 단위, 등급, Maker)
+RAW_MATERIALS = [
+    ("TEOS", "L", "Grade 5N", "OO케미칼"),
+    ("IPA", "L", "EL급", "한솔케미칼"),
+    ("H2SO4", "kg", "98%", "대성정밀화학"),
+    ("NH4OH", "L", "29%", "OCI"),
+    ("Slurry-A", "kg", "CMP용", "KCTECH"),
+    ("Photoresist", "can", "i-line", "동진쎄미켐"),
+]
 
 
 def ensure_superuser(db: Session) -> None:
@@ -156,6 +167,33 @@ def generate(db: Session, *, lots: int = 1000, days_back: int = 180) -> dict:
             completed=completed,
         ))
         counts["safety"] += 1
+
+    # --- 원부재료 데이터 ---
+    counts["material"] = 0
+    units_map = {m[0]: m[1] for m in RAW_MATERIALS}
+    code_idx = 1000
+    for name, unit, grade, maker in RAW_MATERIALS:
+        for _ in range(random.randint(15, 30)):
+            occurred = _rand_dt(days_back)
+            db.add(RawMaterial(
+                occurred_at=occurred,
+                category=random.choice(MATERIAL_CATEGORIES),
+                material_name=name,
+                material_code=f"RM-{code_idx}",
+                lot_number=f"B{occurred.strftime('%y%m')}-{random.randint(100, 999)}",
+                grade=grade,
+                quantity=round(random.uniform(1, 200), 1),
+                unit=unit,
+                maker=maker,
+                mfg_date=(occurred - timedelta(days=random.randint(10, 60))).date(),
+                expiry_date=(occurred + timedelta(days=random.randint(180, 720))).date(),
+                process_equipment=f"{random.choice(PROCESSES)} / {random.choice(EQUIPMENTS)}",
+                location=f"약품보관소 {random.choice('ABC')}-{random.randint(1, 9)}",
+                operator=random.choice(PEOPLE),
+                remark=random.choice(["", "", "정상", "선입선출", "냉암소 보관"]),
+            ))
+            counts["material"] += 1
+        code_idx += 1
 
     db.commit()
     return {"status": "ok", "generated": counts}

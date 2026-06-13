@@ -13,12 +13,14 @@ from app.core.database import get_db
 from app.models.equipment import EquipmentCheck
 from app.models.production import Production
 from app.models.quality import Quality
+from app.models.raw_material import RawMaterial
 from app.models.safety import Safety
 
 router = APIRouter(prefix="/backup", tags=["backup"], dependencies=[Depends(require_admin)])
 
 _TABLES = {
     "production": Production,
+    "material": RawMaterial,
     "equipment": EquipmentCheck,
     "quality": Quality,
     "safety": Safety,
@@ -31,7 +33,7 @@ def _serialize(obj) -> dict:
         val = getattr(obj, col.name)
         if hasattr(val, "value"):
             val = val.value
-        if isinstance(val, datetime):
+        if isinstance(val, (datetime, date)):  # datetime 또는 date 모두 ISO 문자열로
             val = val.isoformat()
         out[col.name] = val
     return out
@@ -40,18 +42,22 @@ def _serialize(obj) -> dict:
 def _deserialize(model, row: dict) -> dict:
     """백업 JSON 한 행을 모델 컬럼 타입에 맞게 역직렬화한다.
 
-    날짜/일시 컬럼은 ISO 문자열을 실제 datetime 객체로 변환한다.
+    DateTime 컬럼은 datetime 으로, Date 컬럼은 date 로 변환한다.
     (Enum 컬럼은 SQLAlchemy 가 문자열 값을 그대로 받아들이므로 변환 불필요)
     """
     out = dict(row)
     out.pop("id", None)  # 새 PK 부여
     for col in model.__table__.columns:
         v = out.get(col.name)
-        if v is not None and isinstance(v, str) and isinstance(col.type, (DateTime, Date)):
+        if v is None or not isinstance(v, str):
+            continue
+        if isinstance(col.type, DateTime):
             try:
                 out[col.name] = datetime.fromisoformat(v)
             except ValueError:
                 out[col.name] = datetime.fromisoformat(v.replace("Z", "+00:00"))
+        elif isinstance(col.type, Date):
+            out[col.name] = date.fromisoformat(v[:10])
     return out
 
 

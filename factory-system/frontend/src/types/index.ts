@@ -80,6 +80,25 @@ export interface AiAnswer {
   rows: Record<string, unknown>[];
 }
 
+export interface RawMaterial {
+  id: number;
+  occurred_at: string;
+  category: string;
+  material_name: string;
+  material_code: string;
+  lot_number: string;
+  grade: string;
+  quantity: number;
+  unit: string;
+  maker: string;
+  mfg_date: string | null;
+  expiry_date: string | null;
+  process_equipment: string;
+  location: string;
+  operator: string;
+  remark: string;
+}
+
 export interface AuditLog {
   id: number;
   created_at: string;

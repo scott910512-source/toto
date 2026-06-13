@@ -16,4 +16,8 @@ export const HAZARDS = ["화학물질 누출", "고온 노출", "협착 위험",
 
 export const WORK_AREAS = ["1공정라인", "2공정라인", "유틸리티동", "약품보관소", "폐수처리장", "옥외탱크"];
 
+export const MATERIAL_CATEGORIES = ["입고", "사용", "반품", "폐기", "사용대기"];
+
+export const MATERIAL_UNITS = ["kg", "g", "L", "mL", "ea", "can", "box", "drum", "통"];
+
 export const opts = (arr: string[]) => arr.map((v) => ({ value: v, label: v }));

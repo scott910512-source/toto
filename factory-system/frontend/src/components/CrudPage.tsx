@@ -10,6 +10,7 @@ export type FieldType =
   | "text"
   | "number"
   | "datetime"
+  | "date"
   | "textarea"
   | "checkbox"
   | "select";
@@ -44,6 +45,10 @@ interface Props<T> {
   filters?: FilterDef[];
   exportCategory: string;
   emptyRow: Record<string, unknown>;
+  /** 탭으로 분리할 필드명(예: material_name). 설정 시 상단에 자재별 탭 표시 */
+  tabField?: string;
+  /** 탭 값 목록을 가져오는 엔드포인트(문자열 배열 반환) */
+  tabsEndpoint?: string;
 }
 
 export default function CrudPage<T extends { id: number }>({
@@ -54,6 +59,8 @@ export default function CrudPage<T extends { id: number }>({
   filters = [],
   exportCategory,
   emptyRow,
+  tabField,
+  tabsEndpoint,
 }: Props<T>) {
   const { hasRole } = useAuth();
   const canEdit = hasRole("admin", "engineer");
@@ -63,6 +70,18 @@ export default function CrudPage<T extends { id: number }>({
   const [page, setPage] = useState(1);
   const [q, setQ] = useState("");
   const [filterValues, setFilterValues] = useState<Record<string, string>>({});
+  const [tabs, setTabs] = useState<string[]>([]);
+  const [activeTab, setActiveTab] = useState<string>(""); // "" = 전체
+
+  async function loadTabs() {
+    if (!tabsEndpoint) return;
+    try {
+      const res = await api.get<string[]>(tabsEndpoint);
+      setTabs(res.data);
+    } catch {
+      /* 무시 */
+    }
+  }
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Record<string, unknown> | null>(null);
@@ -75,6 +94,7 @@ export default function CrudPage<T extends { id: number }>({
       const params: Record<string, unknown> = { page, size: 15 };
       if (q) params.q = q;
       for (const [k, v] of Object.entries(filterValues)) if (v) params[k] = v;
+      if (tabField && activeTab) params[tabField] = activeTab;
       const res = await api.get<Page<T>>(`/${endpoint}`, { params });
       setData(res.data);
     } finally {
@@ -83,9 +103,14 @@ export default function CrudPage<T extends { id: number }>({
   }
 
   useEffect(() => {
+    loadTabs();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page]);
+  }, [page, activeTab]);
 
   function openCreate() {
     setEditing(null);
@@ -111,6 +136,7 @@ export default function CrudPage<T extends { id: number }>({
       for (const fd of fields) {
         let v = form[fd.name];
         if (fd.type === "number") v = v === "" || v == null ? null : Number(v);
+        if (fd.type === "date") v = v === "" || v == null ? null : v;
         if (fd.type === "datetime" && v) v = new Date(v as string).toISOString();
         payload[fd.name] = v;
       }
@@ -118,6 +144,7 @@ export default function CrudPage<T extends { id: number }>({
       else await api.post(`/${endpoint}`, payload);
       setModalOpen(false);
       await load();
+      await loadTabs(); // 새 자재 입력 시 탭 갱신
     } catch (e: any) {
       alert(extractError(e, "저장에 실패했습니다."));
     } finally {
@@ -157,6 +184,29 @@ export default function CrudPage<T extends { id: number }>({
             )}
           </div>
         </div>
+
+        {/* 자재별 탭 */}
+        {tabField && (
+          <div className="mt-4 flex flex-wrap gap-1.5 border-b border-white/30 pb-1 dark:border-white/10">
+            {["", ...tabs].map((tv) => (
+              <button
+                key={tv || "all"}
+                onClick={() => {
+                  setActiveTab(tv);
+                  setPage(1);
+                }}
+                className={
+                  "rounded-t-lg px-3.5 py-2 text-sm font-medium transition " +
+                  (activeTab === tv
+                    ? "bg-accent/10 text-accent border-b-2 border-accent"
+                    : "text-slate-500 hover:bg-white/40 dark:text-slate-400 dark:hover:bg-white/5")
+                }
+              >
+                {tv === "" ? "전체" : tv}
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* 필터 */}
         <div className="mt-4 flex flex-wrap items-end gap-2">
@@ -327,7 +377,13 @@ export default function CrudPage<T extends { id: number }>({
                 ) : (
                   <Input
                     type={
-                      fd.type === "datetime" ? "datetime-local" : fd.type === "number" ? "number" : "text"
+                      fd.type === "datetime"
+                        ? "datetime-local"
+                        : fd.type === "date"
+                        ? "date"
+                        : fd.type === "number"
+                        ? "number"
+                        : "text"
                     }
                     step={fd.step}
                     value={String(form[fd.name] ?? "")}

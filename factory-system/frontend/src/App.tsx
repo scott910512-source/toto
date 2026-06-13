@@ -5,6 +5,7 @@ import { Spinner } from "@/components/ui";
 import AppLayout from "@/components/layout/AppLayout";
 import LoginPage from "@/pages/LoginPage";
 import DashboardPage from "@/pages/DashboardPage";
+import RawMaterialPage from "@/pages/RawMaterialPage";
 import ProductionPage from "@/pages/ProductionPage";
 import EquipmentPage from "@/pages/EquipmentPage";
 import QualityPage from "@/pages/QualityPage";
@@ -40,6 +41,7 @@ export default function App() {
         }
       >
         <Route index element={<DashboardPage />} />
+        <Route path="materials" element={<RawMaterialPage />} />
         <Route path="production" element={<ProductionPage />} />
         <Route path="equipment" element={<EquipmentPage />} />
         <Route path="quality" element={<QualityPage />} />

@@ -1,5 +1,5 @@
 """데이터 Export 라우터: 카테고리별 데이터를 xlsx/csv/pdf 로 추출."""
-from datetime import datetime
+from datetime import date, datetime
 from typing import List, Optional
 from urllib.parse import quote
 
@@ -12,6 +12,7 @@ from app.core.database import get_db
 from app.models.equipment import EquipmentCheck
 from app.models.production import Production
 from app.models.quality import Quality
+from app.models.raw_material import RawMaterial
 from app.models.safety import Safety
 from app.services import export_service
 
@@ -20,6 +21,7 @@ router = APIRouter(prefix="/export", tags=["export"], dependencies=[Depends(get_
 # 카테고리 -> (모델, 날짜컬럼, 한글 제목)
 _CATEGORIES = {
     "production": (Production, "produced_at", "생산 정보"),
+    "material": (RawMaterial, "occurred_at", "원부재료 관리"),
     "equipment": (EquipmentCheck, "checked_at", "설비 점검"),
     "quality": (Quality, "analyzed_at", "품질 데이터"),
     "safety": (Safety, "worked_at", "안전 데이터"),
@@ -40,6 +42,8 @@ def _serialize(obj) -> dict:
             val = val.value
         if isinstance(val, datetime):
             val = val.strftime("%Y-%m-%d %H:%M")
+        elif isinstance(val, date):
+            val = val.strftime("%Y-%m-%d")
         out[col.name] = val
     return out
 
