@@ -1,19 +1,21 @@
 """4대 데이터 카테고리(생산/설비/품질/안전) 스키마.
 
-서버측 입력 검증 포함:
-- 수량 음수 금지, 수율 0~100 범위
-- 핵심 식별자(LOT/공정/설비/샘플 등) 빈 값 금지
-- 품질 규격 하한 ≤ 상한 보장
+설계 원칙:
+- *Base / *Out : 순수 데이터 형태 (검증 제약 없음). 저장된 데이터를 그대로 직렬화하므로,
+  과거/백업복원 데이터가 정책을 위반하더라도 읽기(응답)는 실패하지 않아야 한다.
+- *Create / *Update : 입력 검증(수량 음수 금지, 수율 0~100, 빈 식별자 금지,
+  규격 하한 ≤ 상한)을 여기에만 둔다.
 """
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
 from app.models.equipment import Judgement
 from app.models.quality import QualityResult
 
 
+# ===== 공용 검증 헬퍼 =====
 def _not_blank(v: Optional[str]) -> Optional[str]:
     if v is None:
         return v
@@ -23,22 +25,34 @@ def _not_blank(v: Optional[str]) -> Optional[str]:
     return v
 
 
-# ---------- 생산 ----------
+def _qty_non_negative(v: Optional[int]) -> Optional[int]:
+    if v is not None and v < 0:
+        raise ValueError("생산량은 0 이상이어야 합니다.")
+    return v
+
+
+def _yield_range(v: Optional[float]) -> Optional[float]:
+    if v is not None and not (0 <= v <= 100):
+        raise ValueError("수율은 0~100 범위여야 합니다.")
+    return v
+
+
+# ===================== 생산 =====================
 class ProductionBase(BaseModel):
     produced_at: datetime
-    process_name: str = Field(min_length=1)
-    equipment_name: str = Field(min_length=1)
-    lot_number: str = Field(min_length=1)
-    operator: str = Field(min_length=1)
-    quantity: int = Field(ge=0, description="생산량(0 이상)")
-    yield_rate: float = Field(ge=0, le=100, description="수율(0~100%)")
+    process_name: str
+    equipment_name: str
+    lot_number: str
+    operator: str
+    quantity: int
+    yield_rate: float
     remark: str = ""
-
-    _strip = field_validator("process_name", "equipment_name", "lot_number", "operator")(_not_blank)
 
 
 class ProductionCreate(ProductionBase):
-    pass
+    _strip = field_validator("process_name", "equipment_name", "lot_number", "operator")(_not_blank)
+    _qty = field_validator("quantity")(_qty_non_negative)
+    _yld = field_validator("yield_rate")(_yield_range)
 
 
 class ProductionUpdate(BaseModel):
@@ -47,11 +61,13 @@ class ProductionUpdate(BaseModel):
     equipment_name: Optional[str] = None
     lot_number: Optional[str] = None
     operator: Optional[str] = None
-    quantity: Optional[int] = Field(default=None, ge=0)
-    yield_rate: Optional[float] = Field(default=None, ge=0, le=100)
+    quantity: Optional[int] = None
+    yield_rate: Optional[float] = None
     remark: Optional[str] = None
 
     _strip = field_validator("process_name", "equipment_name", "lot_number", "operator")(_not_blank)
+    _qty = field_validator("quantity")(_qty_non_negative)
+    _yld = field_validator("yield_rate")(_yield_range)
 
 
 class ProductionOut(ProductionBase):
@@ -59,22 +75,20 @@ class ProductionOut(ProductionBase):
     id: int
 
 
-# ---------- 설비 점검 ----------
+# ===================== 설비 점검 =====================
 class EquipmentBase(BaseModel):
     checked_at: datetime
-    equipment_name: str = Field(min_length=1)
-    inspector: str = Field(min_length=1)
-    check_item: str = Field(min_length=1)
+    equipment_name: str
+    inspector: str
+    check_item: str
     measured_value: float
     standard_value: str
     judgement: Judgement
     action: str = ""
 
-    _strip = field_validator("equipment_name", "inspector", "check_item")(_not_blank)
-
 
 class EquipmentCreate(EquipmentBase):
-    pass
+    _strip = field_validator("equipment_name", "inspector", "check_item")(_not_blank)
 
 
 class EquipmentUpdate(BaseModel):
@@ -95,18 +109,20 @@ class EquipmentOut(EquipmentBase):
     id: int
 
 
-# ---------- 품질 ----------
+# ===================== 품질 =====================
 class QualityBase(BaseModel):
-    sample_number: str = Field(min_length=1)
-    lot_number: str = Field(min_length=1)
+    sample_number: str
+    lot_number: str
     analyzed_at: datetime
-    analyst: str = Field(min_length=1)
-    item_name: str = Field(min_length=1)
+    analyst: str
+    item_name: str
     measured_value: float
     spec_lower: float
     spec_upper: float
     result: QualityResult
 
+
+class QualityCreate(QualityBase):
     _strip = field_validator("sample_number", "lot_number", "analyst", "item_name")(_not_blank)
 
     @model_validator(mode="after")
@@ -114,10 +130,6 @@ class QualityBase(BaseModel):
         if self.spec_lower > self.spec_upper:
             raise ValueError("규격 하한은 상한보다 클 수 없습니다.")
         return self
-
-
-class QualityCreate(QualityBase):
-    pass
 
 
 class QualityUpdate(BaseModel):
@@ -145,20 +157,18 @@ class QualityOut(QualityBase):
     id: int
 
 
-# ---------- 안전 ----------
+# ===================== 안전 =====================
 class SafetyBase(BaseModel):
     worked_at: datetime
-    work_area: str = Field(min_length=1)
-    hazard: str = Field(min_length=1)
+    work_area: str
+    hazard: str
     improvement: str = ""
-    manager: str = Field(min_length=1)
+    manager: str
     completed: bool = False
-
-    _strip = field_validator("work_area", "hazard", "manager")(_not_blank)
 
 
 class SafetyCreate(SafetyBase):
-    pass
+    _strip = field_validator("work_area", "hazard", "manager")(_not_blank)
 
 
 class SafetyUpdate(BaseModel):

@@ -24,6 +24,21 @@ api.interceptors.response.use(
   }
 );
 
+/** API 오류를 사람이 읽는 메시지로 변환 (FastAPI 422 의 detail 배열 포함) */
+export function extractError(err: any, fallback = "요청을 처리하지 못했습니다."): string {
+  const detail = err?.response?.data?.detail;
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) {
+    return detail
+      .map((d: any) => {
+        const field = Array.isArray(d?.loc) ? d.loc[d.loc.length - 1] : "";
+        return field ? `${field}: ${d.msg}` : d.msg;
+      })
+      .join("\n");
+  }
+  return err?.message ? `${fallback} (${err.message})` : fallback;
+}
+
 /** 파일 다운로드 헬퍼 (export/backup) */
 export async function downloadFile(url: string, fallbackName: string) {
   const res = await api.get(url, { responseType: "blob" });

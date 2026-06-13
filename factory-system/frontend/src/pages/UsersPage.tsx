@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Plus, Trash2, Pencil } from "lucide-react";
-import { api } from "@/lib/api";
+import { api, extractError } from "@/lib/api";
 import { Badge, Button, Card, Field, Input, Modal, Select, Spinner } from "@/components/ui";
 import { formatDateTime } from "@/lib/utils";
 import type { Role, User } from "@/types";
@@ -56,7 +56,7 @@ export default function UsersPage() {
       setOpen(false);
       await load();
     } catch (e: any) {
-      alert(e?.response?.data?.detail || "저장 실패");
+      alert(extractError(e, "저장 실패"));
     } finally {
       setSaving(false);
     }

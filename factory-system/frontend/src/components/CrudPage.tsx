@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Plus, Pencil, Trash2, Search, FileDown, RefreshCw } from "lucide-react";
-import { api, downloadFile } from "@/lib/api";
+import { api, downloadFile, extractError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { Button, Card, Field, Input, Modal, Select, Spinner } from "@/components/ui";
 import { toLocalInput } from "@/lib/utils";
@@ -119,7 +119,7 @@ export default function CrudPage<T extends { id: number }>({
       setModalOpen(false);
       await load();
     } catch (e: any) {
-      alert(e?.response?.data?.detail || "저장에 실패했습니다.");
+      alert(extractError(e, "저장에 실패했습니다."));
     } finally {
       setSaving(false);
     }

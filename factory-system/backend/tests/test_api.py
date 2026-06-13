@@ -101,6 +101,43 @@ def test_quality_result_auto_computed(client, admin_token):
     assert res.json()["result"] == "NG"  # 서버가 NG 로 정정
 
 
+def test_read_does_not_crash_on_out_of_policy_data(client, admin_token):
+    """입력검증을 우회한(백업복원 등) 정책위반 데이터도 조회(응답)는 깨지지 않아야 한다.
+
+    회귀 방지: 과거 *Out 스키마가 입력제약을 강제해 읽기 시 500 을 유발했음.
+    """
+    import json
+
+    headers = _auth(admin_token)
+    backup = {
+        "version": 1,
+        "data": {
+            "production": [{
+                "produced_at": "2026-01-01T00:00:00+00:00", "process_name": "증착",
+                "equipment_name": "R1", "lot_number": "L-OLD", "operator": "t",
+                "quantity": -999, "yield_rate": 250.0, "remark": "legacy",  # 정책 위반 값
+            }],
+            "quality": [{
+                "sample_number": "S-OLD", "lot_number": "L-OLD",
+                "analyzed_at": "2026-01-01T00:00:00+00:00", "analyst": "a",
+                "item_name": "Purity", "measured_value": 50,
+                "spec_lower": 100, "spec_upper": 0, "result": "OK",  # 하한>상한
+            }],
+            "equipment": [], "safety": [],
+        },
+    }
+    raw = json.dumps(backup).encode("utf-8")
+    res = client.post(
+        "/api/v1/backup/import?replace=false",
+        files={"file": ("b.json", raw, "application/json")},
+        headers=headers,
+    )
+    assert res.status_code == 200, res.text
+    # 핵심: 위반 데이터가 들어있어도 목록 조회가 500 이 아니어야 한다
+    assert client.get("/api/v1/production?q=L-OLD", headers=headers).status_code == 200
+    assert client.get("/api/v1/quality?lot_number=L-OLD", headers=headers).status_code == 200
+
+
 def test_last_admin_cannot_be_deleted(client, admin_token):
     """유일한 관리자(=본인)는 삭제할 수 없어야 한다(시스템 잠김 방지)."""
     h = _auth(admin_token)

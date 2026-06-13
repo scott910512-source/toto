@@ -13,6 +13,8 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "현장 데이터 통합 관리 시스템"
     API_V1_PREFIX: str = "/api/v1"
     DEBUG: bool = True
+    # KPI 일/월 경계 계산용 현지 시간대 (예: Asia/Seoul)
+    TIMEZONE: str = "Asia/Seoul"
 
     # 데이터베이스
     DATABASE_URL: str = (

@@ -1,11 +1,13 @@
 """대시보드 라우터: KPI 및 그래프용 집계 데이터."""
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
+from app.core.config import settings
 from app.core.database import get_db
 from app.models.equipment import EquipmentCheck, Judgement
 from app.models.production import Production
@@ -18,9 +20,14 @@ router = APIRouter(prefix="/dashboard", tags=["dashboard"], dependencies=[Depend
 @router.get("/kpi")
 def kpi(db: Session = Depends(get_db)):
     """대시보드 상단 KPI 카드 데이터."""
-    now = datetime.now(timezone.utc)
-    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    # '오늘/이번달' 경계는 현지 시간대(설정값) 자정 기준으로 계산한다.
+    try:
+        local_tz = ZoneInfo(settings.TIMEZONE)
+    except Exception:  # 잘못된 TZ 설정 시 UTC 폴백
+        local_tz = timezone.utc
+    now_local = datetime.now(local_tz)
+    today_start = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
+    month_start = now_local.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
     daily_qty = (
         db.query(func.coalesce(func.sum(Production.quantity), 0))
