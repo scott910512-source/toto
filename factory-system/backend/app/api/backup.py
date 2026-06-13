@@ -1,10 +1,11 @@
 """데이터 백업 라우터 (admin 전용): 전체 데이터를 JSON 으로 백업/복원."""
 import json
-from datetime import datetime
+from datetime import date, datetime
 from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, UploadFile, File
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
+from sqlalchemy import Date, DateTime
 from sqlalchemy.orm import Session
 
 from app.api.deps import require_admin
@@ -36,6 +37,24 @@ def _serialize(obj) -> dict:
     return out
 
 
+def _deserialize(model, row: dict) -> dict:
+    """백업 JSON 한 행을 모델 컬럼 타입에 맞게 역직렬화한다.
+
+    날짜/일시 컬럼은 ISO 문자열을 실제 datetime 객체로 변환한다.
+    (Enum 컬럼은 SQLAlchemy 가 문자열 값을 그대로 받아들이므로 변환 불필요)
+    """
+    out = dict(row)
+    out.pop("id", None)  # 새 PK 부여
+    for col in model.__table__.columns:
+        v = out.get(col.name)
+        if v is not None and isinstance(v, str) and isinstance(col.type, (DateTime, Date)):
+            try:
+                out[col.name] = datetime.fromisoformat(v)
+            except ValueError:
+                out[col.name] = datetime.fromisoformat(v.replace("Z", "+00:00"))
+    return out
+
+
 @router.get("/export")
 def backup_export(db: Session = Depends(get_db)):
     """모든 데이터 테이블을 하나의 JSON 파일로 백업한다."""
@@ -62,16 +81,26 @@ async def backup_import(
 ):
     """백업 JSON 을 복원한다. replace=true 면 기존 데이터를 모두 삭제 후 적재한다."""
     raw = await file.read()
-    payload = json.loads(raw.decode("utf-8"))
-    data = payload.get("data", {})
+    try:
+        payload = json.loads(raw.decode("utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        raise HTTPException(status_code=400, detail="올바른 JSON 백업 파일이 아닙니다.")
+
+    data = payload.get("data")
+    if not isinstance(data, dict):
+        raise HTTPException(status_code=400, detail="백업 파일 형식이 올바르지 않습니다.")
+
     counts = {}
-    for name, model in _TABLES.items():
-        if replace:
-            db.query(model).delete()
-        rows = data.get(name, [])
-        for row in rows:
-            row.pop("id", None)  # 새 PK 부여
-            db.add(model(**row))
-        counts[name] = len(rows)
-    db.commit()
+    try:
+        for name, model in _TABLES.items():
+            if replace:
+                db.query(model).delete()
+            rows = data.get(name, []) or []
+            for row in rows:
+                db.add(model(**_deserialize(model, row)))
+            counts[name] = len(rows)
+        db.commit()
+    except Exception as exc:  # noqa: BLE001
+        db.rollback()
+        raise HTTPException(status_code=400, detail=f"복원 실패: {exc}")
     return {"status": "ok", "imported": counts, "replaced": replace}

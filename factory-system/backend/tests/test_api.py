@@ -60,3 +60,57 @@ def test_ai_search(client, admin_token):
 
 def test_requires_auth(client):
     assert client.get("/api/v1/production").status_code == 401
+
+
+def test_backup_export_and_restore_roundtrip(client, admin_token):
+    """백업 다운로드 → 복원(추가/전체교체) 왕복 검증 (datetime 역직렬화 포함)."""
+    headers = _auth(admin_token)
+
+    # 시드용 데이터 1건 생성
+    payload = {
+        "produced_at": datetime.now(timezone.utc).isoformat(),
+        "process_name": "증착",
+        "equipment_name": "Reactor-101",
+        "lot_number": "LOT-BK-1",
+        "operator": "김철수",
+        "quantity": 1000,
+        "yield_rate": 97.0,
+        "remark": "백업테스트",
+    }
+    client.post("/api/v1/production", json=payload, headers=headers)
+    before = client.get("/api/v1/production?size=1", headers=headers).json()["total"]
+    assert before >= 1
+
+    # 백업 다운로드
+    res = client.get("/api/v1/backup/export", headers=headers)
+    assert res.status_code == 200
+    backup_bytes = res.content
+
+    # 복원(추가) → 건수 2배
+    res = client.post(
+        "/api/v1/backup/import?replace=false",
+        files={"file": ("backup.json", backup_bytes, "application/json")},
+        headers=headers,
+    )
+    assert res.status_code == 200, res.text
+    added = client.get("/api/v1/production?size=1", headers=headers).json()["total"]
+    assert added == before * 2
+
+    # 복원(전체교체) → 원본 건수로 복구
+    res = client.post(
+        "/api/v1/backup/import?replace=true",
+        files={"file": ("backup.json", backup_bytes, "application/json")},
+        headers=headers,
+    )
+    assert res.status_code == 200, res.text
+    replaced = client.get("/api/v1/production?size=1", headers=headers).json()["total"]
+    assert replaced == before
+
+
+def test_backup_requires_admin(client):
+    """viewer 계정은 백업 불가(403)."""
+    res = client.post(
+        "/api/v1/auth/login", data={"username": "viewer", "password": "viewer1234"}
+    )
+    token = res.json()["access_token"]
+    assert client.get("/api/v1/backup/export", headers=_auth(token)).status_code == 403
