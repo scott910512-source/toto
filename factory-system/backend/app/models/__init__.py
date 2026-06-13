@@ -6,5 +6,9 @@ from app.models.quality import Quality  # noqa: F401
 from app.models.safety import Safety  # noqa: F401
 from app.models.audit import AuditLog  # noqa: F401
 from app.models.raw_material import RawMaterial  # noqa: F401
+from app.models.material_item import MaterialItem  # noqa: F401
 
-__all__ = ["User", "Production", "EquipmentCheck", "Quality", "Safety", "AuditLog", "RawMaterial"]
+__all__ = [
+    "User", "Production", "EquipmentCheck", "Quality", "Safety",
+    "AuditLog", "RawMaterial", "MaterialItem",
+]

@@ -97,6 +97,38 @@ export interface RawMaterial {
   location: string;
   operator: string;
   remark: string;
+  confirmed_by: string;
+}
+
+export interface MaterialItem {
+  id: number;
+  material_name: string;
+  material_code: string;
+  unit: string;
+  maker: string;
+  item_category: string;
+  safety_stock: number;
+  note: string;
+  active: boolean;
+  created_at: string;
+}
+
+export interface InventoryRow {
+  material_name: string;
+  material_code: string;
+  unit: string;
+  maker: string;
+  total_stock: number;
+  safety_stock: number;
+  lot_count: number;
+  low: boolean;
+  in_master: boolean;
+}
+
+export interface LotStock {
+  lot_number: string;
+  balance: number;
+  first_in: string | null;
 }
 
 export interface AuditLog {

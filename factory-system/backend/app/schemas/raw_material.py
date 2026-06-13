@@ -38,6 +38,7 @@ class RawMaterialBase(BaseModel):
     location: str = ""
     operator: str = ""
     remark: str = ""
+    confirmed_by: str = ""  # FIFO 경고 무시 승인자
 
 
 class RawMaterialCreate(RawMaterialBase):
@@ -64,6 +65,7 @@ class RawMaterialUpdate(BaseModel):
     location: Optional[str] = None
     operator: Optional[str] = None
     remark: Optional[str] = None
+    confirmed_by: Optional[str] = None
 
     _strip = field_validator("material_name")(_not_blank)
     _qty = field_validator("quantity")(_qty_non_negative)

@@ -12,7 +12,17 @@ from app.core.database import get_db
 from app.models.equipment import EquipmentCheck, Judgement
 from app.models.production import Production
 from app.models.quality import Quality, QualityResult
+from app.models.raw_material import RawMaterial
 from app.models.safety import Safety
+from app.services import inventory
+
+
+def _local_today_start():
+    try:
+        tz = ZoneInfo(settings.TIMEZONE)
+    except Exception:
+        tz = timezone.utc
+    return datetime.now(tz).replace(hour=0, minute=0, second=0, microsecond=0)
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"], dependencies=[Depends(get_current_user)])
 
@@ -142,3 +152,36 @@ def process_output(db: Session = Depends(get_db)):
         .all()
     )
     return [{"process": r.process, "quantity": int(r.quantity or 0)} for r in rows]
+
+
+@router.get("/inventory")
+def inventory_overview(db: Session = Depends(get_db)):
+    """원부재료 재고 현황 모니터링 (대시보드용)."""
+    summary = inventory.item_summary(db)
+    today = _local_today_start()
+
+    today_in = (
+        db.query(func.coalesce(func.sum(RawMaterial.quantity), 0))
+        .filter(RawMaterial.category == "입고", RawMaterial.occurred_at >= today)
+        .scalar()
+    )
+    today_out = (
+        db.query(func.coalesce(func.sum(RawMaterial.quantity), 0))
+        .filter(RawMaterial.category.in_(["사용", "폐기", "반품"]), RawMaterial.occurred_at >= today)
+        .scalar()
+    )
+    low_items = [s for s in summary if s["low"]]
+    top_stock = sorted(summary, key=lambda s: s["total_stock"], reverse=True)[:8]
+
+    return {
+        "total_items": len(summary),
+        "low_stock_count": len(low_items),
+        "today_in": round(float(today_in), 2),
+        "today_out": round(float(today_out), 2),
+        "low_items": low_items,
+        "top_stock": [
+            {"material_name": s["material_name"], "total_stock": s["total_stock"],
+             "unit": s["unit"], "safety_stock": s["safety_stock"], "low": s["low"]}
+            for s in top_stock
+        ],
+    }

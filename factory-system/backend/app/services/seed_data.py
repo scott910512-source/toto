@@ -25,6 +25,7 @@ from app.core.constants import (
 from app.core.security import get_password_hash
 from app.models.equipment import EquipmentCheck, Judgement
 from app.models.production import Production
+from app.models.material_item import MaterialItem
 from app.models.quality import Quality, QualityResult
 from app.models.raw_material import MATERIAL_CATEGORIES, RawMaterial
 from app.models.safety import Safety
@@ -168,9 +169,21 @@ def generate(db: Session, *, lots: int = 1000, days_back: int = 180) -> dict:
         ))
         counts["safety"] += 1
 
-    # --- 원부재료 데이터 ---
+    # --- 품목 마스터 ---
+    counts["material_item"] = 0
+    for i, (name, unit, grade, maker) in enumerate(RAW_MATERIALS):
+        db.add(MaterialItem(
+            material_name=name,
+            material_code=f"RM-{1000 + i}",
+            unit=unit,
+            maker=maker,
+            item_category="화학",
+            safety_stock=round(random.uniform(50, 150), 0),
+        ))
+        counts["material_item"] += 1
+
+    # --- 원부재료 입출고 내역 ---
     counts["material"] = 0
-    units_map = {m[0]: m[1] for m in RAW_MATERIALS}
     code_idx = 1000
     for name, unit, grade, maker in RAW_MATERIALS:
         for _ in range(random.randint(15, 30)):

@@ -6,11 +6,13 @@ from urllib.parse import quote
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 from sqlalchemy import Date, DateTime
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.api.deps import require_admin
 from app.core.database import get_db
 from app.models.equipment import EquipmentCheck
+from app.models.material_item import MaterialItem
 from app.models.production import Production
 from app.models.quality import Quality
 from app.models.raw_material import RawMaterial
@@ -19,6 +21,7 @@ from app.models.safety import Safety
 router = APIRouter(prefix="/backup", tags=["backup"], dependencies=[Depends(require_admin)])
 
 _TABLES = {
+    "material_item": MaterialItem,
     "production": Production,
     "material": RawMaterial,
     "equipment": EquipmentCheck,
@@ -96,17 +99,28 @@ async def backup_import(
     if not isinstance(data, dict):
         raise HTTPException(status_code=400, detail="백업 파일 형식이 올바르지 않습니다.")
 
-    counts = {}
+    counts: dict = {}
+    skipped: dict = {}
     try:
         for name, model in _TABLES.items():
             if replace:
                 db.query(model).delete()
             rows = data.get(name, []) or []
+            ok = 0
+            sk = 0
             for row in rows:
-                db.add(model(**_deserialize(model, row)))
-            counts[name] = len(rows)
+                # 행마다 SAVEPOINT 로 격리 → 유니크 충돌 등은 해당 행만 건너뛴다
+                try:
+                    with db.begin_nested():
+                        db.add(model(**_deserialize(model, row)))
+                    ok += 1
+                except IntegrityError:
+                    sk += 1
+            counts[name] = ok
+            if sk:
+                skipped[name] = sk
         db.commit()
     except Exception as exc:  # noqa: BLE001
         db.rollback()
         raise HTTPException(status_code=400, detail=f"복원 실패: {exc}")
-    return {"status": "ok", "imported": counts, "replaced": replace}
+    return {"status": "ok", "imported": counts, "skipped": skipped, "replaced": replace}

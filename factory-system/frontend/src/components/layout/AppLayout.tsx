@@ -4,6 +4,8 @@ import {
   LayoutDashboard,
   Factory,
   Package,
+  ClipboardList,
+  Boxes,
   Wrench,
   FlaskConical,
   ShieldAlert,
@@ -23,7 +25,9 @@ import { cn } from "@/lib/utils";
 
 const NAV = [
   { to: "/", label: "대시보드", icon: LayoutDashboard, end: true },
-  { to: "/materials", label: "원부재료 관리", icon: Package },
+  { to: "/material-items", label: "품목 마스터", icon: ClipboardList },
+  { to: "/materials", label: "원부재료 입출고", icon: Package },
+  { to: "/inventory", label: "재고 현황", icon: Boxes },
   { to: "/production", label: "생산 정보", icon: Factory },
   { to: "/equipment", label: "설비 점검", icon: Wrench },
   { to: "/quality", label: "품질 데이터", icon: FlaskConical },

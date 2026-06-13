@@ -14,6 +14,11 @@ from app.core.database import Base
 # 허용 구분값 (검증/표시 공용)
 MATERIAL_CATEGORIES = ["입고", "사용", "반품", "폐기", "사용대기"]
 
+# 재고 증감 부호: 입고(+), 사용·폐기·반품(−), 사용대기(0=보류 상태)
+CATEGORY_SIGN = {"입고": 1, "사용": -1, "폐기": -1, "반품": -1, "사용대기": 0}
+# 재고를 차감하는(출고성) 구분 → 사용 시 LOT 지정 및 FIFO 검사 대상
+OUTBOUND_CATEGORIES = ["사용", "폐기", "반품"]
+
 
 class RawMaterial(Base):
     __tablename__ = "raw_material"
@@ -34,6 +39,7 @@ class RawMaterial(Base):
     location: Mapped[str] = mapped_column(String(60), default="")   # 보관위치
     operator: Mapped[str] = mapped_column(String(50), default="")   # 작업자
     remark: Mapped[str] = mapped_column(Text, default="")           # 비고
+    confirmed_by: Mapped[str] = mapped_column(String(50), default="")  # FIFO 경고 무시 승인자
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )

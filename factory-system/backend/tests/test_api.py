@@ -97,6 +97,49 @@ def test_material_export(client, admin_token):
         assert client.get(f"/api/v1/export/material?fmt={fmt}", headers=h).status_code == 200
 
 
+def _txn(**kw):
+    base = {
+        "occurred_at": datetime.now(timezone.utc).isoformat(),
+        "category": "입고", "material_name": "INVTEST", "lot_number": "L1",
+        "quantity": 10, "unit": "kg",
+    }
+    base.update(kw)
+    return base
+
+
+def test_inventory_stock_math(client, admin_token):
+    """입고 10 → 사용 4 → 재고 6 (LOT 단위)."""
+    h = _auth(admin_token)
+    # 품목 마스터 등록
+    client.post("/api/v1/material-items", json={"material_name": "INVTEST", "unit": "kg", "safety_stock": 5}, headers=h)
+    client.post("/api/v1/materials", json=_txn(category="입고", lot_number="LA", quantity=10), headers=h)
+    client.post("/api/v1/materials", json=_txn(category="사용", lot_number="LA", quantity=4), headers=h)
+
+    inv = client.get("/api/v1/inventory?q=INVTEST", headers=h).json()
+    row = next(r for r in inv if r["material_name"] == "INVTEST")
+    assert row["total_stock"] == 6
+    assert row["low"] is False  # 6 >= 안전재고 5
+
+    lots = client.get("/api/v1/inventory/lots?material_name=INVTEST", headers=h).json()
+    assert any(l["lot_number"] == "LA" and l["balance"] == 6 for l in lots)
+
+
+def test_inventory_fifo_violation_detected(client, admin_token):
+    """오래된 LOT(LA) 재고가 남았는데 신규 LOT(LB) 사용 시 FIFO 위반 감지."""
+    h = _auth(admin_token)
+    client.post("/api/v1/materials", json=_txn(material_name="FIFO1", category="입고",
+                lot_number="LA", quantity=10, occurred_at="2026-06-01T00:00:00Z"), headers=h)
+    client.post("/api/v1/materials", json=_txn(material_name="FIFO1", category="입고",
+                lot_number="LB", quantity=10, occurred_at="2026-06-10T00:00:00Z"), headers=h)
+    # 신규 LOT(LB) 사용 시도 → 더 오래된 LA 재고 존재 → 위반
+    chk = client.get("/api/v1/inventory/fifo-check?material_name=FIFO1&lot_number=LB&quantity=3", headers=h).json()
+    assert chk["fifo_violation"] is True
+    assert any(o["lot_number"] == "LA" for o in chk["older_lots"])
+    # 가장 오래된 LA 사용은 위반 아님
+    chk2 = client.get("/api/v1/inventory/fifo-check?material_name=FIFO1&lot_number=LA&quantity=3", headers=h).json()
+    assert chk2["fifo_violation"] is False
+
+
 def _prod(**kw):
     base = {
         "produced_at": datetime.now(timezone.utc).isoformat(),

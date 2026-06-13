@@ -93,8 +93,10 @@ def create_material(
     db.add(obj)
     db.commit()
     db.refresh(obj)
-    audit.record(db, current, "CREATE", "material", obj.id,
-                 f"{obj.material_name} · {obj.category} {obj.quantity}{obj.unit} (LOT {obj.lot_number})")
+    summary = f"{obj.material_name} · {obj.category} {obj.quantity}{obj.unit} (LOT {obj.lot_number})"
+    if obj.confirmed_by:  # FIFO 경고를 무시하고 승인한 경우 이력에 명시
+        summary += f" · ⚠FIFO경고 승인: {obj.confirmed_by}"
+    audit.record(db, current, "CREATE", "material", obj.id, summary)
     db.commit()
     return obj
 

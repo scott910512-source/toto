@@ -22,6 +22,8 @@ export interface FieldDef {
   options?: { value: string; label: string }[];
   required?: boolean;
   step?: string;
+  /** 텍스트 입력 자동완성 목록(직접 입력도 허용) */
+  datalist?: string[];
 }
 
 export interface ColumnDef<T> {
@@ -49,6 +51,8 @@ interface Props<T> {
   tabField?: string;
   /** 탭 값 목록을 가져오는 엔드포인트(문자열 배열 반환) */
   tabsEndpoint?: string;
+  /** 저장 직전 훅. null 반환 시 저장 취소, 객체 반환 시 payload 에 병합(예: FIFO 승인자) */
+  beforeSave?: (form: Record<string, unknown>) => Promise<Record<string, unknown> | null>;
 }
 
 export default function CrudPage<T extends { id: number }>({
@@ -61,6 +65,7 @@ export default function CrudPage<T extends { id: number }>({
   emptyRow,
   tabField,
   tabsEndpoint,
+  beforeSave,
 }: Props<T>) {
   const { hasRole } = useAuth();
   const canEdit = hasRole("admin", "engineer");
@@ -132,6 +137,15 @@ export default function CrudPage<T extends { id: number }>({
   async function save() {
     setSaving(true);
     try {
+      // 저장 직전 훅(예: FIFO 검사·승인). null 이면 취소
+      if (beforeSave) {
+        const extra = await beforeSave(form);
+        if (extra === null) {
+          setSaving(false);
+          return;
+        }
+        Object.assign(form, extra);
+      }
       const payload: Record<string, unknown> = {};
       for (const fd of fields) {
         let v = form[fd.name];
@@ -140,6 +154,8 @@ export default function CrudPage<T extends { id: number }>({
         if (fd.type === "datetime" && v) v = new Date(v as string).toISOString();
         payload[fd.name] = v;
       }
+      // 훅이 주입한 추가 필드(필드 정의에 없는 값)도 함께 전송
+      if (form.confirmed_by) payload.confirmed_by = form.confirmed_by;
       if (editing) await api.patch(`/${endpoint}/${editing.id}`, payload);
       else await api.post(`/${endpoint}`, payload);
       setModalOpen(false);
@@ -375,20 +391,30 @@ export default function CrudPage<T extends { id: number }>({
                     <span className="text-sm text-slate-500">완료</span>
                   </label>
                 ) : (
-                  <Input
-                    type={
-                      fd.type === "datetime"
-                        ? "datetime-local"
-                        : fd.type === "date"
-                        ? "date"
-                        : fd.type === "number"
-                        ? "number"
-                        : "text"
-                    }
-                    step={fd.step}
-                    value={String(form[fd.name] ?? "")}
-                    onChange={(e) => setForm((f) => ({ ...f, [fd.name]: e.target.value }))}
-                  />
+                  <>
+                    <Input
+                      type={
+                        fd.type === "datetime"
+                          ? "datetime-local"
+                          : fd.type === "date"
+                          ? "date"
+                          : fd.type === "number"
+                          ? "number"
+                          : "text"
+                      }
+                      step={fd.step}
+                      list={fd.datalist ? `dl-${fd.name}` : undefined}
+                      value={String(form[fd.name] ?? "")}
+                      onChange={(e) => setForm((f) => ({ ...f, [fd.name]: e.target.value }))}
+                    />
+                    {fd.datalist && (
+                      <datalist id={`dl-${fd.name}`}>
+                        {fd.datalist.map((d) => (
+                          <option key={d} value={d} />
+                        ))}
+                      </datalist>
+                    )}
+                  </>
                 )}
               </Field>
             </div>
