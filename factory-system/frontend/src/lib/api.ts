@@ -1,0 +1,40 @@
+import axios from "axios";
+
+const baseURL = import.meta.env.VITE_API_BASE_URL || "/api/v1";
+
+export const api = axios.create({ baseURL });
+
+// 요청 시 토큰 주입
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem("token");
+  if (token) config.headers.Authorization = `Bearer ${token}`;
+  return config;
+});
+
+// 401 이면 로그아웃 처리
+api.interceptors.response.use(
+  (res) => res,
+  (err) => {
+    if (err.response?.status === 401 && localStorage.getItem("token")) {
+      localStorage.removeItem("token");
+      localStorage.removeItem("user");
+      if (location.pathname !== "/login") location.href = "/login";
+    }
+    return Promise.reject(err);
+  }
+);
+
+/** 파일 다운로드 헬퍼 (export/backup) */
+export async function downloadFile(url: string, fallbackName: string) {
+  const res = await api.get(url, { responseType: "blob" });
+  const disposition = res.headers["content-disposition"] || "";
+  let filename = fallbackName;
+  const match = /filename\*=UTF-8''([^;]+)/.exec(disposition);
+  if (match) filename = decodeURIComponent(match[1]);
+  const blobUrl = URL.createObjectURL(res.data);
+  const a = document.createElement("a");
+  a.href = blobUrl;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(blobUrl);
+}

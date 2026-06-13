@@ -1,0 +1,80 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light dark;
+}
+
+/* ===== 리퀴드 글라스 배경 (Apple iOS 스타일) ===== */
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: theme("fontFamily.sans");
+  -webkit-font-smoothing: antialiased;
+  color: #0b1220;
+  background:
+    radial-gradient(1100px 700px at 12% -10%, rgba(10, 132, 255, 0.28), transparent 60%),
+    radial-gradient(900px 600px at 110% 10%, rgba(100, 210, 255, 0.25), transparent 55%),
+    radial-gradient(800px 700px at 50% 120%, rgba(191, 90, 242, 0.20), transparent 55%),
+    linear-gradient(180deg, #eef2ff 0%, #f6f8ff 100%);
+  background-attachment: fixed;
+}
+
+.dark body {
+  color: #e8edf5;
+  background:
+    radial-gradient(1100px 700px at 12% -10%, rgba(10, 132, 255, 0.30), transparent 60%),
+    radial-gradient(900px 600px at 110% 10%, rgba(94, 92, 230, 0.30), transparent 55%),
+    radial-gradient(800px 700px at 50% 120%, rgba(191, 90, 242, 0.22), transparent 55%),
+    linear-gradient(180deg, #0a0e1a 0%, #0d1326 100%);
+}
+
+@layer components {
+  /* 글라스 패널 공통 */
+  .glass {
+    @apply rounded-2xl border backdrop-blur-2xl;
+    background: rgba(255, 255, 255, 0.55);
+    border-color: rgba(255, 255, 255, 0.6);
+    box-shadow: theme("boxShadow.glass");
+  }
+  .dark .glass {
+    background: rgba(22, 28, 46, 0.55);
+    border-color: rgba(255, 255, 255, 0.10);
+  }
+
+  .glass-strong {
+    @apply rounded-2xl border backdrop-blur-2xl;
+    background: rgba(255, 255, 255, 0.72);
+    border-color: rgba(255, 255, 255, 0.7);
+    box-shadow: theme("boxShadow.glass-lg");
+  }
+  .dark .glass-strong {
+    background: rgba(20, 26, 44, 0.78);
+    border-color: rgba(255, 255, 255, 0.12);
+  }
+
+  /* iOS 스타일 입력 */
+  .input-glass {
+    @apply w-full rounded-xl border px-3.5 py-2.5 text-sm outline-none transition;
+    background: rgba(255, 255, 255, 0.6);
+    border-color: rgba(120, 120, 140, 0.25);
+  }
+  .input-glass:focus {
+    border-color: theme("colors.accent.DEFAULT");
+    box-shadow: 0 0 0 4px rgba(10, 132, 255, 0.15);
+  }
+  .dark .input-glass {
+    background: rgba(15, 20, 36, 0.7);
+    border-color: rgba(255, 255, 255, 0.12);
+    color: #e8edf5;
+  }
+}
+
+/* 스크롤바 */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb {
+  background: rgba(120, 120, 140, 0.35);
+  border-radius: 10px;
+}
+::-webkit-scrollbar-track { background: transparent; }

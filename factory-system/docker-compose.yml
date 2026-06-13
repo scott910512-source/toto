@@ -1,0 +1,43 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: factory_db
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-factory}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-factory}
+      POSTGRES_DB: ${POSTGRES_DB:-factory_db}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-factory}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build: ./backend
+    container_name: factory_backend
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-factory}:${POSTGRES_PASSWORD:-factory}@db:5432/${POSTGRES_DB:-factory_db}
+      SECRET_KEY: ${SECRET_KEY:-CHANGE_ME_IN_PRODUCTION}
+      FIRST_SUPERUSER: ${FIRST_SUPERUSER:-admin}
+      FIRST_SUPERUSER_PASSWORD: ${FIRST_SUPERUSER_PASSWORD:-admin1234}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    ports:
+      - "8000:8000"
+
+  frontend:
+    build: ./frontend
+    container_name: factory_frontend
+    depends_on:
+      - backend
+    ports:
+      - "3000:80"
+
+volumes:
+  pgdata:
