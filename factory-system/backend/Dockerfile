@@ -5,9 +5,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# 빌드 의존성 (psycopg2 등)
+# 빌드 의존성 (psycopg2 등) + 한글 폰트(PDF Export 한글 표기용)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc libpq-dev curl \
+    gcc libpq-dev curl fonts-nanum \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .

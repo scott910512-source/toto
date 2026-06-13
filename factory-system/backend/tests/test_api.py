@@ -62,6 +62,53 @@ def test_requires_auth(client):
     assert client.get("/api/v1/production").status_code == 401
 
 
+def _prod(**kw):
+    base = {
+        "produced_at": datetime.now(timezone.utc).isoformat(),
+        "process_name": "증착", "equipment_name": "Reactor-101", "lot_number": "LOT-X",
+        "operator": "t", "quantity": 1000, "yield_rate": 97.0, "remark": "",
+    }
+    base.update(kw)
+    return base
+
+
+def test_input_validation(client, admin_token):
+    """서버측 입력 검증: 음수 수량/범위초과 수율/빈 LOT/규격 모순 거부."""
+    h = _auth(admin_token)
+    assert client.post("/api/v1/production", json=_prod(quantity=-5), headers=h).status_code == 422
+    assert client.post("/api/v1/production", json=_prod(yield_rate=250), headers=h).status_code == 422
+    assert client.post("/api/v1/production", json=_prod(lot_number=""), headers=h).status_code == 422
+    assert client.post("/api/v1/production", json=_prod(lot_number="   "), headers=h).status_code == 422
+    bad_q = {
+        "sample_number": "S", "lot_number": "L", "analyzed_at": datetime.now(timezone.utc).isoformat(),
+        "analyst": "a", "item_name": "Purity", "measured_value": 50,
+        "spec_lower": 100, "spec_upper": 0, "result": "OK",
+    }
+    assert client.post("/api/v1/quality", json=bad_q, headers=h).status_code == 422
+
+
+def test_quality_result_auto_computed(client, admin_token):
+    """측정값이 규격을 벗어나면 result 가 NG 로 자동 판정되어야 한다."""
+    h = _auth(admin_token)
+    payload = {
+        "sample_number": "S-AUTO", "lot_number": "L1",
+        "analyzed_at": datetime.now(timezone.utc).isoformat(), "analyst": "a",
+        "item_name": "Moisture", "measured_value": 9999,
+        "spec_lower": 0, "spec_upper": 50, "result": "OK",  # 사용자가 OK 라 우겨도
+    }
+    res = client.post("/api/v1/quality", json=payload, headers=h)
+    assert res.status_code == 201
+    assert res.json()["result"] == "NG"  # 서버가 NG 로 정정
+
+
+def test_last_admin_cannot_be_deleted(client, admin_token):
+    """유일한 관리자(=본인)는 삭제할 수 없어야 한다(시스템 잠김 방지)."""
+    h = _auth(admin_token)
+    me = client.get("/api/v1/auth/me", headers=h).json()
+    res = client.delete(f"/api/v1/users/{me['id']}", headers=h)
+    assert res.status_code == 400
+
+
 def test_backup_export_and_restore_roundtrip(client, admin_token):
     """백업 다운로드 → 복원(추가/전체교체) 왕복 검증 (datetime 역직렬화 포함)."""
     headers = _auth(admin_token)

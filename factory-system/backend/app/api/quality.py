@@ -76,6 +76,8 @@ def create_quality(
     current: User = Depends(require_editor),
 ):
     obj = Quality(**payload.model_dump())
+    # 결과(OK/NG)는 측정값과 규격으로 서버가 판정 (입력값 신뢰하지 않음)
+    obj.result = QualityResult.OK if obj.spec_lower <= obj.measured_value <= obj.spec_upper else QualityResult.NG
     db.add(obj)
     db.commit()
     db.refresh(obj)
@@ -98,6 +100,8 @@ def update_quality(
     changes = payload.model_dump(exclude_unset=True)
     for k, v in changes.items():
         setattr(obj, k, v)
+    # 측정값/규격이 바뀌면 결과 재판정
+    obj.result = QualityResult.OK if obj.spec_lower <= obj.measured_value <= obj.spec_upper else QualityResult.NG
     db.commit()
     db.refresh(obj)
     audit.record(db, current, "UPDATE", "quality", obj.id,

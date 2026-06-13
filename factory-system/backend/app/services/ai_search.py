@@ -73,26 +73,34 @@ def _most_fail_equipment(db: Session) -> dict:
 
 
 def _production_trend(db: Session) -> dict:
+    # DB 종류(PostgreSQL/SQLite)에 무관하게 동작하도록 월 집계는 Python 에서 수행
     start = datetime.now(timezone.utc) - timedelta(days=90)
-    month = func.to_char(Production.produced_at, "YYYY-MM")
-    rows = (
-        db.query(
-            month.label("m"),
-            func.sum(Production.quantity).label("q"),
-            func.avg(Production.yield_rate).label("y"),
-        )
+    records = (
+        db.query(Production.produced_at, Production.quantity, Production.yield_rate)
         .filter(Production.produced_at >= start)
-        .group_by(month)
-        .order_by(month)
         .all()
     )
-    if not rows:
+    if not records:
         return {"answer": "최근 3개월 생산 데이터가 없습니다.", "rows": []}
-    parts = [f"{r.m}: {int(r.q):,}개(평균수율 {float(r.y):.1f}%)" for r in rows]
-    trend = "증가" if rows[-1].q >= rows[0].q else "감소"
+
+    agg: dict[str, list] = {}
+    for produced_at, qty, yld in records:
+        key = produced_at.strftime("%Y-%m")
+        bucket = agg.setdefault(key, [0, 0.0, 0])  # [수량합, 수율합, 건수]
+        bucket[0] += qty
+        bucket[1] += yld
+        bucket[2] += 1
+
+    months = sorted(agg.keys())
+    rows = [
+        {"month": m, "quantity": agg[m][0], "avg_yield": round(agg[m][1] / agg[m][2], 2)}
+        for m in months
+    ]
+    parts = [f"{r['month']}: {r['quantity']:,}개(평균수율 {r['avg_yield']:.1f}%)" for r in rows]
+    trend = "증가" if rows[-1]["quantity"] >= rows[0]["quantity"] else "감소"
     return {
         "answer": f"최근 3개월 생산량 추세는 전반적으로 '{trend}' 입니다. " + ", ".join(parts),
-        "rows": [{"month": r.m, "quantity": int(r.q), "avg_yield": round(float(r.y), 2)} for r in rows],
+        "rows": rows,
     }
 
 

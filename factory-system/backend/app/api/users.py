@@ -7,11 +7,20 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_current_user, require_admin
 from app.core.database import get_db
 from app.core.security import get_password_hash
-from app.models.user import User
+from app.models.user import User, UserRole
 from app.schemas.user import UserCreate, UserOut, UserUpdate
 from app.services import audit
 
 router = APIRouter(prefix="/users", tags=["users"], dependencies=[Depends(require_admin)])
+
+
+def _other_active_admins(db: Session, exclude_id: int) -> int:
+    """자기 자신을 제외한 '활성 관리자' 수."""
+    return (
+        db.query(User)
+        .filter(User.role == UserRole.admin, User.is_active.is_(True), User.id != exclude_id)
+        .count()
+    )
 
 
 @router.get("", response_model=List[UserOut])
@@ -54,6 +63,11 @@ def update_user(
     if not user:
         raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다.")
     data = payload.model_dump(exclude_unset=True)
+    # 마지막 관리자를 강등/비활성화하여 시스템이 잠기는 것을 방지
+    demoting = data.get("role") not in (None, UserRole.admin, "admin")
+    deactivating = data.get("is_active") is False
+    if user.role == UserRole.admin and (demoting or deactivating) and _other_active_admins(db, user.id) == 0:
+        raise HTTPException(status_code=400, detail="마지막 활성 관리자는 강등·비활성화할 수 없습니다.")
     pw_changed = bool(data.get("password"))
     if pw_changed:
         user.hashed_password = get_password_hash(data.pop("password"))
@@ -79,6 +93,10 @@ def delete_user(
     user = db.get(User, user_id)
     if not user:
         raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다.")
+    if user.id == current.id:
+        raise HTTPException(status_code=400, detail="본인 계정은 삭제할 수 없습니다.")
+    if user.role == UserRole.admin and _other_active_admins(db, user.id) == 0:
+        raise HTTPException(status_code=400, detail="마지막 활성 관리자는 삭제할 수 없습니다.")
     username = user.username
     db.delete(user)
     db.commit()
