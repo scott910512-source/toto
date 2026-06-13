@@ -10,8 +10,10 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_current_user, require_editor
 from app.core.database import get_db
 from app.models.safety import Safety
+from app.models.user import User
 from app.schemas.common import Page
 from app.schemas.records import SafetyCreate, SafetyOut, SafetyUpdate
+from app.services import audit
 
 router = APIRouter(prefix="/safety", tags=["safety"])
 
@@ -67,31 +69,54 @@ def get_safety(rid: int, db: Session = Depends(get_db)):
     return obj
 
 
-@router.post("", response_model=SafetyOut, status_code=201, dependencies=[Depends(require_editor)])
-def create_safety(payload: SafetyCreate, db: Session = Depends(get_db)):
+@router.post("", response_model=SafetyOut, status_code=201)
+def create_safety(
+    payload: SafetyCreate,
+    db: Session = Depends(get_db),
+    current: User = Depends(require_editor),
+):
     obj = Safety(**payload.model_dump())
     db.add(obj)
     db.commit()
     db.refresh(obj)
+    audit.record(db, current, "CREATE", "safety", obj.id,
+                 f"{obj.work_area} · {obj.hazard} 안전 등록")
+    db.commit()
     return obj
 
 
-@router.patch("/{rid}", response_model=SafetyOut, dependencies=[Depends(require_editor)])
-def update_safety(rid: int, payload: SafetyUpdate, db: Session = Depends(get_db)):
+@router.patch("/{rid}", response_model=SafetyOut)
+def update_safety(
+    rid: int,
+    payload: SafetyUpdate,
+    db: Session = Depends(get_db),
+    current: User = Depends(require_editor),
+):
     obj = db.get(Safety, rid)
     if not obj:
         raise HTTPException(status_code=404, detail="데이터를 찾을 수 없습니다.")
-    for k, v in payload.model_dump(exclude_unset=True).items():
+    changes = payload.model_dump(exclude_unset=True)
+    for k, v in changes.items():
         setattr(obj, k, v)
     db.commit()
     db.refresh(obj)
+    audit.record(db, current, "UPDATE", "safety", obj.id,
+                 f"{obj.work_area} 안전 수정 · {audit.fmt_changes(changes)}")
+    db.commit()
     return obj
 
 
-@router.delete("/{rid}", status_code=204, dependencies=[Depends(require_editor)])
-def delete_safety(rid: int, db: Session = Depends(get_db)):
+@router.delete("/{rid}", status_code=204)
+def delete_safety(
+    rid: int,
+    db: Session = Depends(get_db),
+    current: User = Depends(require_editor),
+):
     obj = db.get(Safety, rid)
     if not obj:
         raise HTTPException(status_code=404, detail="데이터를 찾을 수 없습니다.")
+    summary = f"{obj.work_area} · {obj.hazard} 안전 삭제"
     db.delete(obj)
+    db.commit()
+    audit.record(db, current, "DELETE", "safety", rid, summary)
     db.commit()

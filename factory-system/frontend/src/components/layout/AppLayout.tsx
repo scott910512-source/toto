@@ -8,6 +8,7 @@ import {
   ShieldAlert,
   Sparkles,
   Users,
+  History,
   Settings,
   Moon,
   Sun,
@@ -27,6 +28,7 @@ const NAV = [
   { to: "/safety", label: "안전 데이터", icon: ShieldAlert },
   { to: "/ai", label: "AI 검색", icon: Sparkles },
   { to: "/users", label: "사용자 관리", icon: Users, adminOnly: true },
+  { to: "/audit", label: "활동 이력", icon: History, adminOnly: true },
   { to: "/settings", label: "설정 · 백업", icon: Settings },
 ];
 

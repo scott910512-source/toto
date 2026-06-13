@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api import (
     admin,
     ai_search,
+    audit,
     auth,
     backup,
     dashboard,
@@ -71,6 +72,7 @@ for r in (
     export.router,
     ai_search.router,
     backup.router,
+    audit.router,
     admin.router,
 ):
     app.include_router(r, prefix=settings.API_V1_PREFIX)

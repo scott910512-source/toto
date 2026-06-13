@@ -11,6 +11,7 @@ import QualityPage from "@/pages/QualityPage";
 import SafetyPage from "@/pages/SafetyPage";
 import AiSearchPage from "@/pages/AiSearchPage";
 import UsersPage from "@/pages/UsersPage";
+import AuditPage from "@/pages/AuditPage";
 import SettingsPage from "@/pages/SettingsPage";
 
 function Protected({ children, admin }: { children: ReactNode; admin?: boolean }) {
@@ -49,6 +50,14 @@ export default function App() {
           element={
             <Protected admin>
               <UsersPage />
+            </Protected>
+          }
+        />
+        <Route
+          path="audit"
+          element={
+            <Protected admin>
+              <AuditPage />
             </Protected>
           }
         />

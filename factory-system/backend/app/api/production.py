@@ -10,8 +10,10 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_current_user, require_editor
 from app.core.database import get_db
 from app.models.production import Production
+from app.models.user import User
 from app.schemas.common import Page
 from app.schemas.records import ProductionCreate, ProductionOut, ProductionUpdate
+from app.services import audit
 
 router = APIRouter(prefix="/production", tags=["production"])
 
@@ -74,31 +76,54 @@ def get_production(rid: int, db: Session = Depends(get_db)):
     return obj
 
 
-@router.post("", response_model=ProductionOut, status_code=201, dependencies=[Depends(require_editor)])
-def create_production(payload: ProductionCreate, db: Session = Depends(get_db)):
+@router.post("", response_model=ProductionOut, status_code=201)
+def create_production(
+    payload: ProductionCreate,
+    db: Session = Depends(get_db),
+    current: User = Depends(require_editor),
+):
     obj = Production(**payload.model_dump())
     db.add(obj)
     db.commit()
     db.refresh(obj)
+    audit.record(db, current, "CREATE", "production", obj.id,
+                 f"LOT {obj.lot_number} · {obj.process_name} 생산 등록 (수율 {obj.yield_rate}%)")
+    db.commit()
     return obj
 
 
-@router.patch("/{rid}", response_model=ProductionOut, dependencies=[Depends(require_editor)])
-def update_production(rid: int, payload: ProductionUpdate, db: Session = Depends(get_db)):
+@router.patch("/{rid}", response_model=ProductionOut)
+def update_production(
+    rid: int,
+    payload: ProductionUpdate,
+    db: Session = Depends(get_db),
+    current: User = Depends(require_editor),
+):
     obj = db.get(Production, rid)
     if not obj:
         raise HTTPException(status_code=404, detail="데이터를 찾을 수 없습니다.")
-    for k, v in payload.model_dump(exclude_unset=True).items():
+    changes = payload.model_dump(exclude_unset=True)
+    for k, v in changes.items():
         setattr(obj, k, v)
     db.commit()
     db.refresh(obj)
+    audit.record(db, current, "UPDATE", "production", obj.id,
+                 f"LOT {obj.lot_number} 수정 · {audit.fmt_changes(changes)}")
+    db.commit()
     return obj
 
 
-@router.delete("/{rid}", status_code=204, dependencies=[Depends(require_editor)])
-def delete_production(rid: int, db: Session = Depends(get_db)):
+@router.delete("/{rid}", status_code=204)
+def delete_production(
+    rid: int,
+    db: Session = Depends(get_db),
+    current: User = Depends(require_editor),
+):
     obj = db.get(Production, rid)
     if not obj:
         raise HTTPException(status_code=404, detail="데이터를 찾을 수 없습니다.")
+    summary = f"LOT {obj.lot_number} · {obj.process_name} 생산 삭제"
     db.delete(obj)
+    db.commit()
+    audit.record(db, current, "DELETE", "production", rid, summary)
     db.commit()

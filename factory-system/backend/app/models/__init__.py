@@ -4,5 +4,6 @@ from app.models.production import Production  # noqa: F401
 from app.models.equipment import EquipmentCheck  # noqa: F401
 from app.models.quality import Quality  # noqa: F401
 from app.models.safety import Safety  # noqa: F401
+from app.models.audit import AuditLog  # noqa: F401
 
-__all__ = ["User", "Production", "EquipmentCheck", "Quality", "Safety"]
+__all__ = ["User", "Production", "EquipmentCheck", "Quality", "Safety", "AuditLog"]

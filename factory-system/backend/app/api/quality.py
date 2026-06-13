@@ -10,8 +10,10 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_current_user, require_editor
 from app.core.database import get_db
 from app.models.quality import Quality, QualityResult
+from app.models.user import User
 from app.schemas.common import Page
 from app.schemas.records import QualityCreate, QualityOut, QualityUpdate
+from app.services import audit
 
 router = APIRouter(prefix="/quality", tags=["quality"])
 
@@ -67,31 +69,54 @@ def get_quality(rid: int, db: Session = Depends(get_db)):
     return obj
 
 
-@router.post("", response_model=QualityOut, status_code=201, dependencies=[Depends(require_editor)])
-def create_quality(payload: QualityCreate, db: Session = Depends(get_db)):
+@router.post("", response_model=QualityOut, status_code=201)
+def create_quality(
+    payload: QualityCreate,
+    db: Session = Depends(get_db),
+    current: User = Depends(require_editor),
+):
     obj = Quality(**payload.model_dump())
     db.add(obj)
     db.commit()
     db.refresh(obj)
+    audit.record(db, current, "CREATE", "quality", obj.id,
+                 f"{obj.sample_number}/{obj.lot_number} · {obj.item_name} 분석 등록 ({obj.result.value})")
+    db.commit()
     return obj
 
 
-@router.patch("/{rid}", response_model=QualityOut, dependencies=[Depends(require_editor)])
-def update_quality(rid: int, payload: QualityUpdate, db: Session = Depends(get_db)):
+@router.patch("/{rid}", response_model=QualityOut)
+def update_quality(
+    rid: int,
+    payload: QualityUpdate,
+    db: Session = Depends(get_db),
+    current: User = Depends(require_editor),
+):
     obj = db.get(Quality, rid)
     if not obj:
         raise HTTPException(status_code=404, detail="데이터를 찾을 수 없습니다.")
-    for k, v in payload.model_dump(exclude_unset=True).items():
+    changes = payload.model_dump(exclude_unset=True)
+    for k, v in changes.items():
         setattr(obj, k, v)
     db.commit()
     db.refresh(obj)
+    audit.record(db, current, "UPDATE", "quality", obj.id,
+                 f"{obj.sample_number} 품질 수정 · {audit.fmt_changes(changes)}")
+    db.commit()
     return obj
 
 
-@router.delete("/{rid}", status_code=204, dependencies=[Depends(require_editor)])
-def delete_quality(rid: int, db: Session = Depends(get_db)):
+@router.delete("/{rid}", status_code=204)
+def delete_quality(
+    rid: int,
+    db: Session = Depends(get_db),
+    current: User = Depends(require_editor),
+):
     obj = db.get(Quality, rid)
     if not obj:
         raise HTTPException(status_code=404, detail="데이터를 찾을 수 없습니다.")
+    summary = f"{obj.sample_number}/{obj.lot_number} 품질 삭제"
     db.delete(obj)
+    db.commit()
+    audit.record(db, current, "DELETE", "quality", rid, summary)
     db.commit()

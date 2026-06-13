@@ -79,3 +79,14 @@ export interface AiAnswer {
   answer: string;
   rows: Record<string, unknown>[];
 }
+
+export interface AuditLog {
+  id: number;
+  created_at: string;
+  username: string;
+  role: string;
+  action: "CREATE" | "UPDATE" | "DELETE";
+  entity: string;
+  entity_id: number | null;
+  summary: string;
+}

@@ -107,6 +107,40 @@ def test_backup_export_and_restore_roundtrip(client, admin_token):
     assert replaced == before
 
 
+def test_audit_log_records_crud(client, admin_token):
+    """등록/수정/삭제 시 감사 로그가 행위자(username)와 함께 남는지 검증."""
+    headers = _auth(admin_token)
+    payload = {
+        "produced_at": datetime.now(timezone.utc).isoformat(),
+        "process_name": "식각",
+        "equipment_name": "Etcher-501",
+        "lot_number": "LOT-AUDIT-1",
+        "operator": "박민수",
+        "quantity": 800,
+        "yield_rate": 95.5,
+        "remark": "",
+    }
+    rid = client.post("/api/v1/production", json=payload, headers=headers).json()["id"]
+    client.patch(f"/api/v1/production/{rid}", json={"quantity": 999}, headers=headers)
+    client.delete(f"/api/v1/production/{rid}", headers=headers)
+
+    res = client.get("/api/v1/audit?entity=production", headers=headers)
+    assert res.status_code == 200
+    actions = [r["action"] for r in res.json()["items"]]
+    assert {"CREATE", "UPDATE", "DELETE"}.issubset(set(actions))
+    # 행위자 기록 확인
+    assert all(r["username"] == "admin" for r in res.json()["items"])
+
+
+def test_audit_requires_admin(client):
+    """viewer/engineer 는 활동 이력 조회 불가."""
+    res = client.post(
+        "/api/v1/auth/login", data={"username": "engineer", "password": "engineer1234"}
+    )
+    token = res.json()["access_token"]
+    assert client.get("/api/v1/audit", headers=_auth(token)).status_code == 403
+
+
 def test_backup_requires_admin(client):
     """viewer 계정은 백업 불가(403)."""
     res = client.post(

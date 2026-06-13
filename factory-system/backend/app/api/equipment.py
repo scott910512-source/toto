@@ -10,8 +10,10 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_current_user, require_editor
 from app.core.database import get_db
 from app.models.equipment import EquipmentCheck, Judgement
+from app.models.user import User
 from app.schemas.common import Page
 from app.schemas.records import EquipmentCreate, EquipmentOut, EquipmentUpdate
+from app.services import audit
 
 router = APIRouter(prefix="/equipment", tags=["equipment"])
 
@@ -67,31 +69,54 @@ def get_equipment(rid: int, db: Session = Depends(get_db)):
     return obj
 
 
-@router.post("", response_model=EquipmentOut, status_code=201, dependencies=[Depends(require_editor)])
-def create_equipment(payload: EquipmentCreate, db: Session = Depends(get_db)):
+@router.post("", response_model=EquipmentOut, status_code=201)
+def create_equipment(
+    payload: EquipmentCreate,
+    db: Session = Depends(get_db),
+    current: User = Depends(require_editor),
+):
     obj = EquipmentCheck(**payload.model_dump())
     db.add(obj)
     db.commit()
     db.refresh(obj)
+    audit.record(db, current, "CREATE", "equipment", obj.id,
+                 f"{obj.equipment_name} · {obj.check_item} 점검 등록 ({obj.judgement.value})")
+    db.commit()
     return obj
 
 
-@router.patch("/{rid}", response_model=EquipmentOut, dependencies=[Depends(require_editor)])
-def update_equipment(rid: int, payload: EquipmentUpdate, db: Session = Depends(get_db)):
+@router.patch("/{rid}", response_model=EquipmentOut)
+def update_equipment(
+    rid: int,
+    payload: EquipmentUpdate,
+    db: Session = Depends(get_db),
+    current: User = Depends(require_editor),
+):
     obj = db.get(EquipmentCheck, rid)
     if not obj:
         raise HTTPException(status_code=404, detail="데이터를 찾을 수 없습니다.")
-    for k, v in payload.model_dump(exclude_unset=True).items():
+    changes = payload.model_dump(exclude_unset=True)
+    for k, v in changes.items():
         setattr(obj, k, v)
     db.commit()
     db.refresh(obj)
+    audit.record(db, current, "UPDATE", "equipment", obj.id,
+                 f"{obj.equipment_name} 점검 수정 · {audit.fmt_changes(changes)}")
+    db.commit()
     return obj
 
 
-@router.delete("/{rid}", status_code=204, dependencies=[Depends(require_editor)])
-def delete_equipment(rid: int, db: Session = Depends(get_db)):
+@router.delete("/{rid}", status_code=204)
+def delete_equipment(
+    rid: int,
+    db: Session = Depends(get_db),
+    current: User = Depends(require_editor),
+):
     obj = db.get(EquipmentCheck, rid)
     if not obj:
         raise HTTPException(status_code=404, detail="데이터를 찾을 수 없습니다.")
+    summary = f"{obj.equipment_name} · {obj.check_item} 점검 삭제"
     db.delete(obj)
+    db.commit()
+    audit.record(db, current, "DELETE", "equipment", rid, summary)
     db.commit()
