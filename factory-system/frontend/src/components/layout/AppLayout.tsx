@@ -52,20 +52,20 @@ export default function AppLayout() {
           open ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
         )}
       >
-        <div className="mb-6 flex items-center gap-2 px-2 pt-2">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-accent text-white shadow-lg shadow-accent/40">
-            <Factory size={18} />
+        <div className="mb-7 flex items-center gap-2.5 px-2 pt-2">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-accent/90 text-white shadow-sm shadow-accent/20">
+            <Factory size={17} strokeWidth={1.9} />
           </div>
           <div className="leading-tight">
-            <div className="text-sm font-bold">현장 데이터</div>
-            <div className="text-[11px] text-slate-500">통합 관리 시스템</div>
+            <div className="text-sm font-bold tracking-tight">현장 데이터</div>
+            <div className="text-[11px] text-slate-400">통합 관리 시스템</div>
           </div>
           <button className="ml-auto lg:hidden" onClick={() => setOpen(false)}>
             <X size={18} />
           </button>
         </div>
 
-        <nav className="space-y-1">
+        <nav className="space-y-0.5">
           {items.map(({ to, label, icon: Icon, end }) => (
             <NavLink
               key={to}
@@ -74,15 +74,25 @@ export default function AppLayout() {
               onClick={() => setOpen(false)}
               className={({ isActive }) =>
                 cn(
-                  "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition",
+                  "group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-[13.5px] transition-colors",
                   isActive
-                    ? "bg-accent text-white shadow-md shadow-accent/30"
-                    : "text-slate-600 hover:bg-white/60 dark:text-slate-300 dark:hover:bg-white/10"
+                    ? "bg-accent/10 font-semibold text-accent dark:bg-accent/15"
+                    : "font-medium text-slate-500 hover:bg-slate-900/[0.04] hover:text-slate-700 dark:text-slate-400 dark:hover:bg-white/[0.06] dark:hover:text-slate-200"
                 )
               }
             >
-              <Icon size={18} />
-              {label}
+              {({ isActive }) => (
+                <>
+                  <span
+                    className={cn(
+                      "absolute left-0 top-1/2 h-5 w-1 -translate-y-1/2 rounded-full bg-accent transition-opacity",
+                      isActive ? "opacity-100" : "opacity-0"
+                    )}
+                  />
+                  <Icon size={18} strokeWidth={isActive ? 2.1 : 1.75} />
+                  {label}
+                </>
+              )}
             </NavLink>
           ))}
         </nav>
