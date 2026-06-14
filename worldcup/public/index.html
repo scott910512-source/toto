@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="ko" data-bs-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>대한민국 월드컵 스코어 예측 이벤트</title>
+  <link rel="stylesheet" href="/vendor/bootstrap.min.css" />
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+  <nav class="navbar navbar-expand bg-body-tertiary border-bottom sticky-top">
+    <div class="container">
+      <span class="navbar-brand fw-bold">⚽ 월드컵 예측</span>
+      <div class="ms-auto d-flex align-items-center gap-2">
+        <span id="userBadge" class="badge text-bg-primary d-none"></span>
+        <button id="themeToggle" class="btn btn-outline-secondary btn-sm" title="다크모드 전환">🌙</button>
+        <a href="/admin.html" class="btn btn-outline-secondary btn-sm">관리자</a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="container py-4">
+    <!-- 1) 최초 접속: 팀 + 이름 입력 -->
+    <section id="setupView" class="d-none">
+      <div class="row justify-content-center">
+        <div class="col-12 col-sm-9 col-md-6 col-lg-5">
+          <div class="card shadow-sm">
+            <div class="card-body p-4">
+              <h1 class="h4 mb-1 text-center">대한민국 월드컵<br>스코어 예측 이벤트</h1>
+              <p class="text-secondary text-center small mb-4">참여를 위해 정보를 입력하세요</p>
+              <form id="setupForm">
+                <div class="mb-3">
+                  <label class="form-label">팀 (부서명)</label>
+                  <input type="text" id="deptInput" class="form-control form-control-lg"
+                         placeholder="예) 생산팀" maxlength="30" required />
+                </div>
+                <div class="mb-3">
+                  <label class="form-label">이름</label>
+                  <input type="text" id="nameInput" class="form-control form-control-lg"
+                         placeholder="예) 홍길동" maxlength="20" required />
+                </div>
+                <div id="setupError" class="text-danger small mb-2 d-none"></div>
+                <button type="submit" class="btn btn-primary btn-lg w-100">확인</button>
+              </form>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2) 경기 선택 화면 -->
+    <section id="matchView" class="d-none">
+      <div class="d-flex align-items-center justify-content-between mb-3">
+        <h1 class="h5 mb-0">경기를 선택하세요</h1>
+        <button id="changeUser" class="btn btn-link btn-sm text-decoration-none p-0">정보 변경</button>
+      </div>
+      <div id="matchList" class="row g-3"></div>
+      <div id="matchEmpty" class="text-center text-secondary py-5 d-none">
+        아직 등록된 경기가 없습니다. 관리자가 경기를 추가하면 표시됩니다.
+      </div>
+    </section>
+  </main>
+
+  <!-- 예측 입력 모달 -->
+  <div class="modal fade" id="predictModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="predictTitle">예측 입력</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="닫기"></button>
+        </div>
+        <div class="modal-body">
+          <p id="predictKickoff" class="text-secondary small mb-3"></p>
+          <div id="predictClosed" class="alert alert-warning d-none py-2">
+            이미 경기가 시작되어 예측을 수정할 수 없습니다.
+          </div>
+          <form id="predictForm">
+            <div class="row align-items-end g-2 text-center">
+              <div class="col-5">
+                <label id="homeLabel" class="form-label fw-bold mb-1">대한민국</label>
+                <input type="number" id="homeScore" class="form-control form-control-lg text-center score-input"
+                       min="0" max="99" inputmode="numeric" required />
+              </div>
+              <div class="col-2 pb-2 fs-3 fw-bold">:</div>
+              <div class="col-5">
+                <label id="awayLabel" class="form-label fw-bold mb-1">상대팀</label>
+                <input type="number" id="awayScore" class="form-control form-control-lg text-center score-input"
+                       min="0" max="99" inputmode="numeric" required />
+              </div>
+            </div>
+            <div id="predictError" class="text-danger small mt-3 d-none"></div>
+            <button type="submit" id="predictSubmit" class="btn btn-primary btn-lg w-100 mt-4">예측 저장</button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast-msg"></div>
+
+  <script src="/vendor/bootstrap.bundle.min.js"></script>
+  <script src="/js/app.js"></script>
+</body>
+</html>
