@@ -22,11 +22,6 @@ export const env = {
   maxPhotosPerVisit: Number(process.env.MAX_PHOTOS_PER_VISIT ?? 20),
   /** 샘플 데이터 생성 여부 */
   seedSample: (process.env.SEED_SAMPLE ?? 'true') === 'true',
-  /** Firebase Storage 설정 */
-  firebaseProjectId:     process.env.FIREBASE_PROJECT_ID ?? '',
-  firebaseClientEmail:   process.env.FIREBASE_CLIENT_EMAIL ?? '',
-  firebasePrivateKey:    process.env.FIREBASE_PRIVATE_KEY ?? '',
-  firebaseStorageBucket: process.env.FIREBASE_STORAGE_BUCKET ?? '',
 } as const;
 
 export const isProd = env.nodeEnv === 'production';

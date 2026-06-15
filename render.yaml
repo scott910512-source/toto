@@ -37,12 +37,3 @@ services:
         value: "20"
       - key: SEED_SAMPLE
         value: "false"
-      # Firebase Storage (사진 영구 저장) - Render 대시보드에서 직접 입력
-      - key: FIREBASE_PROJECT_ID
-        value: toto2-ddba9
-      - key: FIREBASE_STORAGE_BUCKET
-        value: toto2-ddba9.firebasestorage.app
-      - key: FIREBASE_CLIENT_EMAIL
-        sync: false
-      - key: FIREBASE_PRIVATE_KEY
-        sync: false
