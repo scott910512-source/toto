@@ -25,6 +25,7 @@ RUN npx prisma generate && npm run build
 FROM node:22-alpine AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
+RUN apk add --no-cache openssl
 COPY server/package*.json ./
 RUN npm install --omit=dev
 COPY server/prisma ./prisma
