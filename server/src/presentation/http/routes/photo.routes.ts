@@ -28,7 +28,9 @@ photoRouter.post(
     const photo = await container.photoService.add(
       req.user!.id,
       req.params.visitId,
-      req.file.filename,
+      req.file.buffer,
+      req.file.mimetype,
+      req.file.originalname,
       req.body?.caption,
     );
     res.status(201).json(photo);

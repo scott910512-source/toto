@@ -37,3 +37,14 @@ services:
         value: "20"
       - key: SEED_SAMPLE
         value: "false"
+      # Cloudflare R2 (사진 영구 저장) - Render 대시보드에서 직접 입력
+      - key: R2_ACCOUNT_ID
+        sync: false
+      - key: R2_ACCESS_KEY_ID
+        sync: false
+      - key: R2_SECRET_ACCESS_KEY
+        sync: false
+      - key: R2_BUCKET_NAME
+        value: travel-korea-photos
+      - key: R2_PUBLIC_URL
+        sync: false
