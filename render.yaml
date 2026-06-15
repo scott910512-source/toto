@@ -1,0 +1,39 @@
+databases:
+  - name: travel-korea-db
+    plan: free
+    databaseName: travelkorea
+    user: travel
+
+services:
+  - type: web
+    name: travel-korea-tracker
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 4000
+      - key: DATABASE_URL
+        fromDatabase:
+          name: travel-korea-db
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRES_IN
+        value: 7d
+      - key: UPLOAD_DIR
+        value: /app/uploads
+      - key: CORS_ORIGIN
+        value: "*"
+      - key: ADMIN_EMAIL
+        value: admin@travel.kr
+      - key: ADMIN_PASSWORD
+        generateValue: true
+      - key: ADMIN_NAME
+        value: 관리자
+      - key: MAX_PHOTOS_PER_VISIT
+        value: "20"
+      - key: SEED_SAMPLE
+        value: "false"
