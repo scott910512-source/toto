@@ -89,9 +89,7 @@ export function LoginPage() {
         </form>
 
         <div className="mt-5 rounded-xl bg-white/30 px-4 py-3 text-center text-xs text-slate-500 dark:bg-white/5">
-          기본 관리자 계정 · <b>admin@travel.kr</b> / <b>admin1234</b>
-          <br />
-          데모 계정 · <b>demo@travel.kr</b> / <b>demo1234</b>
+          회원가입 후 대한민국 229개 시군구 여행을 기록해보세요 🗺️
         </div>
       </div>
     </div>

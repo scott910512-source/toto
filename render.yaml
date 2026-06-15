@@ -28,7 +28,7 @@ services:
       - key: CORS_ORIGIN
         value: "*"
       - key: ADMIN_EMAIL
-        value: admin@travel.kr
+        value: admin@admin.com
       - key: ADMIN_PASSWORD
         generateValue: true
       - key: ADMIN_NAME

@@ -42,7 +42,7 @@ export function DashboardPage() {
             </Link>
           </div>
           <div className="flex flex-col gap-3">
-            {(stats?.provinceStats ?? []).slice(0, 8).map((p) => (
+            {(stats?.ranking ?? []).slice(0, 5).map((p) => (
               <div key={p.province}>
                 <div className="mb-1 flex justify-between text-xs">
                   <span className="font-medium">{p.province}</span>
@@ -98,7 +98,7 @@ export function DashboardPage() {
         </div>
       </div>
 
-      <Link to="/map" className="btn-primary mt-4 w-full sm:hidden">
+      <Link to="/" className="btn-primary mt-4 w-full sm:hidden">
         🗺️ 지도에서 기록하기
       </Link>
     </div>

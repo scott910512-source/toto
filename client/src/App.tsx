@@ -39,7 +39,8 @@ export default function App() {
     <DataProvider>
       <Routes>
         <Route element={<Layout />}>
-          <Route path="/" element={<DashboardPage />} />
+          <Route path="/" element={<MapPage />} />
+          <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/map" element={<MapPage />} />
           <Route path="/stats" element={<StatsPage />} />
           <Route path="/wishlist" element={<WishlistPage />} />

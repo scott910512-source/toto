@@ -7,8 +7,8 @@ import { GlobalSearch } from './GlobalSearch';
 import { BadgeToast } from './BadgeToast';
 
 const NAV = [
-  { to: '/', label: '대시보드', icon: '🏠' },
-  { to: '/map', label: '여행 지도', icon: '🗺️' },
+  { to: '/', label: '여행 지도', icon: '🗺️' },
+  { to: '/dashboard', label: '대시보드', icon: '🏠' },
   { to: '/stats', label: '통계', icon: '📊' },
   { to: '/wishlist', label: '버킷리스트', icon: '⭐' },
   { to: '/timeline', label: '여행 히스토리', icon: '🕒' },
@@ -40,7 +40,7 @@ export function Layout() {
           <NavLink
             key={item.to}
             to={item.to}
-            end={item.to === '/'}
+            end={item.to === '/' || item.to === '/map'}
             onClick={() => setMobileOpen(false)}
             className={({ isActive }) => `nav-link ${isActive ? 'nav-link-active' : ''}`}
           >

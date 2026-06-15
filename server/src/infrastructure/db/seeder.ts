@@ -69,13 +69,6 @@ export async function seedSample(prisma: PrismaClient, log = false): Promise<voi
     return;
   }
 
-  const demoPw = await bcrypt.hash('demo1234', 10);
-  const demo = await prisma.user.upsert({
-    where: { email: 'demo@travel.kr' },
-    create: { name: '여행러', email: 'demo@travel.kr', password: demoPw, role: 'USER' },
-    update: {},
-  });
-
   const pick = (province: string, district: string) =>
     prisma.region.findFirst({ where: { provinceName: province, district } });
 
@@ -115,19 +108,6 @@ export async function seedSample(prisma: PrismaClient, log = false): Promise<voi
     await prisma.wishlist.create({ data: { userId: admin.id, regionId: region.id } });
   }
 
-  const demoRegion = await pick('인천광역시', '연수구');
-  if (demoRegion) {
-    await prisma.visit.create({
-      data: {
-        userId: demo.id,
-        regionId: demoRegion.id,
-        status: 'VISITED',
-        visitDate: new Date('2026-05-01'),
-        memo: '송도 센트럴파크',
-        visibility: 'PUBLIC',
-      },
-    });
-  }
   // 시드된 방문에 대해 배지 자동 평가 (singleton prisma 사용 시에만 유효)
   try {
     const badgeService = new BadgeService(
@@ -136,7 +116,6 @@ export async function seedSample(prisma: PrismaClient, log = false): Promise<voi
       new PrismaVisitRepository(),
     );
     await badgeService.evaluate(admin.id);
-    await badgeService.evaluate(demo.id);
   } catch (e) {
     if (log) console.warn('배지 평가 건너뜀:', (e as Error).message);
   }

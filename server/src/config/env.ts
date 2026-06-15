@@ -15,8 +15,8 @@ export const env = {
   /** CORS 허용 오리진 (콤마 구분). '*' 허용 */
   corsOrigin: process.env.CORS_ORIGIN ?? '*',
   /** 초기 관리자 계정 */
-  adminEmail: process.env.ADMIN_EMAIL ?? 'admin@travel.kr',
-  adminPassword: process.env.ADMIN_PASSWORD ?? 'admin1234',
+  adminEmail: process.env.ADMIN_EMAIL ?? 'admin@admin.com',
+  adminPassword: process.env.ADMIN_PASSWORD ?? 'admin11!',
   adminName: process.env.ADMIN_NAME ?? '관리자',
   /** 방문당 최대 사진 수 */
   maxPhotosPerVisit: Number(process.env.MAX_PHOTOS_PER_VISIT ?? 20),
