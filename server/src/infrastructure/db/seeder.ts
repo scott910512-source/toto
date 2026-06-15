@@ -39,11 +39,26 @@ export async function seedBadges(prisma: PrismaClient): Promise<void> {
   }
 }
 
-/** 초기 관리자 계정 생성 (없으면) */
+/** 초기 관리자 계정 생성/동기화.
+ *  환경변수(ADMIN_EMAIL, ADMIN_PASSWORD)가 항상 정보의 원천이므로
+ *  매 부팅 시 이메일·비밀번호를 최신 환경변수 값으로 동기화합니다.
+ *  (레거시 admin@travel.kr 계정도 자동 마이그레이션) */
 export async function seedAdmin(prisma: PrismaClient): Promise<{ id: string }> {
-  const existing = await prisma.user.findUnique({ where: { email: env.adminEmail } });
-  if (existing) return existing;
   const hashed = await bcrypt.hash(env.adminPassword, 10);
+
+  // 현재 이메일 또는 레거시 이메일로 관리자 탐색
+  const existing = await prisma.user.findFirst({
+    where: { OR: [{ email: env.adminEmail }, { email: 'admin@travel.kr' }] },
+  });
+
+  if (existing) {
+    // 이메일·비밀번호를 환경변수 값으로 항상 동기화
+    return prisma.user.update({
+      where: { id: existing.id },
+      data: { name: env.adminName, email: env.adminEmail, password: hashed },
+    });
+  }
+
   return prisma.user.create({
     data: { name: env.adminName, email: env.adminEmail, password: hashed, role: 'ADMIN' },
   });

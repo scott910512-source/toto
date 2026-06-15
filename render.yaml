@@ -30,7 +30,7 @@ services:
       - key: ADMIN_EMAIL
         value: admin@admin.com
       - key: ADMIN_PASSWORD
-        generateValue: true
+        value: admin11!
       - key: ADMIN_NAME
         value: 관리자
       - key: MAX_PHOTOS_PER_VISIT
