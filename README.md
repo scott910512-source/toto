@@ -1,69 +1,171 @@
-# 🗓️ 주말 뭐하지?
+# 🗺️ Travel Korea Tracker
 
-지역 · 기간 · 테마 · 제한사항을 골라 주말 활동을 추천받는 웹앱입니다.
-설치나 빌드 없이 브라우저에서 바로 동작합니다.
+대한민국 시군구 단위 **여행 방문 기록 관리 웹앱**입니다.
+종이 "스크래치맵"처럼 방문한 지역을 색칠하고, 메모·사진·통계·배지로 여행을 기록합니다.
+개인 및 소규모 그룹(가족·친구·회사 동호회, 최대 50명 수준) 내부 공유용으로 설계되었습니다.
 
-## 기능
-- **지역**: 서울 / 경기·인천 / 강원 / 충청 / 전라 / 경상 / 부산 / 제주
-- **기간**: 반나절 / 당일치기 / 1박 2일
-- **테마**(복수 선택): 자연·힐링 / 액티비티 / 맛집·카페 / 문화·예술 / 쇼핑·도심 / 휴식·온천
-- **제한사항**(복수 선택): 저예산 / 아이 동반 / 반려동물 동반 / 대중교통 / 실내 위주 / 체력 적게
-- 조건에 맞는 활동을 점수화해 상위 3개를 추천하고, "다른 추천 보기"로 다시 뽑을 수 있습니다.
-- **🤖 AI 추천**: Anthropic Claude API로 조건에 맞는 활동을 즉석에서 생성합니다(선택).
+> UI 컨셉: **리퀴드 글라스(Liquid Glass)** + 여행 다이어리 · 다크모드 지원 · 모바일/태블릿/PC 반응형
 
-## 🤖 AI 추천 사용법
-무료 **Google Gemini**(`gemini-2.5-flash`) 모델을 사용합니다. 결제 없이 쓸 수 있습니다.
-추천 결과는 `장소A → 장소B → 맛집 → 기념품가게` 같은 **동선(코스) 흐름**으로 표시됩니다.
+---
 
-1. [aistudio.google.com/apikey](https://aistudio.google.com/apikey) 에서 무료 API 키를 발급받습니다.
-2. 키를 연결하는 두 가지 방법:
-   - **각자 입력**: 앱 하단 **🔑 AI 설정**에 키(`AIza...`)를 붙여넣기 (이 브라우저에 저장)
-   - **코드에 내장**: `config.js`의 `window.GEMINI_API_KEY`에 키를 넣기 → 입력 없이 바로 동작
-     (단, 공개 사이트에 두면 키가 노출됩니다. 개인용만!)
-3. 조건을 고른 뒤 **🤖 AI 추천** 버튼을 누릅니다.
+## ✨ 핵심 기능
 
-### 사용 제한
-- **하루 5회**까지 AI 추천을 사용할 수 있고, 초과하면 **30분 후** 다시 가능하며 경고창이 뜹니다.
-- ⚠️ 이 제한은 **이 브라우저(기기) 기준**입니다(localStorage). 진짜 IP별 제한은 서버가
-  필요하므로, 시크릿창이나 캐시 삭제로 우회될 수 있습니다.
+| # | 기능 | 설명 |
+|---|------|------|
+| 1 | **대한민국 지도** | 17개 시도 SVG 타일맵(카토그램) + 시군구(229개) 클릭 |
+| 2 | **방문 체크** | 방문함 / 계획중 / 미방문 상태 + 방문일 저장, 클릭 즉시 색상 변경 |
+| 3 | **여행 기록** | 지역별 메모 작성, 사진 첨부(방문당 최대 20장) |
+| 4 | **통계** | 전국·시도별 방문률, 올해 방문 수, 지역 순위 |
+| 5 | **버킷리스트** | 가고 싶은 지역 저장(전용 색상 ⭐) |
+| 6 | **여행 히스토리** | 방문일 기준 타임라인 |
+| 7 | **지도 색칠** | 상태별 색상(방문=초록 / 계획=노랑 / 미방문=회색) |
+| 8 | **사진 갤러리** | 지역별 사진 모아보기 + 라이트박스 |
+| 9 | **검색** | 지역명 검색 → 지도로 이동 |
+| 10 | **관리자** | 사용자 관리 / 권한(관리자·일반사용자) |
+| + | **공유 권한** | 공개 / 비공개 / 그룹공유 |
+| + | **대시보드** | 총 방문지역·올해 방문·최근 여행·방문률 그래프·지역 순위 |
+| + | **여행 배지** | 서울 완주, 제주 완주, 전국 50%/100% 달성 등 자동 부여 |
+| + | **엑셀 내보내기** | 방문기록 `.xlsx` 다운로드 |
+| + | **백업** | JSON Export / Import |
 
-> ⚠️ **보안 주의**: 이 앱은 브라우저에서 직접 Gemini API를 호출하므로 **API 키가 브라우저에
-> 노출**됩니다. 본인만 쓰는 개인용으로만 사용하세요. 여러 사람에게 공개하는 페이지에는 키를
-> 넣지 마세요. 키는 서버로 보내지 않고, 체크 시 이 브라우저(localStorage)에만 저장됩니다.
+---
 
-> 참고: `worker/` 폴더와 `config.js`는 예전에 만든 Claude용 프록시 흔적입니다. 현재 무료
-> Gemini 방식에서는 사용하지 않으며, 그냥 두어도 동작에 영향이 없습니다.
+## 🧱 기술 스택 & 아키텍처
 
-## 실행 방법
-별도 서버가 필요 없습니다.
+- **Frontend**: React + TypeScript + Vite + Tailwind CSS (리퀴드 글라스 테마, 다크모드)
+- **Backend**: Node.js + Express + TypeScript
+- **DB / ORM**: SQLite + Prisma (→ PostgreSQL 전환 가능하게 설계)
+- **인증**: 이메일 + 비밀번호 (JWT)
+- **배포**: Docker / Docker Compose (내부망 단일 컨테이너)
 
-1. **로컬 PC**: `index.html` 파일을 더블클릭해 브라우저로 열기
-2. **아이패드/휴대폰 등**: GitHub Pages로 배포해 웹 주소로 접속 (아래 참고)
+### Clean Architecture (server)
 
-### GitHub Pages 배포
-1. GitHub 저장소 → **Settings** → **Pages**
-2. *Source* 를 `Deploy from a branch` 로 설정
-3. Branch 를 `claude/weekend-activity-selector-Ph7jL`(또는 병합 후 `main`), 폴더는 `/ (root)` 선택 후 **Save**
-4. 잠시 뒤 표시되는 `https://<사용자명>.github.io/toto/` 주소로 어디서든 접속
+```
+server/src
+├─ domain/            # 엔티티 + 레포지토리 인터페이스(포트) — 프레임워크 무관
+│  ├─ entities/
+│  └─ repositories/
+├─ application/       # 유스케이스 / 서비스 (비즈니스 로직)
+│  └─ services/       # Auth, Visit, Wishlist, Photo, Stats, Badge, Admin, Export
+├─ infrastructure/    # 어댑터: Prisma 레포지토리, JWT, 비밀번호, 파일저장, 시더
+│  ├─ db/  ├─ repositories/  ├─ auth/  └─ storage/
+├─ presentation/      # HTTP 계층: Express 라우터·컨트롤러·미들웨어
+│  └─ http/
+├─ config/            # 환경변수
+├─ shared/            # 공용 에러 등
+├─ container.ts       # Composition Root (DI)
+└─ main.ts            # 부트스트랩
+```
 
-## 파일 구성
-| 파일 | 설명 |
-|------|------|
-| `index.html` | 화면 구조 |
-| `style.css` | 스타일 |
-| `app.js` | 선택·추천 로직 |
-| `data.js` | 활동 데이터베이스 (여기에 활동을 추가/수정) |
+의존성 방향은 항상 안쪽(domain)을 향합니다. 애플리케이션 계층은 Prisma가 아닌
+**레포지토리 인터페이스**에만 의존하므로, DB/ORM 교체 시 `infrastructure`만 변경하면 됩니다.
 
-## 활동 추가하기
-`data.js` 의 `ACTIVITIES` 배열에 항목을 추가하면 됩니다.
+---
 
-```js
-{
-  title: "활동 이름",
-  desc: "한 줄 설명",
-  region: ["seoul"],            // 가능한 지역 코드
-  duration: ["half", "day"],    // half | day | overnight
-  theme: ["nature", "food"],    // 테마 코드
-  friendly: ["budget", "pet"],  // 충족하는 제한사항 코드
-}
+## 🚀 빠른 시작
+
+### 방법 A — Docker Compose (권장, 내부망 배포)
+
+```bash
+# 1) (선택) 환경변수 설정
+cp .env.example .env   # JWT_SECRET, ADMIN_PASSWORD 등 수정 권장
+
+# 2) 빌드 & 실행
+docker compose up -d --build
+
+# 3) 접속
+#    http://<서버IP>:4000
+```
+
+- 컨테이너 시작 시 **DB 스키마 적용 + 시드(지역/배지/관리자/샘플)**가 자동 수행됩니다.
+- 데이터(SQLite)·업로드 사진은 Docker 볼륨(`tkt_data`, `tkt_uploads`)에 영속 저장됩니다.
+
+### 방법 B — 로컬 개발
+
+```bash
+# 의존성 설치 (server + client)
+npm run install:all
+
+# 서버 DB 준비 + 시드 (server 디렉터리 기준)
+cd server && cp .env.example .env && npm run setup && cd ..
+
+# 개발 서버 동시 실행 (server:4000, client:5173, /api 프록시)
+npm install            # 루트 concurrently 설치
+npm run dev
+```
+
+- 프론트엔드: http://localhost:5173
+- API: http://localhost:4000/api
+
+---
+
+## 🔑 기본 계정
+
+| 구분 | 이메일 | 비밀번호 |
+|------|--------|----------|
+| 관리자 | `admin@travel.kr` | `admin1234` |
+| 데모 사용자 | `demo@travel.kr` | `demo1234` |
+
+> 운영 시 반드시 `ADMIN_PASSWORD`/`JWT_SECRET`을 변경하세요.
+> 회원가입 시스템에 **사용자가 한 명도 없으면 첫 가입자가 자동으로 관리자**가 됩니다.
+
+---
+
+## 🔌 주요 API
+
+| Method | Path | 설명 |
+|--------|------|------|
+| POST | `/api/auth/register` · `/login` | 회원가입 / 로그인 |
+| GET | `/api/auth/me` | 내 정보 |
+| GET | `/api/regions` · `/search?q=` | 시군구 목록 / 검색 |
+| GET / PUT / DELETE | `/api/visits` | 방문 목록 / 생성·수정(upsert) / 삭제 |
+| GET | `/api/visits/timeline` · `/feed` | 타임라인 / 공유 피드 |
+| GET / POST / DELETE | `/api/wishlist` | 버킷리스트 |
+| POST / GET / DELETE | `/api/photos/visit/:id` | 사진 업로드 / 목록 / 삭제 |
+| GET | `/api/stats` | 통계 |
+| GET | `/api/badges` | 배지 현황 |
+| GET | `/api/admin/users` … | 관리자: 사용자/권한 |
+| GET | `/api/export/excel` · `/backup`, POST `/restore` | 엑셀 / JSON 백업·복원 |
+
+모든 보호 엔드포인트는 `Authorization: Bearer <token>` 헤더가 필요합니다.
+
+---
+
+## 🗃️ 데이터 모델 (요약)
+
+`User` · `Province` · `Region` · `Visit`(+`VisitShare`) · `Photo` · `Wishlist` · `Badge`(+`UserBadge`)
+
+- 시군구 시드 데이터: `server/src/infrastructure/db/regions.ts` (전국 **229개**)
+- 시드 로직: `server/src/infrastructure/db/seeder.ts` (멱등 — 서버 부팅 시에도 안전하게 재실행)
+
+---
+
+## 🐘 PostgreSQL 전환
+
+1. `server/prisma/schema.prisma`의 `datasource db.provider`를 `"postgresql"`로 변경
+2. `DATABASE_URL`을 PostgreSQL 접속 문자열로 설정
+3. `docker-compose.yml`의 주석 처리된 `db` 서비스 활성화
+4. `npx prisma migrate deploy` (또는 `db push`)
+
+스키마는 enum 대신 문자열 유니온, `cuid` 기반 PK를 사용해 전환을 단순화했습니다.
+
+---
+
+## 🔭 향후 확장 로드맵 (설계 반영)
+
+- 방문 인증 GPS · 여행 동선 기록 · Google Maps 연동
+- AI 여행일지 자동 생성 · 부부/그룹 공동 여행 기록
+- 실제 GeoJSON 기반 정밀 SVG 지도 (현재 타일 카토그램 → `utils/constants.ts` 좌표만 교체)
+
+---
+
+## 📁 프로젝트 구조
+
+```
+.
+├─ client/            # React + Vite 프론트엔드
+├─ server/            # Express + Prisma 백엔드 (Clean Architecture)
+├─ Dockerfile         # 단일 이미지(프론트+백엔드) 빌드
+├─ docker-compose.yml # 내부망 배포
+└─ README.md
 ```
