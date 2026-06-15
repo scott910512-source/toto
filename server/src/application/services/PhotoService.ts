@@ -5,7 +5,7 @@ import type {
 } from '../../domain/repositories';
 import { env } from '../../config/env';
 import { BadRequestError, ForbiddenError, NotFoundError } from '../../shared/errors';
-import { uploadToR2, deleteFromR2, isR2Configured } from '../../infrastructure/storage/r2';
+import { uploadToFirebase, deleteFromFirebase, isFirebaseConfigured } from '../../infrastructure/storage/firebase';
 
 export class PhotoService {
   constructor(
@@ -31,11 +31,11 @@ export class PhotoService {
       throw new BadRequestError(`사진은 방문당 최대 ${env.maxPhotosPerVisit}장까지 등록할 수 있습니다.`);
     }
 
-    if (!isR2Configured()) {
-      throw new BadRequestError('사진 저장소(R2)가 설정되지 않았습니다. 관리자에게 문의하세요.');
+    if (!isFirebaseConfigured()) {
+      throw new BadRequestError('사진 저장소(Firebase)가 설정되지 않았습니다. 관리자에게 문의하세요.');
     }
 
-    const imageUrl = await uploadToR2(buffer, originalName, mimetype);
+    const imageUrl = await uploadToFirebase(buffer, originalName, mimetype);
     return this.photos.add(visitId, imageUrl, caption ?? null);
   }
 
@@ -49,6 +49,6 @@ export class PhotoService {
     const visit = await this.visits.findById(photo.visitId);
     if (!visit || visit.userId !== userId) throw new ForbiddenError('삭제 권한이 없습니다.');
     await this.photos.delete(photoId);
-    await deleteFromR2(photo.imagePath);
+    await deleteFromFirebase(photo.imagePath);
   }
 }
