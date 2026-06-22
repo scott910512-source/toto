@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Playwright 폐쇄망 설치 · 학습 노트</title>
+<style>
+  :root{ --ink:#1d1d1f; --sub:#6e6e73; --line:#d2d2d7; --blue:#0071e3; --bg:#fbfbfd; --card:#fff; --code:#f5f5f7; }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","SF Pro Text","Helvetica Neue","Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+       color:var(--ink);background:var(--bg);line-height:1.55;letter-spacing:-0.01em;-webkit-font-smoothing:antialiased;}
+  .wrap{max-width:820px;margin:0 auto;padding:0 28px;}
+  .hero{padding:110px 0 64px;text-align:center;}
+  .eyebrow{color:var(--blue);font-size:15px;font-weight:600;margin-bottom:18px;}
+  .hero h1{font-size:48px;font-weight:700;line-height:1.08;letter-spacing:-0.03em;}
+  .hero p{margin-top:20px;font-size:20px;color:var(--sub);}
+  .meta{margin-top:36px;font-size:14px;color:var(--sub);display:flex;gap:24px;justify-content:center;flex-wrap:wrap;}
+  .meta b{color:var(--ink);font-weight:600;}
+  section{padding:56px 0;border-top:1px solid var(--line);}
+  .kicker{font-size:13px;font-weight:600;color:var(--blue);letter-spacing:.06em;text-transform:uppercase;margin-bottom:14px;}
+  h2{font-size:32px;font-weight:700;letter-spacing:-0.02em;margin-bottom:10px;}
+  .lead{font-size:18px;color:var(--sub);margin-bottom:30px;max-width:640px;}
+  h3{font-size:19px;font-weight:600;margin:26px 0 8px;}
+  p{font-size:16.5px;color:#33333a;}
+  .pills{display:flex;flex-wrap:wrap;gap:9px;margin-top:6px;}
+  .pill{font-size:13.5px;color:var(--ink);background:#eef0f3;border-radius:980px;padding:7px 15px;}
+  pre{background:var(--code);border-radius:14px;padding:18px 20px;margin:14px 0;overflow:auto;
+      font-family:"SF Mono",Menlo,Consolas,monospace;font-size:13.5px;line-height:1.5;color:#1d1d1f;}
+  code.inl{background:var(--code);border-radius:6px;padding:2px 7px;font-family:"SF Mono",Menlo,Consolas,monospace;font-size:90%;}
+  table{width:100%;border-collapse:collapse;margin-top:10px;font-size:15.5px;}
+  th,td{text-align:left;padding:12px 10px;border-bottom:1px solid var(--line);vertical-align:top;}
+  th{color:var(--sub);font-weight:600;font-size:13px;text-transform:uppercase;letter-spacing:.04em;}
+  .step{display:flex;gap:20px;padding:22px 0;border-bottom:1px solid var(--line);}
+  .step:last-child{border-bottom:0;}
+  .num{flex:0 0 42px;height:42px;width:42px;border-radius:50%;background:#eef0f3;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:16px;}
+  .step .b{flex:1;}
+  .step h4{font-size:17px;font-weight:600;margin-bottom:5px;}
+  .step p{font-size:15px;color:var(--sub);}
+  .ok{color:#1c7c3a;font-weight:600;} .bad{color:#c0392b;font-weight:600;}
+  .callout{background:#f5f5f7;border-radius:16px;padding:22px 24px;margin-top:22px;}
+  .callout h4{font-size:16px;font-weight:600;margin-bottom:8px;}
+  .callout p{font-size:15px;color:var(--sub);}
+  .tip{background:#eef6ff;border:1px solid #cfe5fb;border-radius:16px;padding:20px 22px;margin-top:20px;}
+  .tip h4{font-size:15px;font-weight:700;color:#0058b0;margin-bottom:6px;}
+  .tip p{font-size:15px;color:#274b6d;}
+  footer{padding:46px 0 90px;text-align:center;color:var(--sub);font-size:13px;border-top:1px solid var(--line);}
+  @media(max-width:680px){.hero h1{font-size:34px;}h2{font-size:25px;}}
+  @media print{body{background:#fff;}section,.step{break-inside:avoid;}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="hero">
+    <div class="eyebrow">학습 노트 · Study</div>
+    <h1>폐쇄망에서<br>Playwright 설치하기</h1>
+    <p>인터넷 차단·SSL 인증서·CDN 차단을 우회해<br>내부망 PC에 브라우저 자동화 환경 구축하기</p>
+    <div class="meta">
+      <span><b>주제</b> 오프라인 설치</span>
+      <span><b>환경</b> 폐쇄망(내부망) Windows</span>
+      <span><b>결론</b> 시스템 Chrome으로 구동 성공</span>
+    </div>
+  </header>
+
+  <section>
+    <div class="kicker">Background</div>
+    <h2>Playwright란</h2>
+    <p class="lead">웹 브라우저를 코드로 자동 제어하는 Python 라이브러리. 화면 좌표가 아니라
+       브라우저 프로토콜로 제어하므로 안정적이다.</p>
+    <h3>주요 용도</h3>
+    <div class="pills">
+      <span class="pill">웹 자동화</span><span class="pill">테스트 자동화</span>
+      <span class="pill">웹 크롤링</span><span class="pill">사내 시스템(MES·ERP·그룹웨어)</span>
+      <span class="pill">AI Agent 브라우저 제어</span>
+    </div>
+    <h3>지원 브라우저</h3>
+    <div class="pills">
+      <span class="pill">Chromium</span><span class="pill">Google Chrome</span>
+      <span class="pill">Microsoft Edge</span><span class="pill">Firefox</span><span class="pill">WebKit</span>
+    </div>
+  </section>
+
+  <section>
+    <div class="kicker">Goal</div>
+    <h2>목표</h2>
+    <p class="lead">“인터넷이 안 되는 내부망 PC에 Playwright를 설치해 사내 웹시스템을 자동화한다.”</p>
+    <p>폐쇄망에서는 <code class="inl">pip install</code>이 PyPI에 접속하지 못하고, 회사 SSL 인증서 때문에
+       인증 오류가 난다. 이를 우회하는 것이 핵심.</p>
+  </section>
+
+  <section>
+    <div class="kicker">Walkthrough</div>
+    <h2>설치 과정 (단계별)</h2>
+    <p class="lead">실제로 부딪힌 오류와 해결책을 순서대로 기록한다.</p>
+
+    <div class="step">
+      <div class="num">1</div>
+      <div class="b">
+        <h4>Python 설치 확인</h4>
+        <p><code class="inl">python --version</code> → <span class="bad">Python was not found</span>.
+           Python 3.11 설치 후 <code class="inl">py --version</code> → <span class="ok">Python 3.11</span>.</p>
+        <p style="margin-top:6px;color:#8a8a8e;font-size:14px;">※ Windows에서는 <code class="inl">py</code> 런처가 안정적.</p>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="num">2</div>
+      <div class="b">
+        <h4>패키지 다운로드 시도 → SSL 오류</h4>
+<pre>py -m pip download playwright -d playwright_pkg</pre>
+        <p><span class="bad">SSL: CERTIFICATE_VERIFY_FAILED / self-signed certificate in certificate chain</span>
+           — 회사 SSL 가로채기(인증서) 때문에 PyPI 인증 실패.</p>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="num">3</div>
+      <div class="b">
+        <h4>SSL 우회 → 다운로드 성공</h4>
+<pre>py -m pip download playwright -d playwright_pkg ^
+  --trusted-host pypi.org ^
+  --trusted-host files.pythonhosted.org</pre>
+        <p><span class="ok">성공.</span> 받은 파일 (의존성 포함):</p>
+        <p style="margin-top:6px;font-size:14.5px;color:#555;">
+          playwright-1.60.0-py3-none-win_amd64.whl · greenlet-3.5.2-cp311-win_amd64.whl ·
+          pyee-13.0.1-py3-none-any.whl · typing_extensions-4.15.0-py3-none-any.whl</p>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="num">4</div>
+      <div class="b">
+        <h4>오프라인 설치 (의존성 포함)</h4>
+        <p>whl 하나만으론 안 되고 의존성도 함께 필요. 받은 폴더에서 인터넷 없이 설치:</p>
+<pre>cd playwright_pkg
+py -m pip install --no-index --find-links=. playwright</pre>
+        <p><span class="ok">Successfully installed greenlet · playwright · pyee</span></p>
+        <p style="margin-top:6px;color:#8a8a8e;font-size:14px;">핵심 옵션 — <code class="inl">--no-index</code>(인터넷 안 봄) +
+           <code class="inl">--find-links=.</code>(현재 폴더에서만 설치).</p>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="num">5</div>
+      <div class="b">
+        <h4>설치 확인</h4>
+<pre>py -m pip show playwright   →   Version: 1.60.0</pre>
+        <p><span class="ok">정상 설치.</span></p>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="num">6</div>
+      <div class="b">
+        <h4>Chromium 설치는 실패 — 하지만 불필요</h4>
+<pre>py -m playwright install chromium
+  →  SELF_SIGNED_CERT_IN_CHAIN (CDN 차단)</pre>
+        <p>Playwright 전용 Chromium은 SSL 때문에 못 받는다. <b>그러나 받을 필요가 없다</b> —
+           이미 설치된 <b>시스템 Google Chrome</b>을 직접 가리켜 쓰면 된다.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="kicker">Solution</div>
+    <h2>시스템 Chrome으로 구동</h2>
+    <p class="lead">Chromium 다운로드를 건너뛰고, 설치된 Chrome 실행파일 경로를 직접 지정한다.</p>
+    <p>경로 확인: <code class="inl">C:\Program Files\Google\Chrome\Application\chrome.exe</code></p>
+<pre>from playwright.sync_api import sync_playwright
+
+with sync_playwright() as p:
+    browser = p.chromium.launch(
+        executable_path=r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+        headless=True        # 창 없이 백그라운드 실행 (False면 창 표시)
+    )
+    page = browser.new_page()
+    page.goto("http://내부사이트")
+    print(page.title())
+    browser.close()</pre>
+    <div class="tip">
+      <h4>💡 ModuleNotFoundError: No module named 'playwright' 가 뜬다면</h4>
+      <p>설치는 됐는데 <b>VS Code가 다른 Python 인터프리터</b>를 쓰는 경우. 인터프리터를
+         설치한 Python 3.11로 맞추면 해결. (<code class="inl">py -m pip show playwright</code>로 설치 위치 확인)</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="kicker">Key Takeaways</div>
+    <h2>핵심 교훈</h2>
+    <table>
+      <tr><th>문제</th><th>해결</th></tr>
+      <tr><td>pip가 PyPI 접속 못 함 (SSL)</td><td><code class="inl">--trusted-host pypi.org --trusted-host files.pythonhosted.org</code></td></tr>
+      <tr><td>내부망에서 설치 불가</td><td>오프라인 휠 받아서 <code class="inl">--no-index --find-links=.</code></td></tr>
+      <tr><td>whl 하나만 설치 → 실패</td><td>의존성(greenlet·pyee 등)도 같은 폴더에 함께</td></tr>
+      <tr><td>Chromium CDN 차단</td><td><b>받지 말고</b> 시스템 Chrome을 <code class="inl">executable_path</code>로 지정</td></tr>
+      <tr><td>VS Code 모듈 못 찾음</td><td>인터프리터를 설치한 Python으로 변경</td></tr>
+    </table>
+  </section>
+
+  <section>
+    <div class="kicker">Runtime</div>
+    <h2>화면 잠금 상태 동작</h2>
+    <p class="lead">Playwright는 화면 픽셀이 아니라 브라우저 프로토콜로 제어하므로,
+       pyautogui와 달리 잠금 상태에서도 대부분 동작한다.</p>
+    <table>
+      <tr><th>상태</th><th>동작</th></tr>
+      <tr><td>모니터 꺼짐</td><td class="ok">가능</td></tr>
+      <tr><td>화면 잠금 (Win+L)</td><td class="ok">대부분 가능</td></tr>
+      <tr><td>로그오프</td><td class="bad">불가</td></tr>
+      <tr><td>절전 모드</td><td class="bad">불가</td></tr>
+    </table>
+    <div class="callout">
+      <h4>왜 중요한가</h4>
+      <p>화면 좌표를 클릭하는 pyautogui는 잠금 상태에서 멈추지만, Playwright(headless)는
+         잠가둬도 데이터 수집·자동화가 돈다. 무인 자동화에 훨씬 유리하다.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="kicker">Result</div>
+    <h2>최종 결론</h2>
+    <table>
+      <tr><td>Python 설치</td><td class="ok">완료</td></tr>
+      <tr><td>Playwright 설치 (오프라인)</td><td class="ok">완료</td></tr>
+      <tr><td>Google Chrome</td><td class="ok">설치됨 · 직접 사용</td></tr>
+      <tr><td>Playwright Chromium</td><td class="bad">실패 — 불필요</td></tr>
+    </table>
+    <p style="margin-top:18px;">→ 시스템 Chrome으로 <b>MES · ERP · 그룹웨어 · 사내 웹시스템</b> 자동화 개발 가능.</p>
+  </section>
+
+  <footer>Playwright 폐쇄망 설치 · 학습 노트 — 근무표 자동화 프로젝트</footer>
+
+</div>
+</body>
+</html>
