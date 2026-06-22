@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>근무표 자동화 프로젝트 · 작업 보고서</title>
+<style>
+  :root{
+    --ink:#1d1d1f;
+    --sub:#6e6e73;
+    --line:#d2d2d7;
+    --blue:#0071e3;
+    --bg:#fbfbfd;
+    --card:#ffffff;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  html{-webkit-font-smoothing:antialiased;}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","SF Pro Text",
+                "Helvetica Neue","Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+    color:var(--ink);
+    background:var(--bg);
+    line-height:1.55;
+    letter-spacing:-0.01em;
+  }
+  .wrap{max-width:820px;margin:0 auto;padding:0 28px;}
+
+  /* Hero */
+  .hero{padding:120px 0 70px;text-align:center;}
+  .eyebrow{color:var(--blue);font-size:15px;font-weight:600;letter-spacing:.02em;margin-bottom:18px;}
+  .hero h1{font-size:52px;font-weight:700;line-height:1.07;letter-spacing:-0.03em;}
+  .hero p{margin-top:22px;font-size:21px;color:var(--sub);font-weight:400;}
+  .meta{margin-top:40px;font-size:14px;color:var(--sub);display:flex;gap:26px;justify-content:center;flex-wrap:wrap;}
+  .meta b{color:var(--ink);font-weight:600;}
+
+  /* Section */
+  section{padding:62px 0;border-top:1px solid var(--line);}
+  .kicker{font-size:13px;font-weight:600;color:var(--blue);letter-spacing:.06em;text-transform:uppercase;margin-bottom:14px;}
+  h2{font-size:34px;font-weight:700;letter-spacing:-0.02em;margin-bottom:10px;}
+  .lead{font-size:19px;color:var(--sub);margin-bottom:34px;max-width:640px;}
+  h3{font-size:20px;font-weight:600;margin:30px 0 8px;}
+  p{font-size:17px;color:#33333a;}
+  p.note{font-size:15px;color:var(--sub);}
+
+  /* Cards grid */
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:8px;}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:26px 24px;}
+  .card .ic{font-size:26px;margin-bottom:12px;}
+  .card h4{font-size:17px;font-weight:600;margin-bottom:6px;}
+  .card p{font-size:14.5px;color:var(--sub);}
+
+  /* Steps */
+  .step{display:flex;gap:22px;padding:24px 0;border-bottom:1px solid var(--line);}
+  .step:last-child{border-bottom:0;}
+  .num{flex:0 0 44px;height:44px;width:44px;border-radius:50%;background:#f0f0f3;
+       display:flex;align-items:center;justify-content:center;font-weight:700;font-size:17px;color:var(--ink);}
+  .step .body{flex:1;}
+  .step h4{font-size:18px;font-weight:600;margin-bottom:5px;}
+  .step p{font-size:15.5px;color:var(--sub);}
+
+  /* Pills */
+  .pills{display:flex;flex-wrap:wrap;gap:9px;margin-top:6px;}
+  .pill{font-size:13.5px;color:var(--ink);background:#f0f0f3;border-radius:980px;padding:7px 15px;}
+
+  /* Status list */
+  .status{list-style:none;margin-top:6px;}
+  .status li{display:flex;gap:14px;padding:13px 0;border-bottom:1px solid var(--line);font-size:16px;align-items:flex-start;}
+  .status li:last-child{border-bottom:0;}
+  .tag{flex:0 0 auto;font-size:12px;font-weight:700;border-radius:8px;padding:3px 9px;margin-top:2px;}
+  .done{background:#e3f6e8;color:#1c7c3a;}
+  .todo{background:#fff1e0;color:#9a5b00;}
+
+  /* Callout */
+  .callout{background:#f5f5f7;border-radius:18px;padding:26px 28px;margin-top:24px;}
+  .callout h4{font-size:16px;font-weight:600;margin-bottom:8px;}
+  .callout p{font-size:15px;color:var(--sub);}
+
+  footer{padding:48px 0 90px;text-align:center;color:var(--sub);font-size:13px;border-top:1px solid var(--line);}
+
+  @media (max-width:680px){
+    .hero{padding:80px 0 48px;}
+    .hero h1{font-size:38px;}
+    .grid{grid-template-columns:1fr;}
+    h2{font-size:27px;}
+  }
+  @media print{
+    body{background:#fff;}
+    section,.step,.status li{break-inside:avoid;}
+    .hero{padding:40px 0;}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- HERO -->
+  <header class="hero">
+    <div class="eyebrow">업무 자동화 · 작업 보고서</div>
+    <h1>근무표 자동화<br>프로젝트</h1>
+    <p>EHR 근무 데이터를 직접 수집해 시각화하고,<br>바탕화면과 사내 전송까지 자동으로.</p>
+    <div class="meta">
+      <span><b>일자</b> &nbsp;2026. 06. 22</span>
+      <span><b>분류</b> &nbsp;개인 업무 자동화</span>
+      <span><b>상태</b> &nbsp;핵심 기능 완료</span>
+    </div>
+  </header>
+
+  <!-- SUMMARY -->
+  <section>
+    <div class="kicker">Overview</div>
+    <h2>한눈에 보기</h2>
+    <p class="lead">수작업으로 확인하던 근무 현황을, 데이터를 직접 받아 표 이미지로 만들고
+       바탕화면에 자동 반영하는 흐름까지 완성했습니다.</p>
+    <div class="grid">
+      <div class="card">
+        <div class="ic">🔌</div>
+        <h4>데이터 직접 수집</h4>
+        <p>화면 자동화(pyautogui) 방식에서 → EHR API를 직접 호출하는 방식으로 전환하여 즉시 데이터 확보.</p>
+      </div>
+      <div class="card">
+        <div class="ic">🧮</div>
+        <h4>자동 분류·정렬</h4>
+        <p>그룹 매핑과 우선순위 규칙으로 전체 인원을 자동 구분·정렬.</p>
+      </div>
+      <div class="card">
+        <div class="ic">🖼️</div>
+        <h4>이미지 리포트</h4>
+        <p>색상 구분·글자 자동 축소가 적용된 표 이미지를 생성하여 바탕화면에 자동 지정.</p>
+      </div>
+      <div class="card">
+        <div class="ic">⏱️</div>
+        <h4>무인 스케줄링</h4>
+        <p>작업 스케줄러로 주기 실행. 화면 잠금 상태에서도 바탕화면 갱신.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- OBJECTIVE -->
+  <section>
+    <div class="kicker">Objective</div>
+    <h2>목표</h2>
+    <p class="lead">“VDI 안의 근무 데이터에 접속해, 근무표를 표 형태로 받아 바탕화면으로 저장한다.”</p>
+    <p>여기서 출발해, 단순 저장을 넘어 <b>분류·시각화·자동 갱신·사내 공유</b>까지 확장하는 것을
+       목표로 작업을 진행했습니다.</p>
+  </section>
+
+  <!-- PROCESS -->
+  <section>
+    <div class="kicker">What We Did</div>
+    <h2>진행 내용</h2>
+    <p class="lead">데이터 접근 분석부터 자동화 배포까지의 단계별 작업입니다.</p>
+
+    <div class="step">
+      <div class="num">1</div>
+      <div class="body">
+        <h4>데이터 접근 경로 분석</h4>
+        <p>브라우저 개발자도구(F12) Network 탭에서 근무 데이터를 내려주는 엔드포인트
+           <code>serviceBroker.h5</code> 확인. 요청(POST·JSON)과 응답 구조를 분석했습니다.</p>
+      </div>
+    </div>
+    <div class="step">
+      <div class="num">2</div>
+      <div class="body">
+        <h4>요청·응답 구조 해석</h4>
+        <p>입력셋(<code>_01</code>)과 출력셋(<code>_02</code>) 패턴을 파악. 응답의 근무 현황 배열에서
+           구성원·직책·형태·장소 컬럼을 식별했습니다.</p>
+      </div>
+    </div>
+    <div class="step">
+      <div class="num">3</div>
+      <div class="body">
+        <h4>인증 구조 확인</h4>
+        <p>세션 기반 인증(세션 식별자 + 쿠키)임을 확인. 로그인된 세션 값을 재사용하는 방식으로
+           데이터 호출을 재현했습니다.</p>
+      </div>
+    </div>
+    <div class="step">
+      <div class="num">4</div>
+      <div class="body">
+        <h4>수집 방식 전환 (pyautogui → API 직접 호출)</h4>
+        <p>기존 화면 자동화 기반 수집을, <code>requests</code>로 API를 직접 호출하는 방식으로 개선하여
+           더 빠르고 안정적으로 데이터를 받도록 했습니다.</p>
+      </div>
+    </div>
+    <div class="step">
+      <div class="num">5</div>
+      <div class="body">
+        <h4>데이터 가공 · 분류</h4>
+        <p>그룹 매핑(이름 → 소속그룹)과 우선순위 규칙(팀장·Office·1근/2근·공장별)으로
+           전체 인원을 자동 분류하고 순번으로 정렬했습니다.</p>
+      </div>
+    </div>
+    <div class="step">
+      <div class="num">6</div>
+      <div class="body">
+        <h4>표 이미지 생성</h4>
+        <p>우선순위별 색상 구분(공장별 농도 차등), 칸을 넘치는 글자의 자동 축소를 적용해
+           가독성 높은 표 이미지를 생성했습니다.</p>
+      </div>
+    </div>
+    <div class="step">
+      <div class="num">7</div>
+      <div class="body">
+        <h4>바탕화면 자동 지정</h4>
+        <p>고정 파일명으로 덮어쓰기 저장 후, 검정 배경 캔버스에 배치하여 바탕화면으로 자동 설정.</p>
+      </div>
+    </div>
+    <div class="step">
+      <div class="num">8</div>
+      <div class="body">
+        <h4>전송용 근무표2 + 신선도 검증</h4>
+        <p>1근·2근 인원만 추린 별도 이미지를 생성하고, 파일 수정 시각이 8시간 이내인지 확인 후
+           전송하도록 하여 오래된 데이터 오발송을 방지했습니다.</p>
+      </div>
+    </div>
+    <div class="step">
+      <div class="num">9</div>
+      <div class="body">
+        <h4>스케줄러 자동화</h4>
+        <p>Windows 작업 스케줄러에 등록(로그온 세션 실행)하여 주기적으로 자동 실행.
+           화면 잠금 상태에서도 바탕화면 갱신이 가능하도록 구성했습니다.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- STACK -->
+  <section>
+    <div class="kicker">Tech Stack</div>
+    <h2>사용 기술</h2>
+    <div class="pills">
+      <span class="pill">Python</span>
+      <span class="pill">requests</span>
+      <span class="pill">pandas</span>
+      <span class="pill">matplotlib</span>
+      <span class="pill">Pillow</span>
+      <span class="pill">pyautogui</span>
+      <span class="pill">Windows 작업 스케줄러</span>
+      <span class="pill">ctypes / winreg</span>
+    </div>
+  </section>
+
+  <!-- STATUS -->
+  <section>
+    <div class="kicker">Status</div>
+    <h2>완료 · 향후 과제</h2>
+    <ul class="status">
+      <li><span class="tag done">완료</span><div>EHR API 직접 호출로 근무 데이터 수집</div></li>
+      <li><span class="tag done">완료</span><div>그룹 매핑 · 우선순위 분류 · 정렬</div></li>
+      <li><span class="tag done">완료</span><div>색상·자동 글자축소 적용 표 이미지 생성</div></li>
+      <li><span class="tag done">완료</span><div>바탕화면 자동 지정(검정 배경, 덮어쓰기)</div></li>
+      <li><span class="tag done">완료</span><div>전송용 근무표2 생성 + 8시간 신선도 검증</div></li>
+      <li><span class="tag done">완료</span><div>작업 스케줄러 무인 자동화</div></li>
+      <li><span class="tag todo">예정</span><div>CUBE 전송 — <b>API 또는 DB로 접근 가능한지 확인 필요</b> (현재는 열린 화면 기반 pyautogui로 처리)</div></li>
+      <li><span class="tag todo">예정</span><div>장기 무인 운영을 위한 세션(인증) 자동 갱신 검토</div></li>
+    </ul>
+
+    <div class="callout">
+      <h4>다음 단계 핵심</h4>
+      <p>사내 메신저 <b>CUBE</b>로의 전송을 안정화하려면, 화면 자동화 대신 <b>공식 API 또는 DB 접근 경로</b>가
+         제공되는지 확인하는 것이 우선입니다. 접근 수단이 확보되면 잠금 상태·해상도 변화와 무관하게
+         신뢰성 있는 자동 전송이 가능해집니다.</p>
+    </div>
+  </section>
+
+  <!-- NOTES -->
+  <section>
+    <div class="kicker">Notes</div>
+    <h2>유의 사항</h2>
+    <p class="note">· 사내 인사(EHR) 데이터 및 메신저 자동화는 회사 보안정책 준수 범위 내에서 운영합니다.<br>
+       · 인증 정보(세션·쿠키)와 개인정보는 외부 공유·저장하지 않습니다.<br>
+       · 화면 자동화(붙여넣기·전송)는 화면 잠금 상태에서는 동작하지 않습니다.</p>
+  </section>
+
+  <footer>
+    근무표 자동화 프로젝트 · 작업 보고서 — 2026. 06. 22
+  </footer>
+
+</div>
+</body>
+</html>
