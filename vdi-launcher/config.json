@@ -1,0 +1,42 @@
+{
+  "toggle_hotkey": "ctrl+alt+space",
+  "items": [
+    {
+      "name": "Google 검색",
+      "type": "url",
+      "target": "https://www.google.com",
+      "hotkey": "ctrl+alt+1"
+    },
+    {
+      "name": "사내 포털",
+      "type": "url",
+      "target": "https://portal.example.com",
+      "hotkey": "ctrl+alt+2"
+    },
+    {
+      "name": "메모장",
+      "type": "program",
+      "target": "notepad.exe",
+      "hotkey": "ctrl+alt+3"
+    },
+    {
+      "name": "계산기",
+      "type": "program",
+      "target": "calc.exe",
+      "hotkey": "ctrl+alt+4"
+    },
+    {
+      "name": "내 문서 폴더",
+      "type": "folder",
+      "target": "C:\\Users",
+      "hotkey": "ctrl+alt+5"
+    },
+    {
+      "name": "탐색기로 D드라이브 열기",
+      "type": "program",
+      "target": "explorer.exe",
+      "args": ["D:\\"],
+      "hotkey": "ctrl+alt+6"
+    }
+  ]
+}
