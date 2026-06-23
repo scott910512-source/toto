@@ -156,6 +156,9 @@ class LauncherApp:
         footer.pack(fill="x")
         tk.Label(footer, text="숫자키 1~9 실행 · Esc 닫기",
                  bg="#1e1e2e", fg="#6c7086", font=("맑은 고딕", 9)).pack(side="left")
+        tk.Button(footer, text="종료", command=self._quit,
+                  bg="#f38ba8", fg="#1e1e2e", relief="flat",
+                  font=("맑은 고딕", 9, "bold"), padx=8).pack(side="right", padx=2)
         tk.Button(footer, text="설정 열기", command=self._open_config,
                   bg="#45475a", fg="#cdd6f4", relief="flat",
                   font=("맑은 고딕", 9), padx=8).pack(side="right", padx=2)
@@ -177,6 +180,10 @@ class LauncherApp:
             # 핫키 스레드에서 직접 tkinter 를 건드리면 안 되므로 큐로 넘긴다.
             self.hotkeys.add(toggle, lambda: self.cmd_queue.put(("toggle", None)))
 
+        quit_hk = self.config.get("quit_hotkey")
+        if quit_hk:
+            self.hotkeys.add(quit_hk, lambda: self.cmd_queue.put(("quit", None)))
+
         for item in self.items:
             hk = item.get("hotkey")
             if hk:
@@ -194,6 +201,9 @@ class LauncherApp:
                 cmd, payload = self.cmd_queue.get_nowait()
                 if cmd == "toggle":
                     self._toggle()
+                elif cmd == "quit":
+                    self._quit()
+                    return
                 elif cmd == "warn_failed":
                     messagebox.showwarning(
                         "핫키 등록 실패",
@@ -239,6 +249,14 @@ class LauncherApp:
 
     def _hide(self):
         self.root.withdraw()
+
+    def _quit(self):
+        """핫키를 해제하고 프로그램을 완전히 종료한다."""
+        try:
+            self.hotkeys.stop()   # 전역 핫키 등록 해제 + 메시지 루프 종료
+        except Exception:
+            pass
+        self.root.destroy()       # tkinter 종료 -> mainloop 빠져나감 -> 프로세스 종료
 
     def _open_config(self):
         try:
