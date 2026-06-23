@@ -17,6 +17,7 @@ import os
 import sys
 import json
 import queue
+import ctypes
 import webbrowser
 import subprocess
 
@@ -40,6 +41,27 @@ def load_config():
 # ---------------------------------------------------------------------------
 # 실행 액션
 # ---------------------------------------------------------------------------
+def _shell_execute(target, args):
+    """Windows ShellExecute 로 실행.
+
+    탐색기 주소창/시작-실행창에 이름을 친 것과 동일하게 동작하므로
+      * App Paths 레지스트리에 등록된 앱 (chrome, winword, excel, iexplore ...)
+      * PATH 에 있는 실행 파일 (notepad.exe, calc.exe ...)
+      * 전체 경로 (C:\\Program Files\\...\\app.exe)
+      * 파일/폴더 (기본 연결 프로그램으로 열림)
+    를 '이름만'으로도 실행할 수 있다. subprocess 와 달리 PATH 등록이 필수가 아니다.
+    """
+    params = subprocess.list2cmdline(list(args)) if args else None
+    SW_SHOWNORMAL = 1
+    # ShellExecuteW 는 성공 시 32 보다 큰 값을 반환한다.
+    rc = ctypes.windll.shell32.ShellExecuteW(None, "open", target, params, None, SW_SHOWNORMAL)
+    if rc <= 32:
+        raise OSError(
+            "ShellExecute 실패 (코드 %s) — '%s' 을(를) 찾을 수 없습니다.\n"
+            "프로그램 이름이 맞는지, 또는 전체 경로(예: C:\\\\...\\\\app.exe)로 적었는지 확인하세요." % (rc, target)
+        )
+
+
 def launch_item(item):
     """config 의 항목 하나를 실제로 실행한다."""
     item_type = (item.get("type") or "program").lower()
@@ -49,12 +71,11 @@ def launch_item(item):
     try:
         if item_type == "url":
             webbrowser.open(target)
-        elif item_type in ("file", "folder"):
-            os.startfile(target)  # Windows 전용: 연결된 기본 프로그램으로 열기
         elif item_type == "command":
             subprocess.Popen(target, shell=True)
-        else:  # "program" / "app" / "exe"
-            subprocess.Popen([target] + list(args))
+        else:  # "program" / "app" / "exe" / "file" / "folder"
+            # ShellExecute 로 통일 — 프로그램 '이름'만으로도 실행되도록.
+            _shell_execute(target, args)
         return True, None
     except Exception as exc:
         return False, str(exc)
