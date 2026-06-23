@@ -23,9 +23,15 @@ Windows VDI 환경에서 **전역 핫키**와 **런처 창**으로 웹사이트�
 | type | 의미 | 예시 `target` |
 |------|------|--------------|
 | `url` | 기본 브라우저로 웹사이트 열기 | `https://portal.example.com` |
-| `program` | 프로그램 실행(인수 `args` 지원) | `notepad.exe`, `explorer.exe` |
+| `program` | 프로그램 실행(인수 `args` 지원) | `chrome`, `notepad.exe`, `C:\\...\\app.exe` |
 | `folder` / `file` | 폴더·파일을 기본 연결 프로그램으로 열기 | `C:\\Users`, `C:\\report.xlsx` |
 | `command` | 셸 명령 실행 | `cmd /c ipconfig` |
+
+> **프로그램은 '이름만'으로도 실행됩니다.** Windows `ShellExecute` 를 사용하므로
+> `chrome`, `winword`(워드), `excel`, `iexplore` 처럼 시스템에 등록된 앱은
+> 전체 경로 없이 이름만 적어도 실행됩니다. 등록돼 있지 않은 사내 프로그램은
+> **전체 경로**(예: `C:\\Program Files\\MyApp\\myapp.exe`)로 적어주세요.
+> 실행이 안 되면 "ShellExecute 실패" 메시지로 원인을 알려줍니다.
 
 ---
 
