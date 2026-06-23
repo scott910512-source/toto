@@ -1,5 +1,6 @@
 {
   "toggle_hotkey": "ctrl+alt+space",
+  "quit_hotkey": "ctrl+alt+q",
   "items": [
     {
       "name": "Google 검색",
