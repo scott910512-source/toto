@@ -41,6 +41,21 @@ def load_config():
 # ---------------------------------------------------------------------------
 # 실행 액션
 # ---------------------------------------------------------------------------
+def _normalize_target(target):
+    """경로 입력 실수를 너그럽게 보정한다.
+
+      * 앞뒤 공백·감싼 따옴표 제거  ("C:\\app.exe" -> C:\\app.exe)
+      * 슬래시 방향 보정           (C:/폴더/app.exe -> C:\\폴더\\app.exe)
+    슬래시 보정은 'X:/' 또는 'X:\\' 처럼 드라이브 경로일 때 또는 백슬래시가
+    이미 있을 때만 적용해, chrome 같은 이름/URL 형태는 건드리지 않는다.
+    """
+    t = (target or "").strip().strip('"').strip("'")
+    looks_like_path = ("\\" in t) or ("/" in t and len(t) >= 2 and t[1] == ":")
+    if looks_like_path:
+        t = t.replace("/", "\\")
+    return t
+
+
 def _shell_execute(target, args):
     """Windows ShellExecute 로 실행.
 
@@ -51,6 +66,7 @@ def _shell_execute(target, args):
       * 파일/폴더 (기본 연결 프로그램으로 열림)
     를 '이름만'으로도 실행할 수 있다. subprocess 와 달리 PATH 등록이 필수가 아니다.
     """
+    target = _normalize_target(target)
     params = subprocess.list2cmdline(list(args)) if args else None
     SW_SHOWNORMAL = 1
     # ShellExecuteW 는 성공 시 32 보다 큰 값을 반환한다.
