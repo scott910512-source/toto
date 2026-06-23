@@ -56,7 +56,21 @@ def _normalize_target(target):
     return t
 
 
-def _shell_execute(target, args):
+# ShellExecute 오류 코드 → 한글 설명
+_SE_ERRORS = {
+    0: "메모리/리소스 부족.",
+    2: "파일을 찾을 수 없음 — 경로/파일명이 틀렸거나 파일이 그 위치에 없습니다.",
+    3: "폴더 경로를 찾을 수 없음 — 중간 폴더명이 틀렸습니다.",
+    5: "접근 거부 — 권한이 없거나 관리자 권한이 필요한 프로그램입니다.",
+    8: "메모리 부족.",
+    26: "공유 위반.",
+    27: "파일 연결이 불완전하거나 잘못됨.",
+    31: "이 파일을 열 연결된 프로그램이 없음.",
+    32: "연결된 DLL을 찾을 수 없음.",
+}
+
+
+def _shell_execute(target, args, admin=False):
     """Windows ShellExecute 로 실행.
 
     탐색기 주소창/시작-실행창에 이름을 친 것과 동일하게 동작하므로
@@ -65,16 +79,32 @@ def _shell_execute(target, args):
       * 전체 경로 (C:\\Program Files\\...\\app.exe)
       * 파일/폴더 (기본 연결 프로그램으로 열림)
     를 '이름만'으로도 실행할 수 있다. subprocess 와 달리 PATH 등록이 필수가 아니다.
+
+    admin=True 이면 'runas' 동사로 관리자 권한 실행(UAC 동의창 표시).
     """
     target = _normalize_target(target)
     params = subprocess.list2cmdline(list(args)) if args else None
+    verb = "runas" if admin else "open"
+
+    # 작업 폴더(working directory) 지정 — 핵심.
+    # 많은 프로그램이 자기 폴더 안의 DLL/리소스를 상대경로로 찾기 때문에,
+    # 전체 경로로 실행할 때는 그 exe 의 폴더를 작업 폴더로 줘야 정상 실행된다.
+    # (탐색기에서 그 폴더로 가 더블클릭한 것과 동일한 환경)
+    workdir = None
+    if os.path.isfile(target):
+        workdir = os.path.dirname(target)
+
     SW_SHOWNORMAL = 1
     # ShellExecuteW 는 성공 시 32 보다 큰 값을 반환한다.
-    rc = ctypes.windll.shell32.ShellExecuteW(None, "open", target, params, None, SW_SHOWNORMAL)
+    rc = ctypes.windll.shell32.ShellExecuteW(None, verb, target, params, workdir, SW_SHOWNORMAL)
     if rc <= 32:
+        reason = _SE_ERRORS.get(rc, "알 수 없는 오류.")
         raise OSError(
-            "ShellExecute 실패 (코드 %s) — '%s' 을(를) 찾을 수 없습니다.\n"
-            "프로그램 이름이 맞는지, 또는 전체 경로(예: C:\\\\...\\\\app.exe)로 적었는지 확인하세요." % (rc, target)
+            "실행 실패 (코드 %s): %s\n\n대상: %s\n\n"
+            "확인사항:\n"
+            " · 경로/파일명이 정확한지 (탐색기에서 더블클릭으로 열리는지)\n"
+            " · 관리자 권한이 필요한 프로그램인지\n"
+            " · 전체 경로로 적었는지 (예: C:\\\\...\\\\app.exe)" % (rc, reason, target)
         )
 
 
@@ -91,7 +121,7 @@ def launch_item(item):
             subprocess.Popen(target, shell=True)
         else:  # "program" / "app" / "exe" / "file" / "folder"
             # ShellExecute 로 통일 — 프로그램 '이름'만으로도 실행되도록.
-            _shell_execute(target, args)
+            _shell_execute(target, args, admin=bool(item.get("admin")))
         return True, None
     except Exception as exc:
         return False, str(exc)
