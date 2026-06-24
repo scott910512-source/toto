@@ -67,6 +67,52 @@
     content:''; position:absolute; left:-7px; top:4px; width:12px; height:12px;
     background:#89b4fa; border-radius:50%; }
   .timeline-item strong { color:#1e1e2e; }
+
+  /* ── 런처 화면 미리보기(목업) ── */
+  .preview-wrap { display:flex; flex-wrap:wrap; gap:28px; align-items:flex-start; justify-content:center; margin:18px 0; }
+  .win {
+    width:340px; border-radius:8px; overflow:hidden;
+    box-shadow:0 12px 40px rgba(0,0,0,0.35); border:1px solid #11111b;
+    background:#1e1e2e;
+  }
+  .win-titlebar {
+    display:flex; align-items:center; justify-content:space-between;
+    background:#11111b; padding:7px 12px; color:#bac2de; font-size:0.82rem;
+  }
+  .win-titlebar .dots { display:flex; gap:7px; }
+  .win-titlebar .dots span { width:11px; height:11px; border-radius:50%; }
+  .dot-min{background:#f9e2af;} .dot-max{background:#a6e3a1;} .dot-close{background:#f38ba8;}
+  .win-header { color:#cdd6f4; font-size:1rem; font-weight:700; text-align:center; padding:12px 0; }
+  .win-body { padding:4px 12px 8px; }
+  .win-row {
+    display:flex; align-items:center; justify-content:space-between;
+    background:#313244; border-radius:4px; padding:9px 11px; margin-bottom:6px;
+    cursor:pointer; transition:background .15s;
+  }
+  .win-row:hover { background:#3b3d52; }
+  .win-row .nm { color:#cdd6f4; font-size:0.9rem; }
+  .win-row .hk { color:#89b4fa; font-size:0.74rem; font-family:Consolas,monospace; }
+  .win-footer {
+    display:flex; align-items:center; justify-content:space-between;
+    padding:10px 12px 12px; }
+  .win-footer .hint { color:#6c7086; font-size:0.72rem; }
+  .win-footer .btns { display:flex; gap:6px; }
+  .win-btn { border:none; border-radius:4px; padding:4px 10px; font-size:0.72rem; font-weight:600; cursor:pointer; }
+  .win-btn.gray { background:#45475a; color:#cdd6f4; }
+  .win-btn.quit { background:#f38ba8; color:#1e1e2e; }
+  /* 평상시 숨김 상태 표현 */
+  .hidden-state {
+    width:300px; border:2px dashed #ced4da; border-radius:10px;
+    padding:34px 20px; text-align:center; color:#868e96; background:#fafbfc;
+  }
+  .hidden-state .big { font-size:2.4rem; }
+  .key {
+    display:inline-block; background:#fff; border:1px solid #adb5bd;
+    border-bottom-width:3px; border-radius:6px; padding:3px 10px;
+    font-family:Consolas,monospace; font-size:0.85rem; color:#212529; margin:0 2px;
+  }
+  .flow-step { text-align:center; flex:1; min-width:150px; }
+  .flow-arrow { font-size:1.8rem; color:#adb5bd; align-self:center; }
 </style>
 </head>
 <body>
@@ -82,6 +128,7 @@
   <section>
     <h2>📑 목차</h2>
     <div class="toc">
+      <a href="#quickstart">★ 한눈에 보기 (사용 흐름)</a><br>
       <a href="#overview">1. 프로젝트 개요</a><br>
       <a href="#how">2. 동작 원리</a><br>
       <a href="#files">3. 구성 파일</a><br>
@@ -91,6 +138,79 @@
       <a href="#lessons">7. 레슨 런 (Lessons Learned)</a><br>
       <a href="#faq">8. 자주 묻는 질문</a><br>
       <a href="#future">9. 추후 활용 방안</a>
+    </div>
+  </section>
+
+  <section id="quickstart">
+    <h2>★ 한눈에 보기 (사용 흐름)</h2>
+    <p>평상시에는 <strong>화면에 보이지 않고 숨어</strong> 있다가, 단축키를 누르면 런처 창이 뜨고,
+    <strong>종료 버튼</strong>으로 완전히 끌 수 있습니다.</p>
+
+    <div class="preview-wrap">
+      <div class="flow-step">
+        <div class="hidden-state">
+          <div class="big">🙈</div>
+          <p style="margin-top:8px;"><strong>평상시</strong><br>백그라운드에 숨어있음<br>(화면에 안 보임)</p>
+        </div>
+      </div>
+
+      <div class="flow-arrow">▶</div>
+
+      <div class="flow-step">
+        <p style="margin-bottom:10px;"><span class="key">Ctrl</span>+<span class="key">Alt</span>+<span class="key">Space</span></p>
+        <p style="color:#868e96; font-size:0.85rem;">이 단축키를 누르면 ↓</p>
+      </div>
+
+      <div class="flow-arrow">▶</div>
+
+      <div class="flow-step">
+        <p style="margin-bottom:10px; color:#37b24d;"><strong>런처 창이 뜸</strong></p>
+        <p style="color:#868e96; font-size:0.85rem;">아래 화면 참고 ↓</p>
+      </div>
+    </div>
+
+    <h3>실제 런처 화면 (미리보기)</h3>
+    <p style="color:#868e96; font-size:0.88rem;">※ 코드의 실제 색상·레이아웃을 그대로 재현한 화면입니다.</p>
+    <div class="preview-wrap">
+      <div class="win">
+        <div class="win-titlebar">
+          <span>VDI 런처</span>
+          <div class="dots"><span class="dot-min"></span><span class="dot-max"></span><span class="dot-close"></span></div>
+        </div>
+        <div class="win-header">⚡ VDI 단축키 런처</div>
+        <div class="win-body">
+          <div class="win-row"><span class="nm">&nbsp;&nbsp;1.&nbsp;&nbsp;Google 검색</span><span class="hk">전역: ctrl+alt+1</span></div>
+          <div class="win-row"><span class="nm">&nbsp;&nbsp;2.&nbsp;&nbsp;사내 포털</span><span class="hk">전역: ctrl+alt+2</span></div>
+          <div class="win-row"><span class="nm">&nbsp;&nbsp;3.&nbsp;&nbsp;Chrome</span><span class="hk">전역: ctrl+alt+3</span></div>
+          <div class="win-row"><span class="nm">&nbsp;&nbsp;4.&nbsp;&nbsp;CUBE</span><span class="hk">전역: ctrl+alt+4</span></div>
+          <div class="win-row"><span class="nm">&nbsp;&nbsp;5.&nbsp;&nbsp;공유 폴더</span><span class="hk">전역: ctrl+alt+5</span></div>
+        </div>
+        <div class="win-footer">
+          <span class="hint">숫자키 1~9 실행 · Esc 닫기</span>
+          <div class="btns">
+            <button class="win-btn gray">새로고침</button>
+            <button class="win-btn gray">설정 열기</button>
+            <button class="win-btn quit">종료</button>
+          </div>
+        </div>
+      </div>
+
+      <div style="max-width:300px;">
+        <h3 style="margin-top:0;">화면 사용법</h3>
+        <ul>
+          <li><strong>항목 클릭</strong> 또는 <strong>숫자키(1~9)</strong> → 해당 항목 실행</li>
+          <li><strong>전역: ...</strong> → 창을 안 띄워도 어디서든 그 핫키로 바로 실행</li>
+          <li><span class="key" style="font-size:0.75rem;">Esc</span> 또는 창 닫기 → <strong>숨기기</strong>(종료 아님)</li>
+          <li><strong style="color:#c92a2a;">종료</strong> 버튼 → 프로그램 완전 종료 (<span class="key" style="font-size:0.75rem;">Ctrl+Alt+Q</span> 도 가능)</li>
+          <li><strong>설정 열기</strong> → config.json 편집</li>
+          <li><strong>새로고침</strong> → 설정 변경 즉시 반영</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="callout warn">
+      <strong>중요:</strong> 창의 <strong>X(닫기)</strong>나 <span class="key" style="font-size:0.75rem;">Esc</span>는
+      <u>숨기기</u>만 합니다(핫키는 계속 동작). <strong>완전히 끄려면 빨간 "종료" 버튼</strong>을 누르세요.
     </div>
   </section>
 
