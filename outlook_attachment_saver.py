@@ -8,23 +8,28 @@ def sanitize_filename(name):
     return re.sub(r'[\\/*?:"<>|]', "_", name)
 
 
-def _matches(subject, body, keyword, search_in):
-    kw = keyword.lower()
-    if search_in == "subject":
-        return kw in subject.lower()
-    elif search_in == "body":
-        return kw in body.lower()
-    else:  # both
-        return kw in subject.lower() or kw in body.lower()
+def _matches(subject, body, keywords, search_in, keyword_mode):
+    targets = []
+    if search_in in ("subject", "both"):
+        targets.append(subject.lower())
+    if search_in in ("body", "both"):
+        targets.append(body.lower())
+    text = " ".join(targets)
+
+    if keyword_mode == "AND":
+        return all(kw.lower() in text for kw in keywords)
+    else:  # OR
+        return any(kw.lower() in text for kw in keywords)
 
 
 def _collect_folders(folders, folder_name_filter=None):
-    """폴더명 필터가 있으면 해당 이름 포함 폴더만, 없으면 받은편지함 반환"""
     result = []
     for folder in folders:
         if folder_name_filter:
             if folder_name_filter.lower() in folder.Name.lower():
                 result.append(folder)
+        else:
+            result.append(folder)
         if folder.Folders.Count > 0:
             result.extend(_collect_folders(folder.Folders, folder_name_filter))
     return result
@@ -44,8 +49,31 @@ def _get_target_folders(ns, folder_name_filter=None):
     return all_folders
 
 
-def preview_emails(keyword, search_in="subject", folder_name=None, limit=2):
-    """조건에 맞는 메일 미리보기 (최대 limit개 반환)"""
+def _msg_matches_filters(msg, keywords, search_in, keyword_mode,
+                          sender_filter, date_from, date_to,
+                          require_attachment):
+    subject = msg.Subject or ""
+    body = msg.Body or ""
+    sender = (msg.SenderEmailAddress or "").lower()
+    received = msg.ReceivedTime.replace(tzinfo=None)
+
+    if date_from and received < date_from:
+        return False
+    if date_to and received > date_to:
+        return False
+    if sender_filter and sender_filter.lower() not in sender:
+        return False
+    if require_attachment and msg.Attachments.Count == 0:
+        return False
+    if not _matches(subject, body, keywords, search_in, keyword_mode):
+        return False
+    return True
+
+
+def preview_emails(keywords, search_in="subject", keyword_mode="OR",
+                   folder_name=None, sender_filter=None,
+                   date_from=None, date_to=None,
+                   require_attachment=False, limit=2):
     outlook = win32com.client.Dispatch("Outlook.Application")
     ns = outlook.GetNamespace("MAPI")
     folders = _get_target_folders(ns, folder_name)
@@ -58,14 +86,15 @@ def preview_emails(keyword, search_in="subject", folder_name=None, limit=2):
             if len(previews) >= limit:
                 break
             try:
-                subject = msg.Subject or ""
-                body = msg.Body or ""
-                if _matches(subject, body, keyword, search_in):
+                if _msg_matches_filters(msg, keywords, search_in, keyword_mode,
+                                        sender_filter, date_from, date_to,
+                                        require_attachment):
                     previews.append({
-                        "subject": subject[:60],
+                        "subject": (msg.Subject or "")[:60],
                         "sender": msg.SenderEmailAddress or "",
                         "received": msg.ReceivedTime.strftime("%Y-%m-%d %H:%M"),
-                        "attachments": msg.Attachments.Count
+                        "attachments": msg.Attachments.Count,
+                        "folder": folder.Name
                     })
             except Exception:
                 continue
@@ -74,8 +103,21 @@ def preview_emails(keyword, search_in="subject", folder_name=None, limit=2):
     return previews
 
 
-def save_attachments(keyword, file_extensions, save_dir,
-                     search_in="subject", folder_name=None):
+def save_attachments(keywords, file_extensions, save_dir,
+                     search_in="subject", keyword_mode="OR",
+                     folder_name=None, sender_filter=None,
+                     date_from=None, date_to=None,
+                     require_attachment=False,
+                     make_excel=True, dry_run=False,
+                     stop_event=None, progress_cb=None, log_cb=None):
+
+    def log(msg, level="INFO"):
+        line = f"[{level}] {msg}"
+        if log_cb:
+            log_cb(line, level)
+        else:
+            print(line)
+
     os.makedirs(save_dir, exist_ok=True)
 
     outlook = win32com.client.Dispatch("Outlook.Application")
@@ -86,83 +128,183 @@ def save_attachments(keyword, file_extensions, save_dir,
     matched_mails = 0
     saved_files = 0
     skipped_mails = 0
+    error_mails = []
+    excel_rows = []
 
-    print(f"\n검색 시작 | 키워드: '{keyword}' | 확장자: {file_extensions or '전체'}")
-    print(f"저장 경로: {save_dir}")
-    print("-" * 60)
+    log(f"검색 시작 {'[DRY RUN]' if dry_run else ''}")
+    log(f"키워드: {keywords} ({keyword_mode})")
+    log(f"저장경로: {save_dir}")
+    log("-" * 40)
+
+    total = sum(f.Items.Count for f in folders)
+    processed = 0
 
     for folder in folders:
-        print(f"\n📁 폴더: {folder.Name}")
+        log(f"폴더 진입: {folder.Name}")
         messages = folder.Items
         messages.Sort("[ReceivedTime]", True)
 
         for msg in messages:
-            try:
-                subject = msg.Subject or ""
-                body = msg.Body or ""
+            if stop_event and stop_event.is_set():
+                log("사용자 중단 요청으로 종료합니다.", "WARN")
+                break
 
-                if not _matches(subject, body, keyword, search_in):
+            processed += 1
+            if progress_cb:
+                progress_cb(processed, total)
+
+            try:
+                if not _msg_matches_filters(msg, keywords, search_in, keyword_mode,
+                                            sender_filter, date_from, date_to,
+                                            require_attachment):
                     continue
 
-                received_str = msg.ReceivedTime.strftime("%Y%m%d")
+                subject = msg.Subject or ""
+                sender = msg.SenderEmailAddress or ""
+                received = msg.ReceivedTime.replace(tzinfo=None)
+                received_str = received.strftime("%Y%m%d")
                 safe_subject = sanitize_filename(subject[:40])
 
-                # 메일별 폴더: 메일받은날짜_제목
                 mail_folder_name = f"{received_str}_{safe_subject}"
                 mail_folder = os.path.join(save_dir, mail_folder_name)
 
-                # ── 중복 체크: 폴더 존재 + 본문 txt 존재 시 스킵 ──
                 txt_name = f"{received_str}_{safe_subject}_{today_str}_본문.txt"
                 txt_path = os.path.join(mail_folder, txt_name)
+
+                # 중복 체크
                 if os.path.exists(mail_folder) and os.path.exists(txt_path):
-                    print(f"   [스킵] 이미 저장됨: {mail_folder_name}")
+                    log(f"중복 스킵: {mail_folder_name}", "SKIP")
                     skipped_mails += 1
                     continue
 
-                os.makedirs(mail_folder, exist_ok=True)
                 matched_mails += 1
-                print(f"\n[{matched_mails}] {subject[:50]} ({received_str})")
+                log(f"[{matched_mails}] {subject[:45]} ({received_str})")
 
-                # ── 본문 txt 저장 ──
-                with open(txt_path, "w", encoding="utf-8") as f:
-                    f.write(f"제목   : {subject}\n")
-                    f.write(f"발신자 : {msg.SenderEmailAddress}\n")
-                    f.write(f"수신일 : {msg.ReceivedTime.strftime('%Y-%m-%d %H:%M:%S')}\n")
-                    f.write(f"저장일 : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-                    f.write("=" * 60 + "\n\n")
-                    f.write(body)
-                print(f"   [본문] {txt_name}")
-
-                # ── 첨부파일 저장 ──
-                if msg.Attachments.Count == 0:
-                    print(f"   [첨부] 없음")
+                if dry_run:
+                    log(f"  → DRY RUN: 저장 생략", "INFO")
                     continue
 
+                os.makedirs(mail_folder, exist_ok=True)
+
+                # 본문 저장
+                with open(txt_path, "w", encoding="utf-8") as f:
+                    f.write(f"제목   : {subject}\n")
+                    f.write(f"발신자 : {sender}\n")
+                    f.write(f"수신일 : {received.strftime('%Y-%m-%d %H:%M:%S')}\n")
+                    f.write(f"저장일 : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+                    f.write("=" * 60 + "\n\n")
+                    f.write(msg.Body or "")
+                log(f"  본문: {txt_name}", "INFO")
+
+                # HTML 본문 저장
+                if msg.HTMLBody:
+                    html_name = f"{received_str}_{safe_subject}_{today_str}_본문.html"
+                    html_path = os.path.join(mail_folder, html_name)
+                    with open(html_path, "w", encoding="utf-8") as f:
+                        f.write(msg.HTMLBody)
+
+                # 첨부파일 저장
+                att_names = []
                 for att in msg.Attachments:
                     att_name = att.FileName
                     ext = os.path.splitext(att_name)[1].lower()
 
                     if file_extensions and ext not in file_extensions:
-                        print(f"   [첨부] 스킵 (확장자): {att_name}")
+                        log(f"  첨부 스킵(확장자): {att_name}", "SKIP")
                         continue
 
-                    # 파일명: 메일받은날짜_제목_저장날짜_원본파일명
                     save_name = f"{received_str}_{safe_subject}_{today_str}_{att_name}"
                     save_path = os.path.join(mail_folder, save_name)
 
                     if os.path.exists(save_path):
-                        print(f"   [첨부] 중복 스킵: {att_name}")
+                        log(f"  첨부 중복 스킵: {att_name}", "SKIP")
                         continue
 
                     att.SaveAsFile(save_path)
-                    print(f"   [첨부] {save_name}")
+                    log(f"  첨부: {save_name}", "INFO")
                     saved_files += 1
+                    att_names.append(att_name)
+
+                excel_rows.append({
+                    "번호": matched_mails,
+                    "수신일": received.strftime("%Y-%m-%d %H:%M"),
+                    "제목": subject,
+                    "발신자": sender,
+                    "폴더": folder.Name,
+                    "첨부파일": ", ".join(att_names) if att_names else "없음",
+                    "저장경로": mail_folder
+                })
 
             except Exception as e:
-                print(f"   오류: {e}")
+                err_msg = f"오류: {msg.Subject or '(제목없음)'} → {e}"
+                log(err_msg, "ERROR")
+                error_mails.append(err_msg)
                 continue
 
-    print("\n" + "=" * 60)
-    print(f"완료 | 저장: {matched_mails}개 | 첨부파일: {saved_files}개 | 중복스킵: {skipped_mails}개")
-    print("=" * 60)
-    return matched_mails, saved_files
+        if stop_event and stop_event.is_set():
+            break
+
+    # 오류 로그 파일
+    if error_mails:
+        err_path = os.path.join(save_dir, f"{today_str}_오류목록.txt")
+        with open(err_path, "w", encoding="utf-8") as f:
+            f.write("\n".join(error_mails))
+        log(f"오류 {len(error_mails)}건 → {err_path}", "WARN")
+
+    # Excel 보고서
+    if make_excel and excel_rows and not dry_run:
+        excel_path = _save_excel(excel_rows, save_dir, today_str, keywords)
+        log(f"Excel 보고서: {os.path.basename(excel_path)}", "INFO")
+
+    log("=" * 40)
+    log(f"완료 | 메일:{matched_mails} 첨부:{saved_files} 스킵:{skipped_mails} 오류:{len(error_mails)}")
+    return matched_mails, saved_files, len(error_mails)
+
+
+def _save_excel(rows, save_dir, today_str, keywords):
+    try:
+        import openpyxl
+        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    except ImportError:
+        return ""
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "메일 목록"
+
+    headers = ["번호", "수신일", "제목", "발신자", "폴더", "첨부파일", "저장경로"]
+    hdr_fill = PatternFill("solid", fgColor="0078D4")
+    hdr_font = Font(color="FFFFFF", bold=True, size=10)
+    thin = Side(style="thin", color="CCCCCC")
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+    even_fill = PatternFill("solid", fgColor="F0F4FA")
+
+    for col, h in enumerate(headers, 1):
+        c = ws.cell(row=1, column=col, value=h)
+        c.fill = hdr_fill
+        c.font = hdr_font
+        c.alignment = Alignment(horizontal="center", vertical="center")
+        c.border = border
+    ws.row_dimensions[1].height = 22
+
+    for r, row in enumerate(rows, 2):
+        for col, key in enumerate(headers, 1):
+            c = ws.cell(row=r, column=col, value=row[key])
+            c.alignment = Alignment(vertical="center",
+                                    wrap_text=(key in ("제목", "첨부파일")))
+            c.border = border
+            if r % 2 == 0:
+                c.fill = even_fill
+        ws.row_dimensions[r].height = 18
+
+    ws.freeze_panes = "A2"
+    ws.auto_filter.ref = ws.dimensions
+
+    col_widths = [6, 18, 42, 28, 16, 32, 52]
+    for i, w in enumerate(col_widths, 1):
+        ws.column_dimensions[ws.cell(1, i).column_letter].width = w
+
+    kw_str = "_".join(keywords)[:20]
+    path = os.path.join(save_dir, f"{today_str}_{kw_str}_메일목록.xlsx")
+    wb.save(path)
+    return path
