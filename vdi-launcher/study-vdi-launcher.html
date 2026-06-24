@@ -113,6 +113,22 @@
   }
   .flow-step { text-align:center; flex:1; min-width:150px; }
   .flow-arrow { font-size:1.8rem; color:#adb5bd; align-self:center; }
+
+  /* ── 사용 흐름: 균일 카드 한 줄 정렬 ── */
+  .flow-row {
+    display:flex; flex-wrap:nowrap; align-items:stretch; justify-content:center;
+    gap:12px; margin:20px 0;
+  }
+  .flow-row .step {
+    flex:1 1 0; min-width:0; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; text-align:center;
+    background:#fafbfc; border:1px solid #e9ecef; border-radius:12px;
+    padding:22px 14px; min-height:150px;
+  }
+  .flow-row .step .ico { font-size:2.2rem; line-height:1; margin-bottom:10px; }
+  .flow-row .step .ttl { font-weight:700; color:#1e1e2e; margin-bottom:6px; }
+  .flow-row .step .desc { color:#868e96; font-size:0.82rem; }
+  .flow-row .arr { flex:0 0 auto; align-self:center; font-size:1.6rem; color:#adb5bd; }
 </style>
 </head>
 <body>
@@ -146,26 +162,27 @@
     <p>평상시에는 <strong>화면에 보이지 않고 숨어</strong> 있다가, 단축키를 누르면 런처 창이 뜨고,
     <strong>종료 버튼</strong>으로 완전히 끌 수 있습니다.</p>
 
-    <div class="preview-wrap">
-      <div class="flow-step">
-        <div class="hidden-state">
-          <div class="big">🙈</div>
-          <p style="margin-top:8px;"><strong>평상시</strong><br>백그라운드에 숨어있음<br>(화면에 안 보임)</p>
-        </div>
+    <div class="flow-row">
+      <div class="step">
+        <div class="ico">🙈</div>
+        <div class="ttl">평상시</div>
+        <div class="desc">백그라운드에 숨어있음<br>(화면에 안 보임)</div>
       </div>
 
-      <div class="flow-arrow">▶</div>
+      <div class="arr">▶</div>
 
-      <div class="flow-step">
-        <p style="margin-bottom:10px;"><span class="key">Ctrl</span>+<span class="key">Alt</span>+<span class="key">Space</span></p>
-        <p style="color:#868e96; font-size:0.85rem;">이 단축키를 누르면 ↓</p>
+      <div class="step">
+        <div class="ico">⌨️</div>
+        <div class="ttl"><span class="key">Ctrl</span>+<span class="key">Alt</span>+<span class="key">Space</span></div>
+        <div class="desc">이 단축키를 누르면</div>
       </div>
 
-      <div class="flow-arrow">▶</div>
+      <div class="arr">▶</div>
 
-      <div class="flow-step">
-        <p style="margin-bottom:10px; color:#37b24d;"><strong>런처 창이 뜸</strong></p>
-        <p style="color:#868e96; font-size:0.85rem;">아래 화면 참고 ↓</p>
+      <div class="step">
+        <div class="ico">⚡</div>
+        <div class="ttl" style="color:#37b24d;">런처 창이 뜸</div>
+        <div class="desc">아래 화면 참고 ↓</div>
       </div>
     </div>
 
