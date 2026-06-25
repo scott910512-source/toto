@@ -25,39 +25,48 @@ def _build_date_restrict(date_from, date_to):
     return " AND ".join(parts) if parts else None
 
 
-def _matches(msg, keywords, search_in, keyword_mode, sender_filter):
+def _kw_in(text, kw, word_boundary):
+    """단일 키워드 매칭. word_boundary=True 이면 알파벳/숫자 연속 단어 제외"""
+    if word_boundary:
+        pattern = r'(?<![a-zA-Z0-9가-힣])' + re.escape(kw) + r'(?![a-zA-Z0-9가-힣])'
+        return bool(re.search(pattern, text, re.IGNORECASE))
+    return kw.lower() in text.lower()
+
+
+def _matches(msg, keywords, search_in, keyword_mode, sender_filter, word_boundary=False):
     """Python 측 필터링 — 키워드 / 발신자"""
-    # 발신자 필터
+    # 발신자: 쉼표 구분 OR 조건
     if sender_filter:
+        senders = [s.strip().lower() for s in sender_filter.split(',') if s.strip()]
         addr = (msg.SenderEmailAddress or "").lower()
-        if sender_filter.lower() not in addr:
+        if not any(s in addr for s in senders):
             return False
 
-    # 키워드 없으면 통과
     if not keywords:
         return True
 
-    subject = (msg.Subject or "").lower()
+    subject = msg.Subject or ""
 
     if search_in == "subject":
-        text = subject
+        chk = lambda kw: _kw_in(subject, kw, word_boundary)
     elif search_in == "body":
-        text = (msg.Body or "").lower()
-    else:  # both — 제목 먼저 체크해 Body 접근 최소화
+        body = msg.Body or ""
+        chk = lambda kw: _kw_in(body, kw, word_boundary)
+    else:  # both — OR 모드는 제목 먼저 체크해 Body 접근 최소화
         if keyword_mode == "OR":
-            if any(kw.lower() in subject for kw in keywords):
+            if any(_kw_in(subject, kw, word_boundary) for kw in keywords):
                 return True
+            body = msg.Body or ""
+            return any(_kw_in(body, kw, word_boundary) for kw in keywords)
         else:  # AND
-            if not all(kw.lower() in subject for kw in keywords):
-                # 제목에 전부 없으면 본문까지 확인
-                text = subject + " " + (msg.Body or "").lower()
-                return all(kw.lower() in text for kw in keywords)
-            return True
-        text = subject + " " + (msg.Body or "").lower()
+            if all(_kw_in(subject, kw, word_boundary) for kw in keywords):
+                return True
+            combined = subject + " " + (msg.Body or "")
+            return all(_kw_in(combined, kw, word_boundary) for kw in keywords)
 
     if keyword_mode == "AND":
-        return all(kw.lower() in text for kw in keywords)
-    return any(kw.lower() in text for kw in keywords)
+        return all(chk(kw) for kw in keywords)
+    return any(chk(kw) for kw in keywords)
 
 
 def _collect_all(folders):
@@ -95,7 +104,8 @@ def _get_target_folders(ns, folder_name_filter=None):
 def preview_emails(keywords, search_in="subject", keyword_mode="OR",
                    folder_name=None, sender_filter=None,
                    date_from=None, date_to=None,
-                   require_attachment=False, limit=2, stop_event=None):
+                   require_attachment=False, limit=2,
+                   word_boundary=False, stop_event=None):
     pythoncom.CoInitialize()
     try:
         outlook = win32com.client.Dispatch("Outlook.Application")
@@ -122,7 +132,7 @@ def preview_emails(keywords, search_in="subject", keyword_mode="OR",
                     try:
                         if require_attachment and msg.Attachments.Count == 0:
                             continue
-                        if not _matches(msg, keywords, search_in, keyword_mode, sender_filter):
+                        if not _matches(msg, keywords, search_in, keyword_mode, sender_filter, word_boundary):
                             continue
                         previews.append({
                             "subject":     (msg.Subject or "(제목없음)")[:60],
@@ -147,6 +157,7 @@ def save_attachments(keywords, file_extensions, save_dir,
                      require_attachment=False,
                      save_modes=None,          # {"msg", "body", "attachments"}
                      make_excel=True, dry_run=False,
+                     word_boundary=False,
                      stop_event=None, progress_cb=None, log_cb=None):
 
     if save_modes is None:
@@ -218,7 +229,7 @@ def save_attachments(keywords, file_extensions, save_dir,
                     if stopped():
                         break
 
-                    if not _matches(msg, keywords, search_in, keyword_mode, sender_filter):
+                    if not _matches(msg, keywords, search_in, keyword_mode, sender_filter, word_boundary):
                         continue
 
                     subject     = msg.Subject or "(제목없음)"

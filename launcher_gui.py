@@ -28,7 +28,8 @@ PRESET_DEFAULTS = {
     "extensions": "", "save_dir": "",
     "require_attachment": False,
     "make_excel": True, "dry_run": False,
-    "save_msg": False, "save_body": True, "save_att": True
+    "save_msg": False, "save_body": True, "save_att": True,
+    "word_boundary": False
 }
 
 
@@ -310,7 +311,7 @@ class App(tk.Tk):
         self.sender_var = tk.StringVar()
         tk.Entry(f, textvariable=self.sender_var, font=("맑은 고딕", 10)
                  ).grid(row=3, column=1, sticky="ew", padx=(10, 0), pady=4)
-        hint("이메일 일부 (비우면 전체)", 4)
+        hint("이메일 일부, 쉼표로 여러개 OR 조건 (예: user1@, user2@)", 4)
 
         # 날짜 범위
         lbl("날짜 범위", 5)
@@ -375,9 +376,11 @@ class App(tk.Tk):
         self.excel_var = tk.BooleanVar()
         self.dry_var = tk.BooleanVar()
         self.att_only_var = tk.BooleanVar()
+        self.word_boundary_var = tk.BooleanVar()
         for var, text in [(self.excel_var, "Excel 보고서"),
                           (self.dry_var, "Dry Run"),
-                          (self.att_only_var, "첨부파일만")]:
+                          (self.att_only_var, "첨부파일만"),
+                          (self.word_boundary_var, "단어 단위 매칭")]:
             tk.Checkbutton(opt_f, text=text, variable=var,
                            bg=C_BG, font=("맑은 고딕", 9),
                            activebackground=C_BG).pack(side="left", padx=8)
@@ -476,6 +479,7 @@ class App(tk.Tk):
             "save_msg":          self.save_msg_var.get(),
             "save_body":         self.save_body_var.get(),
             "save_att":          self.save_att_var.get(),
+            "word_boundary":     self.word_boundary_var.get(),
         }
 
     def _apply_settings(self, cfg):
@@ -494,6 +498,7 @@ class App(tk.Tk):
         self.save_msg_var.set(cfg.get("save_msg", False))
         self.save_body_var.set(cfg.get("save_body", True))
         self.save_att_var.set(cfg.get("save_att", True))
+        self.word_boundary_var.set(cfg.get("word_boundary", False))
         self._on_att_toggle()
 
     def _load_preset(self):
@@ -612,6 +617,7 @@ class App(tk.Tk):
                     date_from=date_from, date_to=date_to,
                     require_attachment=v["require_attachment"],
                     limit=2,
+                    word_boundary=v["word_boundary"],
                     stop_event=self._stop_event
                 )
                 if self._stop_event.is_set():
@@ -677,6 +683,7 @@ class App(tk.Tk):
                     save_modes=save_modes,
                     make_excel=v["make_excel"],
                     dry_run=v["dry_run"],
+                    word_boundary=v["word_boundary"],
                     stop_event=self._stop_event,
                     progress_cb=lambda d, t: self.after(0, lambda: self._update_progress(d, t)),
                     log_cb=lambda msg, lv="INFO": self.after(0, lambda: self._log(msg, lv))
