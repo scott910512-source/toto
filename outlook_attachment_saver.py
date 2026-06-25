@@ -24,11 +24,11 @@ def _build_restrict(keywords, search_in, keyword_mode, sender_filter, date_from,
     if date_to:
         parts.append(f"[ReceivedTime] <= '{date_to.strftime('%m/%d/%Y %H:%M %p')}'")
     if sender_filter:
-        parts.append(f"[SenderEmailAddress] like '%{sender_filter}%'")
+        parts.append(f"[SenderEmailAddress] like '*{sender_filter}*'")
 
-    # 제목 키워드는 Restrict에서 처리 가능
+    # 제목 키워드는 Restrict에서 처리 가능 (JET 문법: * 와일드카드)
     if keywords and search_in in ("subject", "both"):
-        kw_parts = [f"[Subject] like '%{kw}%'" for kw in keywords]
+        kw_parts = [f"[Subject] like '*{kw}*'" for kw in keywords]
         joiner = " OR " if keyword_mode == "OR" else " AND "
         parts.append("(" + joiner.join(kw_parts) + ")")
 
