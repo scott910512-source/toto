@@ -539,9 +539,6 @@ class App(tk.Tk):
 
     # ── 실행 로직 ─────────────────────────────────────────
     def _validate(self, v):
-        if not v["keywords"]:
-            messagebox.showwarning("입력 오류", "키워드를 입력해주세요.")
-            return False
         if not v["save_dir"]:
             messagebox.showwarning("입력 오류", "저장 경로를 입력해주세요.")
             return False

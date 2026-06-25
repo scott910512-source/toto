@@ -10,6 +10,10 @@ def sanitize_filename(name):
 
 
 def _matches(subject, body, keywords, search_in, keyword_mode):
+    # 키워드 없으면 전체 매칭
+    if not keywords:
+        return True
+
     targets = []
     if search_in in ("subject", "both"):
         targets.append(subject.lower())
