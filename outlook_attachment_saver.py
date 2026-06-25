@@ -188,6 +188,7 @@ def save_attachments(keywords, file_extensions, save_dir,
         matched = saved_files = skipped = 0
         errors = []
         excel_rows = []
+        seen_stamps = set()  # 같은 실행 내 동일 메일 중복 방지
 
         mode_str = "+".join(s for s in ["MSG" if do_msg else "",
                                          "HTML" if do_body else "",
@@ -245,13 +246,12 @@ def save_attachments(keywords, file_extensions, save_dir,
                     safe_sub     = sanitize_filename(subject[:40])
                     stamp        = f"{received_str}_{safe_sub}"
 
-                    # 중복 체크 — stamp 로 시작하는 파일이 이미 있으면 스킵
-                    if not dry_run and any(
-                        fn.startswith(stamp) for fn in os.listdir(run_folder)
-                    ):
+                    # 중복 체크 — 같은 실행 내 동일 메일(다른 폴더에 중복 존재) 방지
+                    if stamp in seen_stamps:
                         log(f"중복 스킵: {subject[:40]}", "SKIP")
                         skipped += 1
                         continue
+                    seen_stamps.add(stamp)
 
                     matched += 1
                     log(f"[{matched}] {subject[:45]} | 첨부:{msg.Attachments.Count}개")
