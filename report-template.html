@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>보고서 템플릿</title>
+</head>
+
+<!--
+  ┌─────────────────────────────────────────────────────────────┐
+  │  지식블로그 보고서 템플릿 (web 실제 표시폭 ≈ 800px 기준)        │
+  │  - 사용법: <body> 안의 .report 블록을 복사해서 에디터에 붙여넣기  │
+  │  - 모든 스타일은 인라인/내부 CSS 로 자체 완결되어 있어           │
+  │    외부 CSS 가 막힌 에디터에서도 그대로 동작합니다.             │
+  │  - [   ] 표시된 부분만 내용으로 바꾸면 됩니다.                  │
+  └─────────────────────────────────────────────────────────────┘
+-->
+
+<body style="margin:0; background:#f4f5f7;">
+
+<!-- ===================== 보고서 본문 시작 ===================== -->
+<div class="report" style="
+    max-width:780px;
+    margin:0 auto;
+    padding:0 4px;
+    box-sizing:border-box;
+    font-family:'Malgun Gothic','맑은 고딕',-apple-system,'Apple SD Gothic Neo',sans-serif;
+    color:#222;
+    line-height:1.7;
+    font-size:15px;
+    -webkit-font-smoothing:antialiased;
+">
+
+  <!-- ── 표지 / 헤더 ───────────────────────────────────────── -->
+  <header style="
+      border-top:4px solid #1f4e79;
+      border-bottom:1px solid #e0e0e0;
+      padding:22px 0 18px;
+      margin-bottom:26px;
+  ">
+    <div style="font-size:12px; letter-spacing:1px; color:#1f4e79; font-weight:700; margin-bottom:8px;">
+      [ 카테고리 / 부서명 ]
+    </div>
+    <h1 style="margin:0 0 10px; font-size:26px; line-height:1.35; color:#111; font-weight:800;">
+      [ 보고서 제목을 입력하세요 ]
+    </h1>
+    <p style="margin:0; font-size:15px; color:#666;">
+      [ 한 줄 부제 · 핵심 요약을 적어주세요 ]
+    </p>
+    <div style="margin-top:14px; font-size:12.5px; color:#888;">
+      작성자 [ 홍길동 ] &nbsp;|&nbsp; 작성일 [ 2026.06.25 ] &nbsp;|&nbsp; 버전 [ v1.0 ]
+    </div>
+  </header>
+
+  <!-- ── 핵심 요약 박스 ────────────────────────────────────── -->
+  <div style="
+      background:#eef4fb;
+      border-left:4px solid #1f4e79;
+      border-radius:0 6px 6px 0;
+      padding:16px 18px;
+      margin:0 0 28px;
+  ">
+    <div style="font-size:13px; font-weight:700; color:#1f4e79; margin-bottom:6px;">
+      ✦ 핵심 요약
+    </div>
+    <ul style="margin:0; padding-left:18px; font-size:14px; color:#33414f;">
+      <li>[ 첫 번째 핵심 메시지 ]</li>
+      <li>[ 두 번째 핵심 메시지 ]</li>
+      <li>[ 세 번째 핵심 메시지 ]</li>
+    </ul>
+  </div>
+
+  <!-- ── 섹션 1 ───────────────────────────────────────────── -->
+  <section style="margin-bottom:30px;">
+    <h2 style="
+        font-size:19px; font-weight:800; color:#1f4e79;
+        margin:0 0 12px; padding-bottom:8px;
+        border-bottom:2px solid #1f4e79;
+    ">
+      1. [ 섹션 제목 ]
+    </h2>
+
+    <p style="margin:0 0 14px;">
+      [ 본문을 입력하세요. 가독성을 위해 한 문단은 3~4줄 내외로 끊어 쓰는 것을
+      권장합니다. 실제 표시 폭이 좁기 때문에 문장이 길면 줄바꿈이 많아져
+      답답해 보입니다. ]
+    </p>
+
+    <h3 style="font-size:15.5px; font-weight:700; color:#333; margin:18px 0 8px;">
+      ▎[ 소제목 ]
+    </h3>
+    <p style="margin:0 0 14px;">
+      [ 소제목 아래 세부 내용 ]
+    </p>
+  </section>
+
+  <!-- ── 강조 / 콜아웃 박스 ────────────────────────────────── -->
+  <div style="
+      background:#fff8e6;
+      border:1px solid #f0d98a;
+      border-radius:6px;
+      padding:14px 16px;
+      margin:0 0 28px;
+      font-size:14px;
+  ">
+    <strong style="color:#9a6a00;">💡 참고</strong>
+    &nbsp;[ 주의·참고할 내용을 강조 박스로 표시할 때 사용하세요. ]
+  </div>
+
+  <!-- ── 섹션 2 + 표 ─────────────────────────────────────── -->
+  <section style="margin-bottom:30px;">
+    <h2 style="
+        font-size:19px; font-weight:800; color:#1f4e79;
+        margin:0 0 12px; padding-bottom:8px;
+        border-bottom:2px solid #1f4e79;
+    ">
+      2. [ 데이터 / 비교 표 ]
+    </h2>
+
+    <table style="
+        width:100%; border-collapse:collapse;
+        font-size:13.5px; margin:0 0 8px;
+    ">
+      <thead>
+        <tr style="background:#1f4e79; color:#fff;">
+          <th style="padding:10px; text-align:left; border:1px solid #1f4e79;">구분</th>
+          <th style="padding:10px; text-align:left; border:1px solid #1f4e79;">항목 A</th>
+          <th style="padding:10px; text-align:left; border:1px solid #1f4e79;">항목 B</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td style="padding:9px 10px; border:1px solid #e0e0e0; background:#fafbfc; font-weight:600;">[ 행 1 ]</td>
+          <td style="padding:9px 10px; border:1px solid #e0e0e0;">[ 값 ]</td>
+          <td style="padding:9px 10px; border:1px solid #e0e0e0;">[ 값 ]</td>
+        </tr>
+        <tr>
+          <td style="padding:9px 10px; border:1px solid #e0e0e0; background:#fafbfc; font-weight:600;">[ 행 2 ]</td>
+          <td style="padding:9px 10px; border:1px solid #e0e0e0;">[ 값 ]</td>
+          <td style="padding:9px 10px; border:1px solid #e0e0e0;">[ 값 ]</td>
+        </tr>
+      </tbody>
+    </table>
+    <p style="margin:0; font-size:12px; color:#999;">※ [ 표 출처 / 비고 ]</p>
+  </section>
+
+  <!-- ── 이미지 영역 ──────────────────────────────────────── -->
+  <figure style="margin:0 0 30px; text-align:center;">
+    <div style="
+        background:#eceff3; border:1px dashed #c2c9d2; border-radius:6px;
+        padding:48px 0; color:#9aa3ad; font-size:13px;
+    ">
+      [ 이미지 / 그래프 영역 — 여기에 이미지를 넣으세요 ]
+    </div>
+    <figcaption style="margin-top:8px; font-size:12px; color:#888;">
+      그림 1. [ 이미지 설명 ]
+    </figcaption>
+  </figure>
+
+  <!-- ── 2단 레이아웃 (좁은 폭에서도 안정적) ─────────────────── -->
+  <section style="margin-bottom:30px;">
+    <h2 style="
+        font-size:19px; font-weight:800; color:#1f4e79;
+        margin:0 0 12px; padding-bottom:8px;
+        border-bottom:2px solid #1f4e79;
+    ">
+      3. [ 2단 구성 ]
+    </h2>
+    <table style="width:100%; border-collapse:collapse;">
+      <tr>
+        <td style="width:50%; vertical-align:top; padding:0 10px 0 0;">
+          <div style="background:#f7f9fb; border-radius:6px; padding:14px;">
+            <strong style="color:#1f4e79;">[ 왼쪽 제목 ]</strong>
+            <p style="margin:6px 0 0; font-size:13.5px;">[ 내용 ]</p>
+          </div>
+        </td>
+        <td style="width:50%; vertical-align:top; padding:0 0 0 10px;">
+          <div style="background:#f7f9fb; border-radius:6px; padding:14px;">
+            <strong style="color:#1f4e79;">[ 오른쪽 제목 ]</strong>
+            <p style="margin:6px 0 0; font-size:13.5px;">[ 내용 ]</p>
+          </div>
+        </td>
+      </tr>
+    </table>
+  </section>
+
+  <!-- ── 결론 ─────────────────────────────────────────────── -->
+  <section style="margin-bottom:24px;">
+    <h2 style="
+        font-size:19px; font-weight:800; color:#1f4e79;
+        margin:0 0 12px; padding-bottom:8px;
+        border-bottom:2px solid #1f4e79;
+    ">
+      4. 결론 및 제언
+    </h2>
+    <p style="margin:0 0 14px;">[ 결론 요약 ]</p>
+    <ol style="margin:0; padding-left:20px;">
+      <li style="margin-bottom:6px;">[ 제언 1 ]</li>
+      <li style="margin-bottom:6px;">[ 제언 2 ]</li>
+    </ol>
+  </section>
+
+  <!-- ── 푸터 ─────────────────────────────────────────────── -->
+  <footer style="
+      border-top:1px solid #e0e0e0;
+      margin-top:30px; padding-top:14px;
+      font-size:12px; color:#999; text-align:center;
+  ">
+    © 2026 [ 작성 부서 ] · 본 문서는 사내 공유용입니다.
+  </footer>
+
+</div>
+<!-- ===================== 보고서 본문 끝 ===================== -->
+
+</body>
+</html>
