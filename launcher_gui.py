@@ -27,7 +27,8 @@ PRESET_DEFAULTS = {
     "date_from": "", "date_to": "",
     "extensions": "", "save_dir": "",
     "require_attachment": False,
-    "make_excel": True, "dry_run": False
+    "make_excel": True, "dry_run": False,
+    "save_msg": False, "save_body": True, "save_att": True
 }
 
 
@@ -203,7 +204,7 @@ class App(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("Outlook 메일 수집기")
-        self.geometry("640x640")
+        self.geometry("680x680")
         self.resizable(False, False)
         self.configure(bg=C_BG)
 
@@ -335,8 +336,8 @@ class App(tk.Tk):
         # 파일 형태
         lbl("파일 형태", 8)
         self.ext_var = tk.StringVar()
-        tk.Entry(f, textvariable=self.ext_var, font=("맑은 고딕", 10)
-                 ).grid(row=8, column=1, sticky="ew", padx=(10, 0), pady=4)
+        self.ext_entry = tk.Entry(f, textvariable=self.ext_var, font=("맑은 고딕", 10))
+        self.ext_entry.grid(row=8, column=1, sticky="ew", padx=(10, 0), pady=4)
         hint("예: pdf, xlsx  (비우면 전체)", 9)
 
         # 저장 경로
@@ -350,9 +351,27 @@ class App(tk.Tk):
                   bg=C_GRAY, relief="flat",
                   command=self._browse).pack(side="left", padx=(6, 0))
 
+        # 저장 형식
+        lbl("저장 형식", 11)
+        mode_f = tk.Frame(f, bg=C_BG)
+        mode_f.grid(row=11, column=1, columnspan=3, sticky="ew", padx=(10, 0), pady=4)
+        self.save_msg_var  = tk.BooleanVar(value=False)
+        self.save_body_var = tk.BooleanVar(value=True)
+        self.save_att_var  = tk.BooleanVar(value=True)
+        tk.Checkbutton(mode_f, text="MSG파일(.msg)", variable=self.save_msg_var,
+                       bg=C_BG, font=("맑은 고딕", 9),
+                       activebackground=C_BG).pack(side="left", padx=(0, 12))
+        tk.Checkbutton(mode_f, text="본문텍스트(.txt)", variable=self.save_body_var,
+                       bg=C_BG, font=("맑은 고딕", 9),
+                       activebackground=C_BG).pack(side="left", padx=(0, 12))
+        tk.Checkbutton(mode_f, text="첨부파일", variable=self.save_att_var,
+                       bg=C_BG, font=("맑은 고딕", 9),
+                       activebackground=C_BG,
+                       command=self._on_att_toggle).pack(side="left")
+
         # 체크박스
         opt_f = tk.Frame(f, bg=C_BG)
-        opt_f.grid(row=11, column=0, columnspan=4, sticky="w", pady=(6, 2))
+        opt_f.grid(row=12, column=0, columnspan=4, sticky="w", pady=(6, 2))
         self.excel_var = tk.BooleanVar()
         self.dry_var = tk.BooleanVar()
         self.att_only_var = tk.BooleanVar()
@@ -431,6 +450,10 @@ class App(tk.Tk):
                                  padx=22, pady=5, command=self._run)
         self.run_btn.pack(side="right", padx=4)
 
+    def _on_att_toggle(self):
+        state = "normal" if self.save_att_var.get() else "disabled"
+        self.ext_entry.config(state=state)
+
     # ── 프리셋 관련 ───────────────────────────────────────
     def _refresh_preset_list(self):
         names = list(self._cfg.get("presets", {}).keys())
@@ -449,7 +472,10 @@ class App(tk.Tk):
             "save_dir":          self.save_dir_var.get().strip(),
             "make_excel":        self.excel_var.get(),
             "dry_run":           self.dry_var.get(),
-            "require_attachment":self.att_only_var.get()
+            "require_attachment":self.att_only_var.get(),
+            "save_msg":          self.save_msg_var.get(),
+            "save_body":         self.save_body_var.get(),
+            "save_att":          self.save_att_var.get(),
         }
 
     def _apply_settings(self, cfg):
@@ -465,6 +491,10 @@ class App(tk.Tk):
         self.excel_var.set(cfg.get("make_excel", True))
         self.dry_var.set(cfg.get("dry_run", False))
         self.att_only_var.set(cfg.get("require_attachment", False))
+        self.save_msg_var.set(cfg.get("save_msg", False))
+        self.save_body_var.set(cfg.get("save_body", True))
+        self.save_att_var.set(cfg.get("save_att", True))
+        self._on_att_toggle()
 
     def _load_preset(self):
         name = self.preset_var.get()
@@ -621,6 +651,13 @@ class App(tk.Tk):
         self.status_var.set("처리 중...")
         self._stop_event.clear()
 
+        save_modes = set()
+        if v["save_msg"]:  save_modes.add("msg")
+        if v["save_body"]: save_modes.add("body")
+        if v["save_att"]:  save_modes.add("attachments")
+        if not save_modes:
+            save_modes = {"body", "attachments"}
+
         def save_worker():
             try:
                 m, s, e = save_attachments(
@@ -633,6 +670,7 @@ class App(tk.Tk):
                     sender_filter=v["sender_filter"] or None,
                     date_from=date_from, date_to=date_to,
                     require_attachment=v["require_attachment"],
+                    save_modes=save_modes,
                     make_excel=v["make_excel"],
                     dry_run=v["dry_run"],
                     stop_event=self._stop_event,
