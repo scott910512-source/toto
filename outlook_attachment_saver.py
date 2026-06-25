@@ -224,11 +224,10 @@ def save_attachments(keywords, file_extensions, save_dir,
                     safe_sub    = sanitize_filename(subject[:40])
 
                     mail_folder = os.path.join(save_dir, f"{received_str}_{safe_sub}")
-                    stamp       = f"{received_str}_{safe_sub}_{today_str}"
+                    stamp       = f"{received_str}_{safe_sub}"
 
-                    # 중복 체크
-                    marker = os.path.join(mail_folder, f"{stamp}.done")
-                    if os.path.exists(marker):
+                    # 중복 체크 — 폴더가 이미 있으면 스킵
+                    if os.path.exists(mail_folder):
                         log(f"중복 스킵: {subject[:40]}", "SKIP")
                         skipped += 1
                         continue
@@ -257,28 +256,16 @@ def save_attachments(keywords, file_extensions, save_dir,
                     if stopped():
                         break
 
-                    # ── 본문 텍스트 저장 ─────────────────────
+                    # ── 본문 HTML 저장 ──────────────────────
                     if do_body:
                         try:
-                            txt_path = os.path.join(mail_folder, f"{stamp}_본문.txt")
-                            if not os.path.exists(txt_path):
-                                with open(txt_path, "w", encoding="utf-8") as f:
-                                    f.write(f"제목   : {subject}\n")
-                                    f.write(f"발신자 : {sender}\n")
-                                    f.write(f"수신일 : {received.strftime('%Y-%m-%d %H:%M:%S')}\n")
-                                    f.write(f"저장일 : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-                                    f.write(f"첨부   : {msg.Attachments.Count}개\n")
-                                    f.write("=" * 60 + "\n\n")
-                                    f.write(msg.Body or "")
-                                log(f"  본문: {stamp}_본문.txt")
                             html_path = os.path.join(mail_folder, f"{stamp}_본문.html")
-                            if not os.path.exists(html_path):
-                                try:
-                                    if msg.HTMLBody:
-                                        with open(html_path, "w", encoding="utf-8") as f:
-                                            f.write(msg.HTMLBody)
-                                except Exception:
-                                    pass
+                            if msg.HTMLBody:
+                                with open(html_path, "w", encoding="utf-8") as f:
+                                    f.write(msg.HTMLBody)
+                                log(f"  HTML: {stamp}_본문.html")
+                            else:
+                                log(f"  HTML 없음 (텍스트 메일)", "SKIP")
                         except Exception as e:
                             log(f"  본문 저장 실패: {e}", "ERROR")
 
@@ -307,9 +294,6 @@ def save_attachments(keywords, file_extensions, save_dir,
                                 att_names.append(att_name)
                             except Exception as e:
                                 log(f"  첨부 실패({att_name}): {e}", "ERROR")
-
-                    # 완료 마커
-                    open(marker, "w").close()
 
                     excel_rows.append({
                         "번호":    matched,
