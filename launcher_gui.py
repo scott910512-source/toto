@@ -611,8 +611,12 @@ class App(tk.Tk):
                     sender_filter=v["sender_filter"] or None,
                     date_from=date_from, date_to=date_to,
                     require_attachment=v["require_attachment"],
-                    limit=2
+                    limit=2,
+                    stop_event=self._stop_event
                 )
+                if self._stop_event.is_set():
+                    self.after(0, lambda: self._on_stopped())
+                    return
                 self.after(0, lambda: self._show_preview(
                     previews, v, keywords, exts, date_from, date_to, on_done_callback))
             except Exception as e:
@@ -740,6 +744,11 @@ class App(tk.Tk):
         else:
             self._set_running(False)
             messagebox.showinfo("완료", f"{msg}\n\n저장경로: {self._last_save_dir}")
+
+    def _on_stopped(self):
+        self._set_running(False)
+        self.status_var.set("중단됨")
+        self._log("중단됨.", "WARN")
 
     def _on_error(self, err):
         self._set_running(False)

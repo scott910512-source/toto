@@ -95,7 +95,7 @@ def _get_target_folders(ns, folder_name_filter=None):
 def preview_emails(keywords, search_in="subject", keyword_mode="OR",
                    folder_name=None, sender_filter=None,
                    date_from=None, date_to=None,
-                   require_attachment=False, limit=2):
+                   require_attachment=False, limit=2, stop_event=None):
     pythoncom.CoInitialize()
     try:
         outlook = win32com.client.Dispatch("Outlook.Application")
@@ -105,6 +105,8 @@ def preview_emails(keywords, search_in="subject", keyword_mode="OR",
 
         previews = []
         for folder in folders:
+            if stop_event and stop_event.is_set():
+                break
             if len(previews) >= limit:
                 break
             try:
@@ -113,6 +115,8 @@ def preview_emails(keywords, search_in="subject", keyword_mode="OR",
                 if restrict:
                     items = items.Restrict(restrict)
                 for msg in items:
+                    if stop_event and stop_event.is_set():
+                        break
                     if len(previews) >= limit:
                         break
                     try:
