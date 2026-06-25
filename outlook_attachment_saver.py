@@ -15,34 +15,49 @@ def _to_naive_dt(dt):
     return datetime(dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second)
 
 
-def _build_restrict(keywords, search_in, keyword_mode, sender_filter, date_from, date_to):
-    """Outlook 서버사이드 필터 (Restrict) — 속도 향상용"""
+def _build_date_restrict(date_from, date_to):
+    """날짜 범위만 서버사이드 Restrict — 와일드카드 없이 안전"""
     parts = []
-
     if date_from:
-        parts.append(f"[ReceivedTime] >= '{date_from.strftime('%m/%d/%Y %H:%M %p')}'")
+        parts.append(f"[ReceivedTime] >= '{date_from.strftime('%m/%d/%Y')} 12:00 AM'")
     if date_to:
-        parts.append(f"[ReceivedTime] <= '{date_to.strftime('%m/%d/%Y %H:%M %p')}'")
-    if sender_filter:
-        parts.append(f"[SenderEmailAddress] like '*{sender_filter}*'")
-
-    # 제목 키워드는 Restrict에서 처리 가능 (JET 문법: * 와일드카드)
-    if keywords and search_in in ("subject", "both"):
-        kw_parts = [f"[Subject] like '*{kw}*'" for kw in keywords]
-        joiner = " OR " if keyword_mode == "OR" else " AND "
-        parts.append("(" + joiner.join(kw_parts) + ")")
-
+        parts.append(f"[ReceivedTime] <= '{date_to.strftime('%m/%d/%Y')} 11:59 PM'")
     return " AND ".join(parts) if parts else None
 
 
-def _body_matches(msg, keywords, search_in, keyword_mode):
-    """본문 키워드 매칭 — 필요한 경우에만 호출"""
-    if not keywords or search_in == "subject":
+def _matches(msg, keywords, search_in, keyword_mode, sender_filter):
+    """Python 측 필터링 — 키워드 / 발신자"""
+    # 발신자 필터
+    if sender_filter:
+        addr = (msg.SenderEmailAddress or "").lower()
+        if sender_filter.lower() not in addr:
+            return False
+
+    # 키워드 없으면 통과
+    if not keywords:
         return True
-    body = (msg.Body or "").lower()
+
+    subject = (msg.Subject or "").lower()
+
+    if search_in == "subject":
+        text = subject
+    elif search_in == "body":
+        text = (msg.Body or "").lower()
+    else:  # both — 제목 먼저 체크해 Body 접근 최소화
+        if keyword_mode == "OR":
+            if any(kw.lower() in subject for kw in keywords):
+                return True
+        else:  # AND
+            if not all(kw.lower() in subject for kw in keywords):
+                # 제목에 전부 없으면 본문까지 확인
+                text = subject + " " + (msg.Body or "").lower()
+                return all(kw.lower() in text for kw in keywords)
+            return True
+        text = subject + " " + (msg.Body or "").lower()
+
     if keyword_mode == "AND":
-        return all(kw.lower() in body for kw in keywords)
-    return any(kw.lower() in body for kw in keywords)
+        return all(kw.lower() in text for kw in keywords)
+    return any(kw.lower() in text for kw in keywords)
 
 
 def _collect_all(folders):
@@ -86,8 +101,8 @@ def preview_emails(keywords, search_in="subject", keyword_mode="OR",
         outlook = win32com.client.Dispatch("Outlook.Application")
         ns = outlook.GetNamespace("MAPI")
         folders = _get_target_folders(ns, folder_name)
-        restrict = _build_restrict(keywords, search_in, keyword_mode,
-                                   sender_filter, date_from, date_to)
+        restrict = _build_date_restrict(date_from, date_to)
+
         previews = []
         for folder in folders:
             if len(previews) >= limit:
@@ -95,21 +110,22 @@ def preview_emails(keywords, search_in="subject", keyword_mode="OR",
             try:
                 items = folder.Items
                 items.Sort("[ReceivedTime]", True)
-                items = items.Restrict(restrict) if restrict else items
+                if restrict:
+                    items = items.Restrict(restrict)
                 for msg in items:
                     if len(previews) >= limit:
                         break
                     try:
                         if require_attachment and msg.Attachments.Count == 0:
                             continue
-                        if not _body_matches(msg, keywords, search_in, keyword_mode):
+                        if not _matches(msg, keywords, search_in, keyword_mode, sender_filter):
                             continue
                         previews.append({
-                            "subject": (msg.Subject or "(제목없음)")[:60],
-                            "sender": msg.SenderEmailAddress or "",
-                            "received": _to_naive_dt(msg.ReceivedTime).strftime("%Y-%m-%d %H:%M"),
+                            "subject":     (msg.Subject or "(제목없음)")[:60],
+                            "sender":      msg.SenderEmailAddress or "",
+                            "received":    _to_naive_dt(msg.ReceivedTime).strftime("%Y-%m-%d %H:%M"),
                             "attachments": msg.Attachments.Count,
-                            "folder": folder.Name
+                            "folder":      folder.Name
                         })
                     except Exception:
                         continue
@@ -151,8 +167,7 @@ def save_attachments(keywords, file_extensions, save_dir,
         outlook = win32com.client.Dispatch("Outlook.Application")
         ns = outlook.GetNamespace("MAPI")
         folders = _get_target_folders(ns, folder_name)
-        restrict = _build_restrict(keywords, search_in, keyword_mode,
-                                   sender_filter, date_from, date_to)
+        restrict = _build_date_restrict(date_from, date_to)
 
         today_str = datetime.now().strftime("%Y%m%d")
         matched = saved_files = skipped = 0
@@ -177,7 +192,8 @@ def save_attachments(keywords, file_extensions, save_dir,
             try:
                 items = folder.Items
                 items.Sort("[ReceivedTime]", True)
-                items = items.Restrict(restrict) if restrict else items
+                if restrict:
+                    items = items.Restrict(restrict)
             except Exception as e:
                 log(f"폴더 접근 실패: {e}", "ERROR")
                 continue
@@ -192,24 +208,23 @@ def save_attachments(keywords, file_extensions, save_dir,
                     progress_cb(processed, total)
 
                 try:
-                    # 빠른 필터 체크 (Body 접근 없이)
                     if require_attachment and msg.Attachments.Count == 0:
                         continue
 
-                    # 본문 키워드는 필요시만 접근 (느림)
                     if stopped():
                         break
-                    if not _body_matches(msg, keywords, search_in, keyword_mode):
+
+                    if not _matches(msg, keywords, search_in, keyword_mode, sender_filter):
                         continue
 
-                    subject = msg.Subject or "(제목없음)"
-                    sender  = msg.SenderEmailAddress or ""
-                    received = _to_naive_dt(msg.ReceivedTime)
+                    subject     = msg.Subject or "(제목없음)"
+                    sender      = msg.SenderEmailAddress or ""
+                    received    = _to_naive_dt(msg.ReceivedTime)
                     received_str = received.strftime("%Y%m%d")
-                    safe_sub = sanitize_filename(subject[:40])
+                    safe_sub    = sanitize_filename(subject[:40])
 
                     mail_folder = os.path.join(save_dir, f"{received_str}_{safe_sub}")
-                    stamp = f"{received_str}_{safe_sub}_{today_str}"
+                    stamp       = f"{received_str}_{safe_sub}_{today_str}"
 
                     # 중복 체크
                     marker = os.path.join(mail_folder, f"{stamp}.done")
@@ -256,7 +271,6 @@ def save_attachments(keywords, file_extensions, save_dir,
                                     f.write("=" * 60 + "\n\n")
                                     f.write(msg.Body or "")
                                 log(f"  본문: {stamp}_본문.txt")
-                            # HTML
                             html_path = os.path.join(mail_folder, f"{stamp}_본문.html")
                             if not os.path.exists(html_path):
                                 try:
@@ -294,15 +308,15 @@ def save_attachments(keywords, file_extensions, save_dir,
                             except Exception as e:
                                 log(f"  첨부 실패({att_name}): {e}", "ERROR")
 
-                    # 완료 마커 생성 (중복방지용)
+                    # 완료 마커
                     open(marker, "w").close()
 
                     excel_rows.append({
-                        "번호": matched,
-                        "수신일": received.strftime("%Y-%m-%d %H:%M"),
-                        "제목": subject,
-                        "발신자": sender,
-                        "폴더": folder.Name,
+                        "번호":    matched,
+                        "수신일":  received.strftime("%Y-%m-%d %H:%M"),
+                        "제목":    subject,
+                        "발신자":  sender,
+                        "폴더":    folder.Name,
                         "첨부파일": ", ".join(att_names) if att_names else "없음",
                         "저장경로": mail_folder
                     })
@@ -315,14 +329,12 @@ def save_attachments(keywords, file_extensions, save_dir,
             if stopped():
                 break
 
-        # 오류 로그
         if errors:
             err_path = os.path.join(save_dir, f"{today_str}_오류목록.txt")
             with open(err_path, "w", encoding="utf-8") as f:
                 f.write("\n".join(errors))
             log(f"오류 {len(errors)}건 저장됨", "WARN")
 
-        # Excel 보고서
         if make_excel and excel_rows and not dry_run:
             path = _save_excel(excel_rows, save_dir, today_str, keywords)
             log(f"Excel: {os.path.basename(path)}")
