@@ -23,27 +23,38 @@ def _matches(subject, body, keywords, search_in, keyword_mode):
         return any(kw.lower() in text for kw in keywords)
 
 
-def _collect_folders(folders, folder_name_filter=None):
+def _collect_all(folders):
+    """하위폴더 포함 전체 수집"""
     result = []
     for folder in folders:
-        if folder_name_filter:
-            if folder_name_filter.lower() in folder.Name.lower():
-                result.append(folder)
-        else:
+        result.append(folder)
+        if folder.Folders.Count > 0:
+            result.extend(_collect_all(folder.Folders))
+    return result
+
+
+def _collect_by_name(folders, name_filter):
+    """이름 필터에 맞는 폴더만 수집"""
+    result = []
+    for folder in folders:
+        if name_filter.lower() in folder.Name.lower():
             result.append(folder)
         if folder.Folders.Count > 0:
-            result.extend(_collect_folders(folder.Folders, folder_name_filter))
+            result.extend(_collect_by_name(folder.Folders, name_filter))
     return result
 
 
 def _get_target_folders(ns, folder_name_filter=None):
     if not folder_name_filter:
-        return [ns.GetDefaultFolder(6)]  # 받은편지함
+        # 받은편지함 + 모든 하위폴더
+        inbox = ns.GetDefaultFolder(6)
+        return [inbox] + _collect_all(inbox.Folders)
 
+    # 폴더명 필터: 전체 계정에서 이름 포함 폴더 검색
     all_folders = []
     for store in ns.Stores:
         root = store.GetRootFolder()
-        all_folders.extend(_collect_folders(root.Folders, folder_name_filter))
+        all_folders.extend(_collect_by_name(root.Folders, folder_name_filter))
 
     if not all_folders:
         raise ValueError(f"'{folder_name_filter}' 이름을 포함한 폴더를 찾을 수 없습니다.")
