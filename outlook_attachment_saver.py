@@ -185,7 +185,7 @@ def save_attachments(keywords, file_extensions, save_dir,
                                                 require_attachment):
                         continue
 
-                    subject = msg.Subject or ""
+                    subject = msg.Subject or "(제목없음)"
                     sender = msg.SenderEmailAddress or ""
                     received = _to_naive_dt(msg.ReceivedTime)
                     received_str = received.strftime("%Y%m%d")
@@ -211,37 +211,54 @@ def save_attachments(keywords, file_extensions, save_dir,
 
                     os.makedirs(mail_folder, exist_ok=True)
 
-                    with open(txt_path, "w", encoding="utf-8") as f:
-                        f.write(f"제목   : {subject}\n")
-                        f.write(f"발신자 : {sender}\n")
-                        f.write(f"수신일 : {received.strftime('%Y-%m-%d %H:%M:%S')}\n")
-                        f.write(f"저장일 : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-                        f.write("=" * 60 + "\n\n")
-                        f.write(msg.Body or "")
-                    log(f"  본문: {txt_name}", "INFO")
+                    # ── 본문 txt 저장 (독립 try) ──────────────
+                    try:
+                        body_text = msg.Body or ""
+                        with open(txt_path, "w", encoding="utf-8") as f:
+                            f.write(f"제목   : {subject}\n")
+                            f.write(f"발신자 : {sender}\n")
+                            f.write(f"수신일 : {received.strftime('%Y-%m-%d %H:%M:%S')}\n")
+                            f.write(f"저장일 : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+                            f.write(f"첨부   : {msg.Attachments.Count}개\n")
+                            f.write("=" * 60 + "\n\n")
+                            f.write(body_text)
+                        log(f"  본문: {txt_name}", "INFO")
+                    except Exception as e:
+                        log(f"  본문 저장 실패: {e}", "ERROR")
 
-                    if msg.HTMLBody:
-                        html_name = f"{received_str}_{safe_subject}_{today_str}_본문.html"
-                        html_path = os.path.join(mail_folder, html_name)
-                        with open(html_path, "w", encoding="utf-8") as f:
-                            f.write(msg.HTMLBody)
+                    # ── HTML 본문 저장 (독립 try) ─────────────
+                    try:
+                        if msg.HTMLBody:
+                            html_name = f"{received_str}_{safe_subject}_{today_str}_본문.html"
+                            html_path = os.path.join(mail_folder, html_name)
+                            with open(html_path, "w", encoding="utf-8") as f:
+                                f.write(msg.HTMLBody)
+                    except Exception:
+                        pass  # HTML 저장 실패는 무시
 
+                    # ── 첨부파일 저장 (독립 try) ──────────────
                     att_names = []
-                    for att in msg.Attachments:
-                        att_name = att.FileName
-                        ext = os.path.splitext(att_name)[1].lower()
-                        if file_extensions and ext not in file_extensions:
-                            log(f"  첨부 스킵(확장자): {att_name}", "SKIP")
-                            continue
-                        save_name = f"{received_str}_{safe_subject}_{today_str}_{att_name}"
-                        save_path = os.path.join(mail_folder, save_name)
-                        if os.path.exists(save_path):
-                            log(f"  첨부 중복 스킵: {att_name}", "SKIP")
-                            continue
-                        att.SaveAsFile(save_path)
-                        log(f"  첨부: {save_name}", "INFO")
-                        saved_files += 1
-                        att_names.append(att_name)
+                    if msg.Attachments.Count == 0:
+                        log(f"  첨부: 없음", "INFO")
+                    else:
+                        for att in msg.Attachments:
+                            try:
+                                att_name = att.FileName
+                                ext = os.path.splitext(att_name)[1].lower()
+                                if file_extensions and ext not in file_extensions:
+                                    log(f"  첨부 스킵(확장자): {att_name}", "SKIP")
+                                    continue
+                                save_name = f"{received_str}_{safe_subject}_{today_str}_{att_name}"
+                                save_path = os.path.join(mail_folder, save_name)
+                                if os.path.exists(save_path):
+                                    log(f"  첨부 중복 스킵: {att_name}", "SKIP")
+                                    continue
+                                att.SaveAsFile(save_path)
+                                log(f"  첨부: {save_name}", "INFO")
+                                saved_files += 1
+                                att_names.append(att_name)
+                            except Exception as e:
+                                log(f"  첨부 저장 실패 ({att_name}): {e}", "ERROR")
 
                     excel_rows.append({
                         "번호": matched_mails,
