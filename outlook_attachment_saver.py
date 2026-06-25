@@ -189,11 +189,17 @@ def save_attachments(keywords, file_extensions, save_dir,
         errors = []
         excel_rows = []
 
-        mode_str = "/".join(s for s in ["MSG" if do_msg else "",
-                                         "본문" if do_body else "",
+        mode_str = "+".join(s for s in ["MSG" if do_msg else "",
+                                         "HTML" if do_body else "",
                                          "첨부" if do_att else ""] if s)
+        # 저장 폴더: 키워드_날짜_저장형식 (개별 메일 폴더 없이 파일 직접 저장)
+        kw_part = sanitize_filename("_".join(keywords)[:20]) if keywords else "전체"
+        run_folder = os.path.join(save_dir, f"{kw_part}_{today_str}_{mode_str}")
+        if not dry_run:
+            os.makedirs(run_folder, exist_ok=True)
+
         log(f"시작 {'[DRY RUN] ' if dry_run else ''}| 저장형식: {mode_str}")
-        log(f"키워드: {keywords or '전체'} | 경로: {save_dir}")
+        log(f"키워드: {keywords or '전체'} | 저장폴더: {run_folder}")
         log("-" * 40)
 
         total = sum(f.Items.Count for f in folders)
@@ -232,17 +238,17 @@ def save_attachments(keywords, file_extensions, save_dir,
                     if not _matches(msg, keywords, search_in, keyword_mode, sender_filter, word_boundary):
                         continue
 
-                    subject     = msg.Subject or "(제목없음)"
-                    sender      = msg.SenderEmailAddress or ""
-                    received    = _to_naive_dt(msg.ReceivedTime)
+                    subject      = msg.Subject or "(제목없음)"
+                    sender       = msg.SenderEmailAddress or ""
+                    received     = _to_naive_dt(msg.ReceivedTime)
                     received_str = received.strftime("%Y%m%d")
-                    safe_sub    = sanitize_filename(subject[:40])
+                    safe_sub     = sanitize_filename(subject[:40])
+                    stamp        = f"{received_str}_{safe_sub}"
 
-                    mail_folder = os.path.join(save_dir, f"{received_str}_{safe_sub}")
-                    stamp       = f"{received_str}_{safe_sub}"
-
-                    # 중복 체크 — 폴더가 이미 있으면 스킵
-                    if os.path.exists(mail_folder):
+                    # 중복 체크 — stamp 로 시작하는 파일이 이미 있으면 스킵
+                    if not dry_run and any(
+                        fn.startswith(stamp) for fn in os.listdir(run_folder)
+                    ):
                         log(f"중복 스킵: {subject[:40]}", "SKIP")
                         skipped += 1
                         continue
@@ -256,12 +262,10 @@ def save_attachments(keywords, file_extensions, save_dir,
                     if stopped():
                         break
 
-                    os.makedirs(mail_folder, exist_ok=True)
-
                     # ── MSG 파일 저장 ────────────────────────
                     if do_msg:
                         try:
-                            msg_path = os.path.join(mail_folder, f"{stamp}.msg")
+                            msg_path = os.path.join(run_folder, f"{stamp}.msg")
                             if not os.path.exists(msg_path):
                                 msg.SaveAs(msg_path, olMSG)
                                 log(f"  MSG: {stamp}.msg")
@@ -274,7 +278,7 @@ def save_attachments(keywords, file_extensions, save_dir,
                     # ── 본문 HTML 저장 ──────────────────────
                     if do_body:
                         try:
-                            html_path = os.path.join(mail_folder, f"{stamp}_본문.html")
+                            html_path = os.path.join(run_folder, f"{stamp}_본문.html")
                             if msg.HTMLBody:
                                 with open(html_path, "w", encoding="utf-8") as f:
                                     f.write(msg.HTMLBody)
@@ -299,7 +303,7 @@ def save_attachments(keywords, file_extensions, save_dir,
                                 if file_extensions and ext not in file_extensions:
                                     log(f"  첨부 스킵(확장자): {att_name}", "SKIP")
                                     continue
-                                save_path = os.path.join(mail_folder, f"{stamp}_{att_name}")
+                                save_path = os.path.join(run_folder, f"{stamp}_{att_name}")
                                 if os.path.exists(save_path):
                                     log(f"  첨부 중복: {att_name}", "SKIP")
                                     continue
@@ -317,7 +321,7 @@ def save_attachments(keywords, file_extensions, save_dir,
                         "발신자":  sender,
                         "폴더":    folder.Name,
                         "첨부파일": ", ".join(att_names) if att_names else "없음",
-                        "저장경로": mail_folder
+                        "저장경로": run_folder
                     })
 
                 except Exception as e:

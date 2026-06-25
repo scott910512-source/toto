@@ -293,8 +293,12 @@ class App(tk.Tk):
         self.kw_mode_var = tk.StringVar()
         ttk.Combobox(kw_f, textvariable=self.kw_mode_var,
                      values=["OR", "AND"], state="readonly",
-                     width=5).pack(side="left", padx=(2, 0))
-        hint("쉼표 구분 (예: 견적서, 계약)  |  OR: 하나라도 / AND: 모두 포함", 1)
+                     width=5).pack(side="left", padx=(2, 6))
+        self.word_boundary_var = tk.BooleanVar()
+        tk.Checkbutton(kw_f, text="단어단위", variable=self.word_boundary_var,
+                       bg=C_BG, font=("맑은 고딕", 9),
+                       activebackground=C_BG).pack(side="left")
+        hint("쉼표 구분 (예: 견적서, 계약)  |  OR: 하나라도 / AND: 모두 포함  |  단어단위: 부분문자열 제외", 1)
 
         # 검색 위치
         lbl("검색 위치", 2)
@@ -376,11 +380,9 @@ class App(tk.Tk):
         self.excel_var = tk.BooleanVar()
         self.dry_var = tk.BooleanVar()
         self.att_only_var = tk.BooleanVar()
-        self.word_boundary_var = tk.BooleanVar()
         for var, text in [(self.excel_var, "Excel 보고서"),
                           (self.dry_var, "Dry Run"),
-                          (self.att_only_var, "첨부파일만"),
-                          (self.word_boundary_var, "단어 단위 매칭")]:
+                          (self.att_only_var, "첨부파일만")]:
             tk.Checkbutton(opt_f, text=text, variable=var,
                            bg=C_BG, font=("맑은 고딕", 9),
                            activebackground=C_BG).pack(side="left", padx=8)
