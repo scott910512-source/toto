@@ -49,13 +49,18 @@ def _get_target_folders(ns, folder_name_filter=None):
     return all_folders
 
 
+def _to_naive_dt(dt):
+    """pywintypes.datetime → naive Python datetime 변환"""
+    return datetime(dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second)
+
+
 def _msg_matches_filters(msg, keywords, search_in, keyword_mode,
                           sender_filter, date_from, date_to,
                           require_attachment):
     subject = msg.Subject or ""
     body = msg.Body or ""
     sender = (msg.SenderEmailAddress or "").lower()
-    received = msg.ReceivedTime.replace(tzinfo=None)
+    received = _to_naive_dt(msg.ReceivedTime)
 
     if date_from and received < date_from:
         return False
@@ -92,7 +97,7 @@ def preview_emails(keywords, search_in="subject", keyword_mode="OR",
                     previews.append({
                         "subject": (msg.Subject or "")[:60],
                         "sender": msg.SenderEmailAddress or "",
-                        "received": msg.ReceivedTime.strftime("%Y-%m-%d %H:%M"),
+                        "received": _to_naive_dt(msg.ReceivedTime).strftime("%Y-%m-%d %H:%M"),
                         "attachments": msg.Attachments.Count,
                         "folder": folder.Name
                     })
@@ -161,7 +166,7 @@ def save_attachments(keywords, file_extensions, save_dir,
 
                 subject = msg.Subject or ""
                 sender = msg.SenderEmailAddress or ""
-                received = msg.ReceivedTime.replace(tzinfo=None)
+                received = _to_naive_dt(msg.ReceivedTime)
                 received_str = received.strftime("%Y%m%d")
                 safe_subject = sanitize_filename(subject[:40])
 
