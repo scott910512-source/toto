@@ -589,7 +589,8 @@ class App(tk.Tk):
                 self.after(0, lambda: self._show_preview(
                     previews, v, keywords, exts, date_from, date_to, on_done_callback))
             except Exception as e:
-                self.after(0, lambda: self._on_error(str(e)))
+                err = str(e)
+                self.after(0, lambda err=err: self._on_error(err))
 
         threading.Thread(target=preview_worker, daemon=True).start()
 
@@ -643,7 +644,8 @@ class App(tk.Tk):
                 )
                 self.after(0, lambda: self._on_done(m, s, e, on_done_cb))
             except Exception as ex:
-                self.after(0, lambda: self._on_error(str(ex)))
+                err = str(ex)
+                self.after(0, lambda err=err: self._on_error(err))
 
         threading.Thread(target=save_worker, daemon=True).start()
 
