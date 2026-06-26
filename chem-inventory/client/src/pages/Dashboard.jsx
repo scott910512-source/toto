@@ -1,22 +1,41 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, Fragment } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api';
-import { useAuth } from '../auth/AuthContext';
 import { Loading, Empty, Badge, useToast } from '../components/ui';
-
-const QUICK = [
-  { label: '원재료 입고', sub: '신규 Lot 등록', to: '/raw?new=1', ico: '⬡', bg: '#0071e3' },
-  { label: '부재료 입고', sub: '신규 Lot 등록', to: '/sub?new=1', ico: '◇', bg: '#5e5ce6' },
-  { label: '원재료 사용', sub: '출고/소진 처리', to: '/raw', ico: '↓', bg: '#ff9500' },
-  { label: '부재료 사용', sub: '출고/소진 처리', to: '/sub', ico: '↓', bg: '#ff9500' },
-  { label: 'Canister 수불', sub: '반입/반출 등록', to: '/canisters?move=1', ico: '⬢', bg: '#34c759' },
-];
+import { Icon } from '../components/icons';
 
 const statColor = { 완료: 'green', 진행중: 'blue', 대기: '', 지연: 'red' };
 const prioColor = { 상: 'red', 중: 'orange', 하: '' };
 
+function QuickGroup({ icon, color, title, actions, navigate }) {
+  return (
+    <div className="quick-box" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 10 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div className="quick-ico" style={{ background: color }}><Icon name={icon} size={22} /></div>
+        <div className="qt" style={{ fontSize: 15 }}>{title}</div>
+      </div>
+      <div className="btn-row">
+        {actions.map(([label, to, kind]) => (
+          <button key={label} className={`btn sm ${kind || 'secondary'}`} onClick={() => navigate(to)}>{label}</button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** 요약 행을 제품(사용처)별로 묶는다. 미지정/공통은 뒤로. */
+function groupByProduct(rows) {
+  const groups = [];
+  const idx = {};
+  for (const r of rows) {
+    const key = r.product || '미지정';
+    if (!(key in idx)) { idx[key] = groups.length; groups.push({ product: key, rows: [] }); }
+    groups[idx[key]].rows.push(r);
+  }
+  return groups;
+}
+
 export default function Dashboard() {
-  const { user } = useAuth();
   const toast = useToast();
   const navigate = useNavigate();
   const [dash, setDash] = useState(null);
@@ -46,17 +65,15 @@ export default function Dashboard() {
   if (dash.error) return <Empty>대시보드를 불러오지 못했습니다.</Empty>;
 
   const mat = matTab === 'raw' ? dash.rawSummary : dash.subSummary;
+  const matPath = matTab === 'raw' ? '/raw' : '/sub';
 
   return (
     <>
-      {/* 1) 퀵메뉴 */}
+      {/* 1) 퀵메뉴 (묶음) */}
       <div className="quickmenu">
-        {QUICK.map((q) => (
-          <div className="quick-box" key={q.label} onClick={() => navigate(q.to)}>
-            <div className="quick-ico" style={{ background: q.bg }}>{q.ico}</div>
-            <div><div className="qt">{q.label}</div><div className="qs">{q.sub}</div></div>
-          </div>
-        ))}
+        <QuickGroup navigate={navigate} icon="canister" color="#0071e3" title="원재료" actions={[['입고', '/raw?new=1', ''], ['사용', '/raw']]} />
+        <QuickGroup navigate={navigate} icon="drum" color="#5e5ce6" title="부재료" actions={[['입고', '/sub?new=1', ''], ['사용', '/sub']]} />
+        <QuickGroup navigate={navigate} icon="star" color="#34c759" title="Canister" actions={[['수불 등록', '/canisters?move=1', '']]} />
       </div>
 
       {/* 2) 경고 영역 */}
@@ -89,7 +106,7 @@ export default function Dashboard() {
       <div className="grid grid-2" style={{ marginBottom: 16 }}>
         <div className="card">
           <div className="card-head">
-            <h3>원·부재료 현황</h3>
+            <h3>원·부재료 현황 (제품별)</h3>
             <div className="btn-row">
               <button className={`btn sm ${matTab === 'raw' ? '' : 'secondary'}`} onClick={() => setMatTab('raw')}>원재료</button>
               <button className={`btn sm ${matTab === 'sub' ? '' : 'secondary'}`} onClick={() => setMatTab('sub')}>부재료</button>
@@ -102,16 +119,21 @@ export default function Dashboard() {
                   <tr><th>품목</th><th className="num">잔여 Lot</th><th className="num">현재고</th><th>단위</th><th className="num">최소재고</th><th className="num">안전%</th><th>상태</th></tr>
                 </thead>
                 <tbody>
-                  {mat.map((r) => (
-                    <tr key={r.name} style={{ cursor: 'pointer' }} onClick={() => navigate(matTab === 'raw' ? '/raw' : '/sub')}>
-                      <td><b className="inline-link">{r.name}</b></td>
-                      <td className="num">{r.lots}</td>
-                      <td className="num"><b>{r.current.toLocaleString()}</b></td>
-                      <td className="muted">{r.unit}</td>
-                      <td className="num muted">{r.minStock ? r.minStock.toLocaleString() : '–'}</td>
-                      <td className="num">{r.level == null ? '–' : `${r.level}%`}</td>
-                      <td><span className={`state-pill state-${r.state}`}>{r.state}</span></td>
-                    </tr>
+                  {groupByProduct(mat).map((g) => (
+                    <Fragment key={g.product}>
+                      <tr className="group-row"><td colSpan={7}>🏷 {g.product}</td></tr>
+                      {g.rows.map((r) => (
+                        <tr key={r.name} className={r.below ? 'row-low' : ''} style={{ cursor: 'pointer' }} onClick={() => navigate(matPath)}>
+                          <td><b className="inline-link">{r.name}</b></td>
+                          <td className="num">{r.lots}</td>
+                          <td className="num"><b>{r.current.toLocaleString()}</b></td>
+                          <td className="muted">{r.unit}</td>
+                          <td className="num muted">{r.minStock ? r.minStock.toLocaleString() : '–'}</td>
+                          <td className="num">{r.level == null ? '–' : `${r.level}%`}</td>
+                          <td><span className={`state-pill state-${r.state}`}>{r.state}</span></td>
+                        </tr>
+                      ))}
+                    </Fragment>
                   ))}
                 </tbody>
               </table>

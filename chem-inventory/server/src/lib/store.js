@@ -8,8 +8,8 @@ const { DATA_DIR } = require('../config');
 // 각 테이블(CSV 파일)의 컬럼 정의. 저장 순서를 고정한다.
 const TABLES = {
   users: ['id', 'passwordHash', 'name', 'role', 'status', 'createdAt', 'approvedAt', 'approvedBy'],
-  // 품목 마스터(원/부재료 공통): 안전재고 목표값·기본 업체명을 품목 단위로 관리(관리자 전용)
-  items: ['id', 'category', 'name', 'unit', 'safetyStock', 'vendor', 'note', 'createdBy', 'createdAt', 'updatedBy', 'updatedAt'],
+  // 품목 마스터(원/부재료 공통): 안전재고 목표값·기본값(단위/업체/입고수량/Lot양식)·제품(사용처) 관리(관리자 전용)
+  items: ['id', 'category', 'name', 'unit', 'safetyStock', 'vendor', 'product', 'defaultQty', 'lotPattern', 'note', 'createdBy', 'createdAt', 'updatedBy', 'updatedAt'],
   // 원재료: Lot 단위로 개별 관리(품목으로 취합)
   raw_materials: ['id', 'itemName', 'lotNo', 'quantity', 'unit', 'vendor', 'receivedDate', 'note', 'createdBy', 'createdAt', 'updatedBy', 'updatedAt'],
   sub_materials: ['id', 'name', 'receivedDate', 'lotNo', 'vendor', 'unit', 'initialWeight', 'weight', 'note', 'createdBy', 'createdAt', 'updatedBy', 'updatedAt'],

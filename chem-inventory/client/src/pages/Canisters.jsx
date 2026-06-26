@@ -153,6 +153,16 @@ function CanisterForm({ meta, onClose, onSaved, onError }) {
   const [busy, setBusy] = useState(false);
   const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
 
+  // 기준정보의 Canister 기본값으로 초기화
+  useEffect(() => {
+    api.get('/settings').then((d) => setF((p) => ({
+      ...p,
+      size: d.settings.canisterDefaultSize || p.size,
+      location: d.settings.canisterDefaultLocation || p.location,
+      status: d.settings.canisterDefaultStatus || p.status,
+    })));
+  }, []);
+
   async function submit() {
     if (!f.canisterNo.trim()) return onError('Canister No.를 입력하세요.');
     setBusy(true);

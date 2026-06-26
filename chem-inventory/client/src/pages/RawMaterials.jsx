@@ -2,8 +2,9 @@ import { useEffect, useState, useCallback, Fragment } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { api, downloadCsv } from '../api';
 import { useAuth } from '../auth/AuthContext';
-import { Modal, Field, TextInput, Select, useToast, ConfirmDialog, Empty, Loading, Badge, Bars } from '../components/ui';
-import { UnitInput, ItemSelect } from '../components/inputs';
+import { Modal, Field, TextInput, Select, useToast, ConfirmDialog, Empty, Loading, Badge } from '../components/ui';
+import { UnitInput, ItemSelect, expandLot } from '../components/inputs';
+import { TrendModal } from '../components/TrendModal';
 
 const blank = { itemName: '', lotNo: '', quantity: '', unit: 'kg', vendor: '', receivedDate: '', note: '' };
 const today = () => new Date().toISOString().slice(0, 10);
@@ -59,6 +60,8 @@ export default function RawMaterials() {
     if (q) params.set('q', q);
     downloadCsv('/raw-materials/export?' + params.toString());
   }
+
+  const lowSet = new Set((summary?.items || []).filter((s) => s.below).map((s) => s.name));
 
   return (
     <>
@@ -145,8 +148,8 @@ export default function RawMaterials() {
             <tbody>
               {groupByItem(items, 'itemName').map((g) => (
                 <Fragment key={g.name}>
-                  <tr className="group-row">
-                    <td colSpan={8}>📦 {g.name} · {g.lots.length} Lot</td>
+                  <tr className={`group-row ${lowSet.has(g.name) ? 'row-low' : ''}`}>
+                    <td colSpan={8}>📦 {g.name} · {g.lots.length} Lot {lowSet.has(g.name) && <span className="badge red" style={{ marginLeft: 6 }}>안전재고 부족</span>}</td>
                   </tr>
                   {g.lots.map((r) => (
                     <tr key={r.id}>
@@ -201,45 +204,6 @@ export default function RawMaterials() {
   );
 }
 
-function TrendModal({ category, onClose }) {
-  const [period, setPeriod] = useState('month');
-  const [data, setData] = useState(null);
-  useEffect(() => {
-    setData(null);
-    api.get(`/trends?category=${category}&period=${period}`).then(setData);
-  }, [period, category]);
-
-  return (
-    <Modal title="📈 사용량 분석 (트렌드)" size="lg" onClose={onClose}
-      footer={<button className="btn" onClick={onClose}>닫기</button>}>
-      <div className="btn-row" style={{ marginBottom: 14 }}>
-        {[['week', '주'], ['month', '월'], ['year', '년']].map(([p, l]) => (
-          <button key={p} className={`btn sm ${period === p ? '' : 'secondary'}`} onClick={() => setPeriod(p)}>{l}별</button>
-        ))}
-      </div>
-      {!data ? <Loading /> : data.items.length === 0 ? <Empty>수불 데이터가 없습니다.</Empty> : (
-        <div className="table-wrap">
-          <table className="tbl compact">
-            <thead>
-              <tr><th>품목</th><th className="num">총 입고</th><th className="num">총 사용</th>{data.labels.map((l) => <th key={l} className="num">{l}<br /><span className="muted" style={{ fontWeight: 400 }}>사용</span></th>)}</tr>
-            </thead>
-            <tbody>
-              {data.items.map((it) => (
-                <tr key={it.name}>
-                  <td><b>{it.name}</b></td>
-                  <td className="num" style={{ color: 'var(--green)' }}>{it.totalIn.toLocaleString()}</td>
-                  <td className="num" style={{ color: 'var(--orange)' }}>{it.totalOut.toLocaleString()}</td>
-                  {data.labels.map((l) => <td key={l} className="num muted">{it.series[l] ? (it.series[l].out || 0).toLocaleString() : '–'}</td>)}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </Modal>
-  );
-}
-
 function RawForm({ mode, initial, onClose, onSaved, onError }) {
   const [f, setF] = useState({ ...blank, ...initial });
   const [busy, setBusy] = useState(false);
@@ -273,7 +237,13 @@ function RawForm({ mode, initial, onClose, onSaved, onError }) {
     >
       <Field label="품목" required hint="목록에서 선택하거나 '기타'로 직접 입력">
         {mode === 'create' ? (
-          <ItemSelect category="raw" value={f.itemName} onChange={(name, unit, vendor) => setF((p) => ({ ...p, itemName: name, unit: unit || p.unit, vendor: vendor || p.vendor }))} />
+          <ItemSelect category="raw" value={f.itemName} onChange={(name, m) => setF((p) => ({
+            ...p, itemName: name,
+            unit: m?.unit || p.unit,
+            vendor: m?.vendor || p.vendor,
+            quantity: p.quantity === '' && m?.defaultQty ? m.defaultQty : p.quantity,
+            lotNo: p.lotNo === '' && m?.lotPattern ? expandLot(m.lotPattern) : p.lotNo,
+          }))} />
         ) : (
           <TextInput value={f.itemName} onChange={(e) => set('itemName', e.target.value)} />
         )}

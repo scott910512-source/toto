@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { api } from '../api';
 import { useAuth } from '../auth/AuthContext';
-import { Loading, Empty, Badge, useToast, ConfirmDialog, Select } from '../components/ui';
+import { Loading, Empty, Badge, useToast, ConfirmDialog, Select, Field, TextInput } from '../components/ui';
 
 const statusBadge = { pending: { c: 'orange', t: '승인대기' }, approved: { c: 'green', t: '승인됨' }, rejected: { c: 'red', t: '거절/금지' } };
 
@@ -35,8 +35,10 @@ export default function Admin() {
   return (
     <>
       <div className="page-head">
-        <div className="desc">가입 신청을 승인하고 사용자 권한(등록자/관리자)을 관리합니다.</div>
+        <div className="desc">가입 승인·권한 관리와 안전재고 경고 비율을 설정합니다.</div>
       </div>
+
+      <SafetyRatioCard toast={toast} />
 
       {pending.length > 0 && (
         <div className="card" style={{ marginBottom: 16, borderColor: 'var(--orange)' }}>
@@ -114,5 +116,33 @@ export default function Admin() {
         />
       )}
     </>
+  );
+}
+
+function SafetyRatioCard({ toast }) {
+  const [ratio, setRatio] = useState('');
+  const [loaded, setLoaded] = useState(false);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    api.get('/settings').then((d) => { setRatio(d.settings.safetyRatioPercent); setLoaded(true); });
+  }, []);
+  async function save() {
+    setBusy(true);
+    try { await api.patch('/settings', { safetyRatioPercent: Number(ratio) }); toast.ok('경고 비율을 저장했습니다.'); }
+    catch (e) { toast.err(e.message); } finally { setBusy(false); }
+  }
+  return (
+    <div className="card card-pad" style={{ marginBottom: 16, maxWidth: 560 }}>
+      <h3 style={{ marginBottom: 6 }}>안전재고 경고 비율</h3>
+      <p className="hint" style={{ marginBottom: 14 }}>
+        품목별 <b>안전재고 목표값</b>은 [기준정보]에서 설정합니다. 현재 재고가 <b>(목표값 × 비율%)</b> 미만이면 경고합니다.
+      </p>
+      <Field label="경고 비율 (%)" hint="예: 100 → 목표값 미만 시 경고 / 120 → 목표값의 1.2배 미만 시 경고">
+        <div className="form-row" style={{ maxWidth: 260 }}>
+          <TextInput type="number" value={ratio} onChange={(e) => setRatio(e.target.value)} disabled={!loaded} />
+          <button className="btn" onClick={save} disabled={busy || !loaded}>{busy ? '저장 중…' : '저장'}</button>
+        </div>
+      </Field>
+    </div>
   );
 }

@@ -64,9 +64,14 @@ router.get(
       const lastReceived = lots.reduce((d, r) => (r.receivedDate > d ? r.receivedDate : d), '');
       const used = txns.filter((t) => t.materialType === 'raw' && t.materialName === name && t.type === '출고');
       const lastUsed = used.reduce((d, t) => (t.createdAt > d ? t.createdAt : d), '');
-      return { name, unit, totalQuantity: total, safetyStock: safety, level, below, lots: lots.length, lastReceived, lastUsed: lastUsed ? lastUsed.slice(0, 10) : '', isMaster: !!master };
+      return { name, product: master ? master.product || '' : '', unit, totalQuantity: total, safetyStock: safety, level, below, lots: lots.length, lastReceived, lastUsed: lastUsed ? lastUsed.slice(0, 10) : '', isMaster: !!master };
     });
-    summary.sort((a, b) => a.name.localeCompare(b.name));
+    summary.sort((a, b) => {
+      const pa = a.product || '~';
+      const pb = b.product || '~';
+      if (pa !== pb) return pa < pb ? -1 : 1;
+      return a.name.localeCompare(b.name);
+    });
     res.json({ items: summary, threshold });
   }),
 );

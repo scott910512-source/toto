@@ -20,11 +20,11 @@ function seedRows() {
     ],
     // 품목 마스터(관리자 등록) — 안전재고 목표값 포함
     items: [
-      { id: 'it_r01', category: 'raw', name: '톨루엔', unit: 'kg', safetyStock: '1000', vendor: '(주)한솔케미칼', note: '', createdBy: 'admin', createdAt: T, updatedBy: 'admin', updatedAt: T },
-      { id: 'it_r02', category: 'raw', name: '촉매펠릿', unit: 'ea', safetyStock: '400', vendor: '동성하이켐', note: '안전재고 미달 예시', createdBy: 'admin', createdAt: T, updatedBy: 'admin', updatedAt: T },
-      { id: 'it_r03', category: 'raw', name: '황산', unit: 'L', safetyStock: '300', vendor: '대정화학', note: '', createdBy: 'admin', createdAt: T, updatedBy: 'admin', updatedAt: T },
-      { id: 'it_s01', category: 'sub', name: '실링패드', unit: 'kg', safetyStock: '40', vendor: '(주)한솔케미칼', note: '', createdBy: 'admin', createdAt: T, updatedBy: 'admin', updatedAt: T },
-      { id: 'it_s02', category: 'sub', name: '활성탄', unit: 'kg', safetyStock: '60', vendor: '대정화학', note: '', createdBy: 'admin', createdAt: T, updatedBy: 'admin', updatedAt: T },
+      { id: 'it_r01', category: 'raw', name: '톨루엔', unit: 'kg', safetyStock: '1000', vendor: '(주)한솔케미칼', product: 'A제품', defaultQty: '800', lotPattern: 'T-{YYYY}-', note: '', createdBy: 'admin', createdAt: T, updatedBy: 'admin', updatedAt: T },
+      { id: 'it_r02', category: 'raw', name: '촉매펠릿', unit: 'ea', safetyStock: '400', vendor: '동성하이켐', product: 'A제품', defaultQty: '300', lotPattern: 'C-{YYYY}-', note: '안전재고 미달 예시', createdBy: 'admin', createdAt: T, updatedBy: 'admin', updatedAt: T },
+      { id: 'it_r03', category: 'raw', name: '황산', unit: 'L', safetyStock: '300', vendor: '대정화학', product: 'B제품', defaultQty: '500', lotPattern: 'S-{YYYY}-', note: '', createdBy: 'admin', createdAt: T, updatedBy: 'admin', updatedAt: T },
+      { id: 'it_s01', category: 'sub', name: '실링패드', unit: 'kg', safetyStock: '40', vendor: '(주)한솔케미칼', product: '공통', defaultQty: '25', lotPattern: 'L-{YYYY}-', note: '', createdBy: 'admin', createdAt: T, updatedBy: 'admin', updatedAt: T },
+      { id: 'it_s02', category: 'sub', name: '활성탄', unit: 'kg', safetyStock: '60', vendor: '대정화학', product: '공통', defaultQty: '50', lotPattern: 'L-{YYYY}-', note: '', createdBy: 'admin', createdAt: T, updatedBy: 'admin', updatedAt: T },
     ],
     // 원재료: Lot 단위 (품목으로 취합)
     raw_materials: [
@@ -53,7 +53,12 @@ function seedRows() {
       { id: 'tx_0002', materialType: 'sub', materialId: 'sm_0001', materialName: '실링패드', lotNo: 'L-2026-001', content: '', type: '입고', quantity: '25', unit: 'kg', balanceAfter: '25', note: '초기 입고', createdBy: 'admin', createdAt: T },
       { id: 'tx_0003', materialType: 'canister', materialId: 'cn_0001', materialName: 'CN-001', lotNo: '', content: '톨루엔', type: '반입', quantity: '180', unit: 'kg', balanceAfter: '180', note: '내용물 충전', createdBy: 'admin', createdAt: T },
     ],
-    settings: [{ key: 'safetyRatioPercent', value: '100' }],
+    settings: [
+      { key: 'safetyRatioPercent', value: '100' },
+      { key: 'canisterDefaultSize', value: '50L' },
+      { key: 'canisterDefaultLocation', value: '2공장현장' },
+      { key: 'canisterDefaultStatus', value: '수령' },
+    ],
     anomalies: [
       { id: 'an_0001', type: '선입선출 오류', itemName: '톨루엔', lotInfo: 'T-2026-002 (입고 2026-06-15)', account: 'admin', note: '입고일이 더 빠른 Lot(T-2026-001) 존재 — 강제 사용', createdAt: '2026-06-20T01:00:00.000Z' },
     ],

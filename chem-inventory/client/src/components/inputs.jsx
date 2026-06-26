@@ -4,9 +4,20 @@ import { api } from '../api';
 
 const UNIT_PRESET = ['kg', 'ea', 'L'];
 
+/** Lot 양식의 날짜 토큰을 오늘 기준으로 치환한다. {YYYY}{YY}{MM}{DD} */
+export function expandLot(pattern) {
+  if (!pattern) return '';
+  const d = new Date();
+  return String(pattern)
+    .replace(/\{YYYY\}/g, d.getFullYear())
+    .replace(/\{YY\}/g, String(d.getFullYear()).slice(2))
+    .replace(/\{MM\}/g, String(d.getMonth() + 1).padStart(2, '0'))
+    .replace(/\{DD\}/g, String(d.getDate()).padStart(2, '0'));
+}
+
 /**
  * 품목 선택: 마스터 목록(관리자 등록)에서 선택하거나 '기타'로 직접 입력.
- * onChange(name, unit, vendor) — 마스터 선택 시 단위·기본 업체명도 함께 전달.
+ * onChange(name, master) — 마스터 선택 시 품목 전체(단위/업체/기본수량/Lot양식 등)를 전달, '기타'는 null.
  */
 export function ItemSelect({ category, value, onChange }) {
   const [items, setItems] = useState([]);
@@ -24,11 +35,8 @@ export function ItemSelect({ category, value, onChange }) {
   function handleSelect(e) {
     const v = e.target.value;
     setMode(v);
-    if (v === '기타') onChange('', '', '');
-    else {
-      const m = items.find((i) => i.name === v);
-      onChange(v, m ? m.unit : '', m ? m.vendor || '' : '');
-    }
+    if (v === '기타') onChange('', null);
+    else onChange(v, items.find((i) => i.name === v) || null);
   }
 
   return (
@@ -41,7 +49,7 @@ export function ItemSelect({ category, value, onChange }) {
         <option value="기타">기타(직접입력)</option>
       </Select>
       {mode === '기타' && (
-        <TextInput value={value} onChange={(e) => onChange(e.target.value, '', '')} placeholder="품목명 직접 입력" />
+        <TextInput value={value} onChange={(e) => onChange(e.target.value, null)} placeholder="품목명 직접 입력" />
       )}
     </div>
   );

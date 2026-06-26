@@ -3,7 +3,8 @@ import { useSearchParams } from 'react-router-dom';
 import { api, downloadCsv } from '../api';
 import { useAuth } from '../auth/AuthContext';
 import { Modal, Field, TextInput, Select, useToast, ConfirmDialog, Empty, Loading, Badge } from '../components/ui';
-import { UnitInput, ItemSelect } from '../components/inputs';
+import { UnitInput, ItemSelect, expandLot } from '../components/inputs';
+import { TrendModal } from '../components/TrendModal';
 
 const blank = { name: '', receivedDate: '', lotNo: '', vendor: '', unit: 'kg', weight: '', note: '' };
 const today = () => new Date().toISOString().slice(0, 10);
@@ -30,6 +31,8 @@ export default function SubMaterials() {
   const [activeItem, setActiveItem] = useState('');
   const [q, setQ] = useState('');
   const [showAll, setShowAll] = useState(false);
+  const [trend, setTrend] = useState(false);
+  const [low, setLow] = useState(new Set());
   const [edit, setEdit] = useState(null);
   const [tx, setTx] = useState(null);
   const [del, setDel] = useState(null);
@@ -39,9 +42,14 @@ export default function SubMaterials() {
     const params = new URLSearchParams();
     if (q) params.set('q', q);
     if (showAll) params.set('all', '1');
-    const [d, g] = await Promise.all([api.get('/sub-materials?' + params.toString()), api.get('/sub-materials/by-item')]);
+    const [d, g, dash] = await Promise.all([
+      api.get('/sub-materials?' + params.toString()),
+      api.get('/sub-materials/by-item'),
+      api.get('/dashboard'),
+    ]);
     setItems(d.items);
     setGroups(g.items);
+    setLow(new Set((dash.subSummary || []).filter((s) => s.below).map((s) => s.name)));
     if (g.items.length && !g.items.some((x) => x.name === activeItem)) setActiveItem(g.items[0].name);
   }, [q, showAll]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -65,6 +73,7 @@ export default function SubMaterials() {
       <div className="page-head">
         <div className="desc">부재료를 품목 안에서 <b>Lot 단위</b>로 관리합니다. (입고일/Lot No/잔량/업체명)</div>
         <div className="btn-row">
+          <button className="btn secondary sm" onClick={() => setTrend(true)}>📈 사용량 분석</button>
           <button className="btn secondary sm" onClick={exportCsv}>⬇ CSV</button>
           <button className="btn sm" onClick={() => setEdit({ mode: 'create', data: { ...blank, receivedDate: today() } })}>+ 부재료 등록</button>
         </div>
@@ -111,7 +120,7 @@ export default function SubMaterials() {
               <tbody>
                 {groupByName(items).map((g) => (
                   <Fragment key={g.name}>
-                    <tr className="group-row"><td colSpan={7}>📦 {g.name} · {g.lots.length} Lot</td></tr>
+                    <tr className={`group-row ${low.has(g.name) ? 'row-low' : ''}`}><td colSpan={7}>📦 {g.name} · {g.lots.length} Lot {low.has(g.name) && <span className="badge red" style={{ marginLeft: 6 }}>안전재고 부족</span>}</td></tr>
                     {g.lots.map((r) => (
                       <tr key={r.id}>
                         <td style={{ paddingLeft: 24 }}><Badge color="blue">{r.lotNo}</Badge></td>
@@ -200,6 +209,7 @@ export default function SubMaterials() {
           }}
         />
       )}
+      {trend && <TrendModal category="sub" title="부재료 사용량 분석" onClose={() => setTrend(false)} />}
     </>
   );
 }
@@ -237,7 +247,13 @@ function SubForm({ mode, initial, onClose, onSaved, onError }) {
     >
       <Field label="품목" required hint="목록에서 선택하거나 '기타'로 직접 입력">
         {mode === 'create' ? (
-          <ItemSelect category="sub" value={f.name} onChange={(name, unit, vendor) => setF((p) => ({ ...p, name, unit: unit || p.unit, vendor: vendor || p.vendor }))} />
+          <ItemSelect category="sub" value={f.name} onChange={(name, m) => setF((p) => ({
+            ...p, name,
+            unit: m?.unit || p.unit,
+            vendor: m?.vendor || p.vendor,
+            weight: p.weight === '' && m?.defaultQty ? m.defaultQty : p.weight,
+            lotNo: p.lotNo === '' && m?.lotPattern ? expandLot(m.lotPattern) : p.lotNo,
+          }))} />
         ) : (
           <TextInput value={f.name} onChange={(e) => set('name', e.target.value)} />
         )}

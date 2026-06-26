@@ -24,8 +24,15 @@ function buildSummary(masters, rows, getName, getQty, threshold) {
     const minStock = master ? num(master.safetyStock) || 0 : 0;
     const unit = master ? master.unit : (lots[0] && lots[0].unit) || '';
     const st = safetyStatus(current, minStock, threshold);
-    return { name, lots: lots.length, current, unit, minStock, level: st.level, state: st.state, below: st.below, isMaster: !!master };
-  }).sort((a, b) => a.name.localeCompare(b.name));
+    const product = master ? master.product || '' : '';
+    return { name, product, lots: lots.length, current, unit, minStock, level: st.level, state: st.state, below: st.below, isMaster: !!master };
+  }).sort((a, b) => {
+    // 제품(사용처)별 묶음 → '공통'/미지정은 뒤로, 같은 제품 내 품목명순
+    const pa = a.product || '~';
+    const pb = b.product || '~';
+    if (pa !== pb) return pa < pb ? -1 : 1;
+    return a.name.localeCompare(b.name);
+  });
 }
 
 router.get(

@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from './auth/AuthContext';
 import { Loading } from './components/ui';
+import { Icon } from './components/icons';
 import Login from './pages/Login';
 import Signup from './pages/Signup';
 import Dashboard from './pages/Dashboard';
@@ -12,19 +13,18 @@ import Transactions from './pages/Transactions';
 import Anomalies from './pages/Anomalies';
 import Tasks from './pages/Tasks';
 import Admin from './pages/Admin';
-import Settings from './pages/Settings';
 import Items from './pages/Items';
 
 const NAV = [
-  { to: '/', label: '종합현황', ico: '◧', end: true },
+  { to: '/', label: '종합현황', ico: 'grid', end: true },
   { section: '재고 관리' },
-  { to: '/raw', label: '원재료', ico: '⬡' },
-  { to: '/sub', label: '부재료', ico: '◇' },
-  { to: '/canisters', label: 'Canister', ico: '⬢' },
+  { to: '/raw', label: '원재료', ico: 'canister' },
+  { to: '/sub', label: '부재료', ico: 'drum' },
+  { to: '/canisters', label: 'Canister', ico: 'star' },
   { section: '내역 · 업무' },
-  { to: '/transactions', label: '수불 이력', ico: '↔' },
-  { to: '/anomalies', label: '이상발생 목록', ico: '⚠' },
-  { to: '/tasks', label: 'Task 관리', ico: '✓' },
+  { to: '/transactions', label: '수불 이력', ico: 'swap' },
+  { to: '/anomalies', label: '이상발생 목록', ico: 'alert' },
+  { to: '/tasks', label: 'Task 관리', ico: 'task' },
 ];
 
 function Sidebar() {
@@ -44,7 +44,7 @@ function Sidebar() {
             <div className="nav-section" key={i}>{n.section}</div>
           ) : (
             <NavLink key={n.to} to={n.to} end={n.end} className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
-              <span className="ico">{n.ico}</span>
+              <span className="ico"><Icon name={n.ico} /></span>
               {n.label}
             </NavLink>
           ),
@@ -52,17 +52,14 @@ function Sidebar() {
         <div className="nav-section">설정</div>
         {isAdmin && (
           <NavLink to="/items" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
-            <span className="ico">☰</span>기준정보
+            <span className="ico"><Icon name="db" /></span>기준정보
           </NavLink>
         )}
         {isAdmin && (
           <NavLink to="/admin" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
-            <span className="ico">⚙</span>관리자 설정
+            <span className="ico"><Icon name="shield" /></span>관리자 설정
           </NavLink>
         )}
-        <NavLink to="/settings" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
-          <span className="ico">⊙</span>경고 비율
-        </NavLink>
       </nav>
       <div style={{ marginTop: 24, padding: '0 12px', fontSize: 12, color: 'var(--text-3)' }}>
         {user?.name} 님 · {isAdmin ? '관리자' : '등록자'}
@@ -115,8 +112,8 @@ export default function App() {
       <Route path="/anomalies" element={<Protected title="이상발생 목록"><Anomalies /></Protected>} />
       <Route path="/tasks" element={<Protected title="Task 관리"><Tasks /></Protected>} />
       <Route path="/items" element={<Protected title="기준정보 (품목·안전재고)" adminOnly><Items /></Protected>} />
-      <Route path="/admin" element={<Protected title="관리자 설정 (사용자)" adminOnly><Admin /></Protected>} />
-      <Route path="/settings" element={<Protected title="안전재고 경고 비율"><Settings /></Protected>} />
+      <Route path="/admin" element={<Protected title="관리자 설정" adminOnly><Admin /></Protected>} />
+      <Route path="/settings" element={<Navigate to="/admin" replace />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
