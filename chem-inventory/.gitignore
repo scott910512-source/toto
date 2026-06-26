@@ -1,0 +1,12 @@
+# 의존성
+**/node_modules/
+
+# 런타임 데이터(서버 PC의 CSV 저장소) — 최초 실행 시 자동 시드됨
+server/data/
+
+# 빌드 산출물
+client/dist/
+
+# 로그/OS
+*.log
+.DS_Store

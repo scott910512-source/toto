@@ -1,0 +1,110 @@
+import { Routes, Route, Navigate, NavLink, useNavigate } from 'react-router-dom';
+import { useAuth } from './auth/AuthContext';
+import { Loading } from './components/ui';
+import Login from './pages/Login';
+import Signup from './pages/Signup';
+import Dashboard from './pages/Dashboard';
+import RawMaterials from './pages/RawMaterials';
+import SubMaterials from './pages/SubMaterials';
+import Canisters from './pages/Canisters';
+import CanisterDetail from './pages/CanisterDetail';
+import Transactions from './pages/Transactions';
+import Admin from './pages/Admin';
+import Settings from './pages/Settings';
+
+const NAV = [
+  { to: '/', label: '대시보드', ico: '◧', end: true },
+  { section: '재고 관리' },
+  { to: '/raw', label: '원재료', ico: '⬡' },
+  { to: '/sub', label: '부재료', ico: '◇' },
+  { to: '/canisters', label: 'Canister', ico: '⬢' },
+  { section: '내역' },
+  { to: '/transactions', label: '수불 내역', ico: '↔' },
+];
+
+function Sidebar() {
+  const { user, isAdmin } = useAuth();
+  return (
+    <aside className="sidebar">
+      <div className="brand">
+        <div className="brand-logo">化</div>
+        <div>
+          <div className="brand-title">수불관리</div>
+          <div className="brand-sub">화학공장 재고 시스템</div>
+        </div>
+      </div>
+      <nav className="nav">
+        {NAV.map((n, i) =>
+          n.section ? (
+            <div className="nav-section" key={i}>{n.section}</div>
+          ) : (
+            <NavLink key={n.to} to={n.to} end={n.end} className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+              <span className="ico">{n.ico}</span>
+              {n.label}
+            </NavLink>
+          ),
+        )}
+        <div className="nav-section">설정</div>
+        {isAdmin && (
+          <NavLink to="/admin" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+            <span className="ico">⚙</span>사용자 관리
+          </NavLink>
+        )}
+        <NavLink to="/settings" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+          <span className="ico">⊙</span>안전재고 설정
+        </NavLink>
+      </nav>
+      <div style={{ marginTop: 24, padding: '0 12px', fontSize: 12, color: 'var(--text-3)' }}>
+        {user?.name} 님 · {isAdmin ? '관리자' : '등록자'}
+      </div>
+    </aside>
+  );
+}
+
+function Shell({ children, title }) {
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
+  return (
+    <div className="app-shell">
+      <Sidebar />
+      <div className="main">
+        <div className="topbar">
+          <h1>{title}</h1>
+          <div className="user">
+            <span>{user?.name} ({user?.id})</span>
+            <button className="btn secondary sm" onClick={async () => { await logout(); navigate('/login'); }}>로그아웃</button>
+          </div>
+        </div>
+        <div className="content">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+function Protected({ children, title, adminOnly }) {
+  const { user, isAdmin, loading } = useAuth();
+  if (loading) return <Loading />;
+  if (!user) return <Navigate to="/login" replace />;
+  if (adminOnly && !isAdmin) return <Navigate to="/" replace />;
+  return <Shell title={title}>{children}</Shell>;
+}
+
+export default function App() {
+  const { user, loading } = useAuth();
+  if (loading) return <Loading />;
+  return (
+    <Routes>
+      <Route path="/login" element={user ? <Navigate to="/" replace /> : <Login />} />
+      <Route path="/signup" element={user ? <Navigate to="/" replace /> : <Signup />} />
+      <Route path="/" element={<Protected title="대시보드"><Dashboard /></Protected>} />
+      <Route path="/raw" element={<Protected title="원재료 관리"><RawMaterials /></Protected>} />
+      <Route path="/sub" element={<Protected title="부재료 관리"><SubMaterials /></Protected>} />
+      <Route path="/canisters" element={<Protected title="Canister 관리"><Canisters /></Protected>} />
+      <Route path="/canisters/:id" element={<Protected title="용기이력카드"><CanisterDetail /></Protected>} />
+      <Route path="/transactions" element={<Protected title="수불 내역"><Transactions /></Protected>} />
+      <Route path="/admin" element={<Protected title="사용자 관리" adminOnly><Admin /></Protected>} />
+      <Route path="/settings" element={<Protected title="안전재고 설정"><Settings /></Protected>} />
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
+  );
+}
