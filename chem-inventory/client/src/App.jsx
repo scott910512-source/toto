@@ -9,18 +9,22 @@ import SubMaterials from './pages/SubMaterials';
 import Canisters from './pages/Canisters';
 import CanisterDetail from './pages/CanisterDetail';
 import Transactions from './pages/Transactions';
+import Anomalies from './pages/Anomalies';
+import Tasks from './pages/Tasks';
 import Admin from './pages/Admin';
 import Settings from './pages/Settings';
 import Items from './pages/Items';
 
 const NAV = [
-  { to: '/', label: '대시보드', ico: '◧', end: true },
+  { to: '/', label: '종합현황', ico: '◧', end: true },
   { section: '재고 관리' },
   { to: '/raw', label: '원재료', ico: '⬡' },
   { to: '/sub', label: '부재료', ico: '◇' },
   { to: '/canisters', label: 'Canister', ico: '⬢' },
-  { section: '내역' },
-  { to: '/transactions', label: '수불 내역', ico: '↔' },
+  { section: '내역 · 업무' },
+  { to: '/transactions', label: '수불 이력', ico: '↔' },
+  { to: '/anomalies', label: '이상발생 목록', ico: '⚠' },
+  { to: '/tasks', label: 'Task 관리', ico: '✓' },
 ];
 
 function Sidebar() {
@@ -31,7 +35,7 @@ function Sidebar() {
         <div className="brand-logo">化</div>
         <div>
           <div className="brand-title">수불관리</div>
-          <div className="brand-sub">화학공장 재고 시스템</div>
+          <div className="brand-sub">화학공장 운영관리</div>
         </div>
       </div>
       <nav className="nav">
@@ -48,16 +52,16 @@ function Sidebar() {
         <div className="nav-section">설정</div>
         {isAdmin && (
           <NavLink to="/items" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
-            <span className="ico">☰</span>품목·안전재고
+            <span className="ico">☰</span>기준정보
           </NavLink>
         )}
         {isAdmin && (
           <NavLink to="/admin" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
-            <span className="ico">⚙</span>사용자 관리
+            <span className="ico">⚙</span>관리자 설정
           </NavLink>
         )}
         <NavLink to="/settings" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
-          <span className="ico">⊙</span>경고 비율 설정
+          <span className="ico">⊙</span>경고 비율
         </NavLink>
       </nav>
       <div style={{ marginTop: 24, padding: '0 12px', fontSize: 12, color: 'var(--text-3)' }}>
@@ -102,14 +106,16 @@ export default function App() {
     <Routes>
       <Route path="/login" element={user ? <Navigate to="/" replace /> : <Login />} />
       <Route path="/signup" element={user ? <Navigate to="/" replace /> : <Signup />} />
-      <Route path="/" element={<Protected title="대시보드"><Dashboard /></Protected>} />
+      <Route path="/" element={<Protected title="종합현황"><Dashboard /></Protected>} />
       <Route path="/raw" element={<Protected title="원재료 관리"><RawMaterials /></Protected>} />
       <Route path="/sub" element={<Protected title="부재료 관리"><SubMaterials /></Protected>} />
       <Route path="/canisters" element={<Protected title="Canister 관리"><Canisters /></Protected>} />
       <Route path="/canisters/:id" element={<Protected title="용기이력카드"><CanisterDetail /></Protected>} />
-      <Route path="/transactions" element={<Protected title="수불 내역"><Transactions /></Protected>} />
-      <Route path="/items" element={<Protected title="품목 · 안전재고 관리" adminOnly><Items /></Protected>} />
-      <Route path="/admin" element={<Protected title="사용자 관리" adminOnly><Admin /></Protected>} />
+      <Route path="/transactions" element={<Protected title="수불 이력"><Transactions /></Protected>} />
+      <Route path="/anomalies" element={<Protected title="이상발생 목록"><Anomalies /></Protected>} />
+      <Route path="/tasks" element={<Protected title="Task 관리"><Tasks /></Protected>} />
+      <Route path="/items" element={<Protected title="기준정보 (품목·안전재고)" adminOnly><Items /></Protected>} />
+      <Route path="/admin" element={<Protected title="관리자 설정 (사용자)" adminOnly><Admin /></Protected>} />
       <Route path="/settings" element={<Protected title="안전재고 경고 비율"><Settings /></Protected>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

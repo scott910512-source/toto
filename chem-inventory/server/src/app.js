@@ -16,6 +16,10 @@ const { router: txRoutes } = require('./routes/transactions');
 const { router: dashboardRoutes } = require('./routes/dashboard');
 const { router: settingsRoutes } = require('./routes/settings');
 const { router: metaRoutes } = require('./routes/meta');
+const { router: anomaliesRoutes } = require('./routes/anomalies');
+const { router: tasksRoutes } = require('./routes/tasks');
+const { router: warningsRoutes } = require('./routes/warnings');
+const { router: trendsRoutes } = require('./routes/trends');
 
 function createApp() {
   const app = express();
@@ -49,6 +53,10 @@ function createApp() {
   app.use('/api/dashboard', dashboardRoutes);
   app.use('/api/settings', settingsRoutes);
   app.use('/api/meta', metaRoutes);
+  app.use('/api/anomalies', anomaliesRoutes);
+  app.use('/api/tasks', tasksRoutes);
+  app.use('/api/warnings', warningsRoutes);
+  app.use('/api/trends', trendsRoutes);
 
   // 프로덕션: 빌드된 React 정적 파일 서빙 + SPA 폴백
   const clientDist = path.join(__dirname, '..', '..', 'client', 'dist');

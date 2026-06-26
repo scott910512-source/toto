@@ -15,8 +15,9 @@ async function request(path, { method = 'GET', body } = {}) {
     data = {};
   }
   if (!res.ok) {
-    const err = new Error((data && data.error) || '요청을 처리하지 못했습니다.');
+    const err = new Error((data && data.error) || (data && data.message) || '요청을 처리하지 못했습니다.');
     err.status = res.status;
+    err.data = data; // 409 선입선출 경고 등 상세 정보 전달
     throw err;
   }
   return data;

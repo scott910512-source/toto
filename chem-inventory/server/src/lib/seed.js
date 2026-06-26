@@ -54,6 +54,15 @@ function seedRows() {
       { id: 'tx_0003', materialType: 'canister', materialId: 'cn_0001', materialName: 'CN-001', lotNo: '', content: '톨루엔', type: '반입', quantity: '180', unit: 'kg', balanceAfter: '180', note: '내용물 충전', createdBy: 'admin', createdAt: T },
     ],
     settings: [{ key: 'safetyRatioPercent', value: '100' }],
+    anomalies: [
+      { id: 'an_0001', type: '선입선출 오류', itemName: '톨루엔', lotInfo: 'T-2026-002 (입고 2026-06-15)', account: 'admin', note: '입고일이 더 빠른 Lot(T-2026-001) 존재 — 강제 사용', createdAt: '2026-06-20T01:00:00.000Z' },
+    ],
+    tasks: [
+      { id: 'tk_0001', title: '3류창고 Canister 세정 의뢰 확인', category: '현장관리', categoryEtc: '', priority: '중', assignee: 'user1', dueDate: '2026-06-30', status: '진행중', note: '', createdBy: 'admin', createdAt: T, updatedBy: 'admin', updatedAt: T },
+      { id: 'tk_0002', title: '촉매펠릿 안전재고 보충 발주', category: '원부재료', categoryEtc: '', priority: '상', assignee: 'admin', dueDate: '2026-06-27', status: '대기', note: '안전재고 미달', createdBy: 'admin', createdAt: T, updatedBy: 'admin', updatedAt: T },
+    ],
+    warning_acks: [],
+    warning_dismissed: [],
   };
 }
 

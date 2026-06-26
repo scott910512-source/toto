@@ -5,13 +5,23 @@ const bcrypt = require('bcryptjs');
 const { mutate, readTable } = require('../lib/store');
 const { asyncHandler, str, badRequest, notFound } = require('../lib/http');
 const { now } = require('../lib/ids');
-const { requireAdmin } = require('../middleware/auth');
+const { requireAdmin, requireAuth } = require('../middleware/auth');
 
 const router = express.Router();
 
 function publicUser(u) {
   return { id: u.id, name: u.name, role: u.role, status: u.status, createdAt: u.createdAt, approvedAt: u.approvedAt, approvedBy: u.approvedBy };
 }
+
+// 담당자 선택용 사용자 목록(로그인 사용자 접근 가능) — 관리자 게이트 이전에 둔다
+router.get(
+  '/options',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const users = await readTable('users');
+    res.json({ items: users.filter((u) => u.status === 'approved').map((u) => ({ id: u.id, name: u.name })) });
+  }),
+);
 
 router.use(requireAdmin);
 

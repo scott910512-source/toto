@@ -18,6 +18,13 @@ const TABLES = {
   canister_history: ['id', 'canisterId', 'canisterNo', 'date', 'type', 'content', 'weight', 'location', 'status', 'note', 'createdBy', 'createdAt'],
   transactions: ['id', 'materialType', 'materialId', 'materialName', 'lotNo', 'content', 'type', 'quantity', 'unit', 'balanceAfter', 'note', 'createdBy', 'createdAt'],
   settings: ['key', 'value'],
+  // 이상발생 목록(선입선출 오류 등)
+  anomalies: ['id', 'type', 'itemName', 'lotInfo', 'account', 'note', 'createdAt'],
+  // Task(할 일) 관리
+  tasks: ['id', 'title', 'category', 'categoryEtc', 'priority', 'assignee', 'dueDate', 'status', 'note', 'createdBy', 'createdAt', 'updatedBy', 'updatedAt'],
+  // 경고 확인/삭제 로그
+  warning_acks: ['id', 'warningKey', 'account', 'content', 'createdAt'],
+  warning_dismissed: ['id', 'warningKey', 'account', 'content', 'createdAt'],
 };
 
 function headersOf(name) {

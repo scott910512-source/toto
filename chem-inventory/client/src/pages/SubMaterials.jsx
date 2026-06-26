@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, Fragment } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { api, downloadCsv } from '../api';
 import { useAuth } from '../auth/AuthContext';
 import { Modal, Field, TextInput, Select, useToast, ConfirmDialog, Empty, Loading, Badge } from '../components/ui';
@@ -28,22 +29,29 @@ export default function SubMaterials() {
   const [groups, setGroups] = useState(null);
   const [activeItem, setActiveItem] = useState('');
   const [q, setQ] = useState('');
+  const [showAll, setShowAll] = useState(false);
   const [edit, setEdit] = useState(null);
   const [tx, setTx] = useState(null);
   const [del, setDel] = useState(null);
+  const [sp] = useSearchParams();
 
   const load = useCallback(async () => {
     const params = new URLSearchParams();
     if (q) params.set('q', q);
+    if (showAll) params.set('all', '1');
     const [d, g] = await Promise.all([api.get('/sub-materials?' + params.toString()), api.get('/sub-materials/by-item')]);
     setItems(d.items);
     setGroups(g.items);
     if (g.items.length && !g.items.some((x) => x.name === activeItem)) setActiveItem(g.items[0].name);
-  }, [q]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [q, showAll]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    if (sp.get('new') === '1') setEdit({ mode: 'create', data: { ...blank, receivedDate: today() } });
+  }, [sp]);
 
   function exportCsv() {
     const params = new URLSearchParams();
@@ -69,10 +77,15 @@ export default function SubMaterials() {
         </div>
         <div className="spacer" />
         {tab === 'list' && (
-          <div className="search">
-            <span>🔍</span>
-            <input placeholder="품목명 / Lot No 검색" value={q} onChange={(e) => setQ(e.target.value)} />
-          </div>
+          <>
+            <div className="search">
+              <span>🔍</span>
+              <input placeholder="품목명 / Lot No 검색" value={q} onChange={(e) => setQ(e.target.value)} />
+            </div>
+            <button className={`btn sm ${showAll ? '' : 'secondary'}`} onClick={() => setShowAll((v) => !v)}>
+              {showAll ? '✓ 완료 Lot 포함' : '완료 Lot 포함'}
+            </button>
+          </>
         )}
       </div>
 
@@ -260,43 +273,72 @@ function SubTxForm({ item, onClose, onSaved, onError }) {
   const [quantity, setQuantity] = useState('');
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
+  const [fifo, setFifo] = useState(null);
   const cur = Number(item.weight);
   const qty = Number(quantity);
   const over = type === '출고' && qty > cur;
 
-  async function submit() {
-    if (!quantity || qty <= 0) return onError('무게는 0보다 커야 합니다.');
-    if (over) return onError('출고(소진) 무게가 현재 잔량을 초과합니다.');
+  async function doSubmit(force) {
     setBusy(true);
     try {
-      await api.post(`/sub-materials/${item.id}/transaction`, { type, quantity: qty, note });
+      await api.post(`/sub-materials/${item.id}/transaction`, { type, quantity: qty, note, force });
       onSaved();
-    } catch (e) { onError(e.message); } finally { setBusy(false); }
+    } catch (e) {
+      if (e.status === 409 && e.data && e.data.fifoWarning) setFifo(e.data);
+      else onError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  function submit() {
+    if (!quantity || qty <= 0) return onError('무게는 0보다 커야 합니다.');
+    if (over) return onError('출고(소진) 무게가 현재 잔량을 초과합니다.');
+    doSubmit(false);
   }
 
   return (
-    <Modal
-      title={`수불 — ${item.name} (Lot ${item.lotNo})`}
-      subtitle={`현재 잔량 ${cur.toLocaleString()}${item.unit}`}
-      onClose={onClose}
-      footer={<>
-        <button className="btn secondary" onClick={onClose}>취소</button>
-        <button className="btn" onClick={submit} disabled={busy || over}>{busy ? '처리 중…' : '확인'}</button>
-      </>}
-    >
-      <Field label="구분" required>
-        <Select value={type} onChange={(e) => setType(e.target.value)}>
-          <option value="출고">출고 (소진)</option>
-          <option value="입고">입고 (추가)</option>
-        </Select>
-      </Field>
-      <Field label={`무게 (${item.unit})`} required error={over ? '현재 잔량을 초과했습니다.' : ''}>
-        <TextInput type="number" value={quantity} onChange={(e) => setQuantity(e.target.value)} placeholder="0" autoFocus />
-      </Field>
-      <Field label="비고">
-        <TextInput value={note} onChange={(e) => setNote(e.target.value)} placeholder="예: 라인 보충" />
-      </Field>
-      {quantity && !over && <div className="hint">처리 후 잔량: <b>{(type === '입고' ? cur + qty : cur - qty).toLocaleString()}{item.unit}</b></div>}
-    </Modal>
+    <>
+      <Modal
+        title={`수불 — ${item.name} (Lot ${item.lotNo})`}
+        subtitle={`현재 잔량 ${cur.toLocaleString()}${item.unit}`}
+        onClose={onClose}
+        footer={<>
+          <button className="btn secondary" onClick={onClose}>취소</button>
+          <button className="btn" onClick={submit} disabled={busy || over}>{busy ? '처리 중…' : '확인'}</button>
+        </>}
+      >
+        <Field label="구분" required>
+          <Select value={type} onChange={(e) => setType(e.target.value)}>
+            <option value="출고">출고 (소진)</option>
+            <option value="입고">입고 (추가)</option>
+          </Select>
+        </Field>
+        <Field label={`무게 (${item.unit})`} required error={over ? '현재 잔량을 초과했습니다.' : ''}>
+          <TextInput type="number" value={quantity} onChange={(e) => setQuantity(e.target.value)} placeholder="0" autoFocus />
+        </Field>
+        <Field label="비고">
+          <TextInput value={note} onChange={(e) => setNote(e.target.value)} placeholder="예: 라인 보충" />
+        </Field>
+        {quantity && !over && <div className="hint">처리 후 잔량: <b>{(type === '입고' ? cur + qty : cur - qty).toLocaleString()}{item.unit}</b></div>}
+      </Modal>
+
+      {fifo && (
+        <Modal
+          title="⚠ 선입선출 오류"
+          onClose={() => setFifo(null)}
+          footer={<>
+            <button className="btn secondary" onClick={() => setFifo(null)}>취소</button>
+            <button className="btn danger" onClick={() => { setFifo(null); doSubmit(true); }}>강제 사용</button>
+          </>}
+        >
+          <p style={{ margin: 0, color: 'var(--text-2)' }}>
+            {fifo.message}<br />
+            더 빠른 Lot: <b>{fifo.earliest?.lotNo}</b> (입고 {fifo.earliest?.receivedDate})
+            <br /><br />
+            강제 사용 시 <b>이상발생 목록에 자동 기록</b>됩니다. 계속하시겠습니까?
+          </p>
+        </Modal>
+      )}
+    </>
   );
 }

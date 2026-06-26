@@ -3,6 +3,7 @@
 const express = require('express');
 const { UNITS } = require('./rawMaterials');
 const { SIZES, LOCATIONS, STATUSES, MOVE_TYPES } = require('./canisters');
+const { CATEGORIES, PRIORITIES, STATUSES: TASK_STATUSES } = require('./tasks');
 
 const router = express.Router();
 
@@ -14,6 +15,9 @@ router.get('/', (req, res) => {
     canisterLocations: LOCATIONS,
     canisterStatuses: STATUSES,
     canisterMoveTypes: MOVE_TYPES,
+    taskCategories: CATEGORIES,
+    taskPriorities: PRIORITIES,
+    taskStatuses: TASK_STATUSES,
   });
 });
 

@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { api, downloadCsv } from '../api';
 import { useAuth } from '../auth/AuthContext';
 import { Modal, Field, TextInput, Select, useToast, ConfirmDialog, Empty, Loading, Badge, statusColor } from '../components/ui';
@@ -17,6 +17,11 @@ export default function Canisters() {
   const [create, setCreate] = useState(false);
   const [moveOpen, setMoveOpen] = useState(false);
   const [del, setDel] = useState(null);
+  const [sp] = useSearchParams();
+
+  useEffect(() => {
+    if (sp.get('move') === '1') setMoveOpen(true);
+  }, [sp]);
 
   const load = useCallback(async () => {
     const params = new URLSearchParams();

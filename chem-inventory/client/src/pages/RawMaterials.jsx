@@ -1,7 +1,8 @@
 import { useEffect, useState, useCallback, Fragment } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { api, downloadCsv } from '../api';
 import { useAuth } from '../auth/AuthContext';
-import { Modal, Field, TextInput, Select, useToast, ConfirmDialog, Empty, Loading, Badge } from '../components/ui';
+import { Modal, Field, TextInput, Select, useToast, ConfirmDialog, Empty, Loading, Badge, Bars } from '../components/ui';
 import { UnitInput, ItemSelect } from '../components/inputs';
 
 const blank = { itemName: '', lotNo: '', quantity: '', unit: 'kg', vendor: '', receivedDate: '', note: '' };
@@ -28,21 +29,30 @@ export default function RawMaterials() {
   const [summary, setSummary] = useState(null);
   const [items, setItems] = useState(null);
   const [q, setQ] = useState('');
+  const [showAll, setShowAll] = useState(false);
+  const [trend, setTrend] = useState(false);
   const [edit, setEdit] = useState(null);
   const [tx, setTx] = useState(null);
   const [del, setDel] = useState(null);
+  const [sp] = useSearchParams();
 
   const load = useCallback(async () => {
     const params = new URLSearchParams();
     if (q) params.set('q', q);
+    if (showAll) params.set('all', '1');
     const [s, d] = await Promise.all([api.get('/raw-materials/summary'), api.get('/raw-materials?' + params.toString())]);
     setSummary(s);
     setItems(d.items);
-  }, [q]);
+  }, [q, showAll]);
 
   useEffect(() => {
     load();
   }, [load]);
+
+  // 퀵메뉴(?new=1)로 진입 시 등록 모달 자동 오픈
+  useEffect(() => {
+    if (sp.get('new') === '1') setEdit({ mode: 'create', data: { ...blank, receivedDate: today() } });
+  }, [sp]);
 
   function exportCsv() {
     const params = new URLSearchParams();
@@ -97,6 +107,7 @@ export default function RawMaterials() {
       <div className="page-head">
         <div className="desc">품목은 취합 관리되며, 입출고(수불)는 <b>Lot 단위</b>로 개별 처리됩니다.</div>
         <div className="btn-row">
+          <button className="btn secondary sm" onClick={() => setTrend(true)}>📈 사용량 분석</button>
           <button className="btn secondary sm" onClick={exportCsv}>⬇ CSV</button>
           <button className="btn sm" onClick={() => setEdit({ mode: 'create', data: { ...blank, receivedDate: today() } })}>+ 원재료 등록</button>
         </div>
@@ -107,6 +118,9 @@ export default function RawMaterials() {
           <span>🔍</span>
           <input placeholder="품목명 / Lot No 검색" value={q} onChange={(e) => setQ(e.target.value)} />
         </div>
+        <button className={`btn sm ${showAll ? '' : 'secondary'}`} onClick={() => setShowAll((v) => !v)}>
+          {showAll ? '✓ 완료 Lot 포함' : '완료 Lot 포함'}
+        </button>
       </div>
 
       <div className="card table-wrap">
@@ -182,7 +196,47 @@ export default function RawMaterials() {
           }}
         />
       )}
+      {trend && <TrendModal category="raw" onClose={() => setTrend(false)} />}
     </>
+  );
+}
+
+function TrendModal({ category, onClose }) {
+  const [period, setPeriod] = useState('month');
+  const [data, setData] = useState(null);
+  useEffect(() => {
+    setData(null);
+    api.get(`/trends?category=${category}&period=${period}`).then(setData);
+  }, [period, category]);
+
+  return (
+    <Modal title="📈 사용량 분석 (트렌드)" size="lg" onClose={onClose}
+      footer={<button className="btn" onClick={onClose}>닫기</button>}>
+      <div className="btn-row" style={{ marginBottom: 14 }}>
+        {[['week', '주'], ['month', '월'], ['year', '년']].map(([p, l]) => (
+          <button key={p} className={`btn sm ${period === p ? '' : 'secondary'}`} onClick={() => setPeriod(p)}>{l}별</button>
+        ))}
+      </div>
+      {!data ? <Loading /> : data.items.length === 0 ? <Empty>수불 데이터가 없습니다.</Empty> : (
+        <div className="table-wrap">
+          <table className="tbl compact">
+            <thead>
+              <tr><th>품목</th><th className="num">총 입고</th><th className="num">총 사용</th>{data.labels.map((l) => <th key={l} className="num">{l}<br /><span className="muted" style={{ fontWeight: 400 }}>사용</span></th>)}</tr>
+            </thead>
+            <tbody>
+              {data.items.map((it) => (
+                <tr key={it.name}>
+                  <td><b>{it.name}</b></td>
+                  <td className="num" style={{ color: 'var(--green)' }}>{it.totalIn.toLocaleString()}</td>
+                  <td className="num" style={{ color: 'var(--orange)' }}>{it.totalOut.toLocaleString()}</td>
+                  {data.labels.map((l) => <td key={l} className="num muted">{it.series[l] ? (it.series[l].out || 0).toLocaleString() : '–'}</td>)}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Modal>
   );
 }
 
@@ -257,43 +311,72 @@ function TxForm({ item, onClose, onSaved, onError }) {
   const [quantity, setQuantity] = useState('');
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
+  const [fifo, setFifo] = useState(null); // 선입선출 경고 데이터
   const cur = Number(item.quantity);
   const qty = Number(quantity);
   const over = type === '출고' && qty > cur;
 
-  async function submit() {
-    if (!quantity || qty <= 0) return onError('수량은 0보다 커야 합니다.');
-    if (over) return onError('출고 수량이 현재 재고를 초과합니다.');
+  async function doSubmit(force) {
     setBusy(true);
     try {
-      await api.post(`/raw-materials/${item.id}/transaction`, { type, quantity: qty, note });
+      await api.post(`/raw-materials/${item.id}/transaction`, { type, quantity: qty, note, force });
       onSaved();
-    } catch (e) { onError(e.message); } finally { setBusy(false); }
+    } catch (e) {
+      if (e.status === 409 && e.data && e.data.fifoWarning) setFifo(e.data);
+      else onError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  function submit() {
+    if (!quantity || qty <= 0) return onError('수량은 0보다 커야 합니다.');
+    if (over) return onError('출고 수량이 현재 재고를 초과합니다.');
+    doSubmit(false);
   }
 
   return (
-    <Modal
-      title={`수불 — ${item.itemName} (Lot ${item.lotNo})`}
-      subtitle={`현재 재고 ${cur.toLocaleString()}${item.unit}`}
-      onClose={onClose}
-      footer={<>
-        <button className="btn secondary" onClick={onClose}>취소</button>
-        <button className="btn" onClick={submit} disabled={busy || over}>{busy ? '처리 중…' : '확인'}</button>
-      </>}
-    >
-      <Field label="구분" required>
-        <Select value={type} onChange={(e) => setType(e.target.value)}>
-          <option value="출고">출고 (사용/소진)</option>
-          <option value="입고">입고 (추가)</option>
-        </Select>
-      </Field>
-      <Field label={`수량 (${item.unit})`} required error={over ? '현재 재고를 초과했습니다.' : ''}>
-        <TextInput type="number" value={quantity} onChange={(e) => setQuantity(e.target.value)} placeholder="0" autoFocus />
-      </Field>
-      <Field label="비고">
-        <TextInput value={note} onChange={(e) => setNote(e.target.value)} placeholder="예: 3공정 투입" />
-      </Field>
-      {quantity && !over && <div className="hint">처리 후 재고: <b>{(type === '입고' ? cur + qty : cur - qty).toLocaleString()}{item.unit}</b></div>}
-    </Modal>
+    <>
+      <Modal
+        title={`수불 — ${item.itemName} (Lot ${item.lotNo})`}
+        subtitle={`현재 재고 ${cur.toLocaleString()}${item.unit}`}
+        onClose={onClose}
+        footer={<>
+          <button className="btn secondary" onClick={onClose}>취소</button>
+          <button className="btn" onClick={submit} disabled={busy || over}>{busy ? '처리 중…' : '확인'}</button>
+        </>}
+      >
+        <Field label="구분" required>
+          <Select value={type} onChange={(e) => setType(e.target.value)}>
+            <option value="출고">출고 (사용/소진)</option>
+            <option value="입고">입고 (추가)</option>
+          </Select>
+        </Field>
+        <Field label={`수량 (${item.unit})`} required error={over ? '현재 재고를 초과했습니다.' : ''}>
+          <TextInput type="number" value={quantity} onChange={(e) => setQuantity(e.target.value)} placeholder="0" autoFocus />
+        </Field>
+        <Field label="비고">
+          <TextInput value={note} onChange={(e) => setNote(e.target.value)} placeholder="예: 3공정 투입" />
+        </Field>
+        {quantity && !over && <div className="hint">처리 후 재고: <b>{(type === '입고' ? cur + qty : cur - qty).toLocaleString()}{item.unit}</b></div>}
+      </Modal>
+
+      {fifo && (
+        <Modal
+          title="⚠ 선입선출 오류"
+          onClose={() => setFifo(null)}
+          footer={<>
+            <button className="btn secondary" onClick={() => setFifo(null)}>취소</button>
+            <button className="btn danger" onClick={() => { setFifo(null); doSubmit(true); }}>강제 사용</button>
+          </>}
+        >
+          <p style={{ margin: 0, color: 'var(--text-2)' }}>
+            {fifo.message}<br />
+            더 빠른 Lot: <b>{fifo.earliest?.lotNo}</b> (입고 {fifo.earliest?.receivedDate})
+            <br /><br />
+            강제 사용 시 <b>이상발생 목록에 자동 기록</b>됩니다. 계속하시겠습니까?
+          </p>
+        </Modal>
+      )}
+    </>
   );
 }

@@ -5,6 +5,7 @@ const { readTable } = require('../lib/store');
 const { asyncHandler, num } = require('../lib/http');
 const { requireAuth } = require('../middleware/auth');
 const { readSettings } = require('./settings');
+const { safetyStatus } = require('../lib/warnings');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -13,17 +14,17 @@ function disp(value, etc) {
   return value === '기타' ? (etc || '기타') : value;
 }
 
-/** 품목 마스터 + 재고 행으로 품목별 안전재고 현황을 계산한다. */
-function buildSafety(masters, getName, getQty, rows, threshold) {
+/** 품목별 현황(잔여 Lot 수/현재고/최소재고/안전%/상태) */
+function buildSummary(masters, rows, getName, getQty, threshold) {
   const names = new Set([...masters.map((m) => m.name), ...rows.map(getName)]);
   return Array.from(names).map((name) => {
     const master = masters.find((m) => m.name === name);
-    const total = rows.filter((r) => getName(r) === name).reduce((s, r) => s + (getQty(r) || 0), 0);
-    const safety = master ? num(master.safetyStock) || 0 : 0;
-    const unit = master ? master.unit : '';
-    const level = safety > 0 ? Math.round((total / safety) * 100) : null;
-    const below = safety > 0 && total < safety * (threshold / 100);
-    return { name, unit, quantity: total, safetyStock: safety, level, below };
+    const lots = rows.filter((r) => getName(r) === name && (num(getQty(r)) || 0) > 0);
+    const current = lots.reduce((s, r) => s + (num(getQty(r)) || 0), 0);
+    const minStock = master ? num(master.safetyStock) || 0 : 0;
+    const unit = master ? master.unit : (lots[0] && lots[0].unit) || '';
+    const st = safetyStatus(current, minStock, threshold);
+    return { name, lots: lots.length, current, unit, minStock, level: st.level, state: st.state, below: st.below, isMaster: !!master };
   }).sort((a, b) => a.name.localeCompare(b.name));
 }
 
@@ -31,47 +32,42 @@ router.get(
   '/',
   asyncHandler(async (req, res) => {
     const [items, raws, subs, canisters, settings] = await Promise.all([
-      readTable('items'),
-      readTable('raw_materials'),
-      readTable('sub_materials'),
-      readTable('canisters'),
-      readSettings(),
+      readTable('items'), readTable('raw_materials'), readTable('sub_materials'), readTable('canisters'), readSettings(),
     ]);
     const threshold = num(settings.safetyRatioPercent) || 100;
 
-    const rawSafety = buildSafety(items.filter((i) => i.category === 'raw'), (r) => r.itemName, (r) => num(r.quantity), raws, threshold);
-    const subSafety = buildSafety(items.filter((i) => i.category === 'sub'), (r) => r.name, (r) => num(r.weight), subs, threshold);
+    const rawSummary = buildSummary(items.filter((i) => i.category === 'raw'), raws, (r) => r.itemName, (r) => r.quantity, threshold);
+    const subSummary = buildSummary(items.filter((i) => i.category === 'sub'), subs, (r) => r.name, (r) => r.weight, threshold);
 
-    const count = (rows, keyFn) => {
-      const m = {};
-      for (const r of rows) {
-        const k = keyFn(r);
-        m[k] = (m[k] || 0) + 1;
+    // Canister 현황: (사용제품, 종류) 그룹
+    const cmap = new Map();
+    for (const c of canisters) {
+      const content = c.content || '(비어있음)';
+      const size = disp(c.size, c.sizeEtc);
+      const key = `${content}||${size}`;
+      if (!cmap.has(key)) cmap.set(key, { content, size, count: 0, totalWeight: 0, heaviest: -1, heaviestNote: '' });
+      const g = cmap.get(key);
+      g.count += 1;
+      const w = num(c.weight) || 0;
+      g.totalWeight += w;
+      if (w > g.heaviest) {
+        g.heaviest = w;
+        g.heaviestNote = c.note || '';
       }
-      return m;
-    };
+    }
+    const canisterSummary = Array.from(cmap.values()).sort((a, b) =>
+      a.content === b.content ? a.size.localeCompare(b.size) : a.content.localeCompare(b.content),
+    );
 
     res.json({
       settings: { safetyRatioPercent: threshold },
-      rawMaterials: {
-        totalItems: rawSafety.length,
-        totalLots: raws.length,
-        belowCount: rawSafety.filter((r) => r.below).length,
-        totalQuantity: rawSafety.reduce((s, r) => s + r.quantity, 0),
-        items: rawSafety,
-      },
-      subMaterials: {
-        totalItems: subSafety.length,
-        totalLots: subs.length,
-        belowCount: subSafety.filter((r) => r.below).length,
-        totalWeight: subSafety.reduce((s, r) => s + r.quantity, 0),
-        items: subSafety,
-      },
-      canisters: {
-        total: canisters.length,
-        byLocation: count(canisters, (r) => disp(r.location, r.locationEtc)),
-        bySize: count(canisters, (r) => disp(r.size, r.sizeEtc)),
-        byStatus: count(canisters, (r) => disp(r.status, r.statusEtc)),
+      rawSummary,
+      subSummary,
+      canisterSummary,
+      counts: {
+        rawBelow: rawSummary.filter((r) => r.below).length,
+        subBelow: subSummary.filter((r) => r.below).length,
+        canisterTotal: canisters.length,
       },
     });
   }),
