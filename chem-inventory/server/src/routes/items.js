@@ -41,7 +41,7 @@ router.post(
       if (rows.some((r) => r.category === category && r.name === name)) throw badRequest('이미 등록된 품목입니다.');
       const row = {
         id: newId('it'), category, name, unit,
-        safetyStock: String(safetyStock), note: str(req.body.note),
+        safetyStock: String(safetyStock), vendor: str(req.body.vendor), note: str(req.body.note),
         createdBy: me, createdAt: now(), updatedBy: me, updatedAt: now(),
       };
       rows.push(row);
@@ -67,6 +67,7 @@ router.patch(
         r.name = name;
       }
       if (req.body.unit !== undefined) r.unit = str(req.body.unit) || r.unit;
+      if (req.body.vendor !== undefined) r.vendor = str(req.body.vendor);
       if (req.body.safetyStock !== undefined) {
         const s = num(req.body.safetyStock);
         if (Number.isNaN(s) || s < 0) throw badRequest('안전재고 목표값은 0 이상의 숫자여야 합니다.');

@@ -6,7 +6,7 @@ const UNIT_PRESET = ['kg', 'ea', 'L'];
 
 /**
  * 품목 선택: 마스터 목록(관리자 등록)에서 선택하거나 '기타'로 직접 입력.
- * onChange(name, unit) — 마스터 선택 시 해당 품목의 단위도 함께 전달.
+ * onChange(name, unit, vendor) — 마스터 선택 시 단위·기본 업체명도 함께 전달.
  */
 export function ItemSelect({ category, value, onChange }) {
   const [items, setItems] = useState([]);
@@ -24,10 +24,10 @@ export function ItemSelect({ category, value, onChange }) {
   function handleSelect(e) {
     const v = e.target.value;
     setMode(v);
-    if (v === '기타') onChange('', '');
+    if (v === '기타') onChange('', '', '');
     else {
       const m = items.find((i) => i.name === v);
-      onChange(v, m ? m.unit : '');
+      onChange(v, m ? m.unit : '', m ? m.vendor || '' : '');
     }
   }
 
@@ -41,7 +41,7 @@ export function ItemSelect({ category, value, onChange }) {
         <option value="기타">기타(직접입력)</option>
       </Select>
       {mode === '기타' && (
-        <TextInput value={value} onChange={(e) => onChange(e.target.value, '')} placeholder="품목명 직접 입력" />
+        <TextInput value={value} onChange={(e) => onChange(e.target.value, '', '')} placeholder="품목명 직접 입력" />
       )}
     </div>
   );

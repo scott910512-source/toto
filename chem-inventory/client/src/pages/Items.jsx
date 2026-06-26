@@ -3,7 +3,7 @@ import { api } from '../api';
 import { Modal, Field, TextInput, Select, useToast, ConfirmDialog, Empty, Loading, Badge } from '../components/ui';
 import { UnitInput } from '../components/inputs';
 
-const blank = { category: 'raw', name: '', unit: 'kg', safetyStock: '', note: '' };
+const blank = { category: 'raw', name: '', unit: 'kg', safetyStock: '', vendor: '', note: '' };
 
 export default function Items() {
   const toast = useToast();
@@ -46,6 +46,7 @@ export default function Items() {
                 <th>품목명</th>
                 <th>단위</th>
                 <th className="num">안전재고 목표값</th>
+                <th>기본 업체명</th>
                 <th>비고</th>
                 <th style={{ width: 1 }}></th>
               </tr>
@@ -56,6 +57,7 @@ export default function Items() {
                   <td><b>{it.name}</b></td>
                   <td><Badge>{it.unit}</Badge></td>
                   <td className="num">{Number(it.safetyStock).toLocaleString()} {it.unit}</td>
+                  <td className="muted">{it.vendor || '–'}</td>
                   <td className="muted">{it.note || '–'}</td>
                   <td>
                     <div className="btn-row">
@@ -103,7 +105,7 @@ function ItemForm({ mode, initial, onClose, onSaved, onError }) {
     if (!f.name.trim()) return onError('품목명을 입력하세요.');
     setBusy(true);
     try {
-      const payload = { category: f.category, name: f.name.trim(), unit: f.unit, safetyStock: f.safetyStock === '' ? 0 : Number(f.safetyStock), note: f.note };
+      const payload = { category: f.category, name: f.name.trim(), unit: f.unit, safetyStock: f.safetyStock === '' ? 0 : Number(f.safetyStock), vendor: f.vendor, note: f.note };
       if (mode === 'create') await api.post('/items', payload);
       else await api.patch('/items/' + initial.id, payload);
       onSaved();
@@ -136,6 +138,9 @@ function ItemForm({ mode, initial, onClose, onSaved, onError }) {
           <TextInput type="number" value={f.safetyStock} onChange={(e) => set('safetyStock', e.target.value)} placeholder="0" />
         </Field>
       </div>
+      <Field label="기본 업체명" hint="원/부재료 등록 시 이 값이 자동 입력됩니다(수정 가능)">
+        <TextInput value={f.vendor} onChange={(e) => set('vendor', e.target.value)} placeholder="예: (주)한솔케미칼" />
+      </Field>
       <Field label="비고">
         <TextInput value={f.note} onChange={(e) => set('note', e.target.value)} placeholder="선택 입력" />
       </Field>

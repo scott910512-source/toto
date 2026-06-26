@@ -157,7 +157,10 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 .tbl.compact td { padding: 6px 12px; font-size: 13px; }
 .tbl.compact .btn.sm { padding: 3px 9px; font-size: 12px; }
 .tbl.compact tr td { border-bottom: 1px solid #f0f0f3; }
-.group-row td { background: var(--surface-2) !important; font-weight: 600; font-size: 12px; color: var(--text-2); }
+.group-row td { background: var(--surface-2) !important; font-weight: 700; font-size: 12.5px; color: var(--text); }
+/* 표 안 액션 버튼은 항상 가로 한 줄로 */
+.tbl td .btn-row { flex-wrap: nowrap; white-space: nowrap; justify-content: flex-end; }
+.tbl td .btn-row .btn { white-space: nowrap; }
 .tbl .muted { color: var(--text-3); }
 .empty { padding: 44px; text-align: center; color: var(--text-3); font-size: 14px; }
 

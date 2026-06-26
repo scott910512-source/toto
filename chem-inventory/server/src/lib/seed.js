@@ -20,11 +20,11 @@ function seedRows() {
     ],
     // 품목 마스터(관리자 등록) — 안전재고 목표값 포함
     items: [
-      { id: 'it_r01', category: 'raw', name: '톨루엔', unit: 'kg', safetyStock: '1000', note: '', createdBy: 'admin', createdAt: T, updatedBy: 'admin', updatedAt: T },
-      { id: 'it_r02', category: 'raw', name: '촉매펠릿', unit: 'ea', safetyStock: '400', note: '안전재고 미달 예시', createdBy: 'admin', createdAt: T, updatedBy: 'admin', updatedAt: T },
-      { id: 'it_r03', category: 'raw', name: '황산', unit: 'L', safetyStock: '300', note: '', createdBy: 'admin', createdAt: T, updatedBy: 'admin', updatedAt: T },
-      { id: 'it_s01', category: 'sub', name: '실링패드', unit: 'kg', safetyStock: '40', note: '', createdBy: 'admin', createdAt: T, updatedBy: 'admin', updatedAt: T },
-      { id: 'it_s02', category: 'sub', name: '활성탄', unit: 'kg', safetyStock: '60', note: '', createdBy: 'admin', createdAt: T, updatedBy: 'admin', updatedAt: T },
+      { id: 'it_r01', category: 'raw', name: '톨루엔', unit: 'kg', safetyStock: '1000', vendor: '(주)한솔케미칼', note: '', createdBy: 'admin', createdAt: T, updatedBy: 'admin', updatedAt: T },
+      { id: 'it_r02', category: 'raw', name: '촉매펠릿', unit: 'ea', safetyStock: '400', vendor: '동성하이켐', note: '안전재고 미달 예시', createdBy: 'admin', createdAt: T, updatedBy: 'admin', updatedAt: T },
+      { id: 'it_r03', category: 'raw', name: '황산', unit: 'L', safetyStock: '300', vendor: '대정화학', note: '', createdBy: 'admin', createdAt: T, updatedBy: 'admin', updatedAt: T },
+      { id: 'it_s01', category: 'sub', name: '실링패드', unit: 'kg', safetyStock: '40', vendor: '(주)한솔케미칼', note: '', createdBy: 'admin', createdAt: T, updatedBy: 'admin', updatedAt: T },
+      { id: 'it_s02', category: 'sub', name: '활성탄', unit: 'kg', safetyStock: '60', vendor: '대정화학', note: '', createdBy: 'admin', createdAt: T, updatedBy: 'admin', updatedAt: T },
     ],
     // 원재료: Lot 단위 (품목으로 취합)
     raw_materials: [

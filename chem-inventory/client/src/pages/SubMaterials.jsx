@@ -1,10 +1,24 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, Fragment } from 'react';
 import { api, downloadCsv } from '../api';
 import { useAuth } from '../auth/AuthContext';
 import { Modal, Field, TextInput, Select, useToast, ConfirmDialog, Empty, Loading, Badge } from '../components/ui';
 import { UnitInput, ItemSelect } from '../components/inputs';
 
 const blank = { name: '', receivedDate: '', lotNo: '', vendor: '', unit: 'kg', weight: '', note: '' };
+const today = () => new Date().toISOString().slice(0, 10);
+
+function groupByName(rows) {
+  const groups = [];
+  const idx = {};
+  for (const r of rows) {
+    if (!(r.name in idx)) {
+      idx[r.name] = groups.length;
+      groups.push({ name: r.name, lots: [] });
+    }
+    groups[idx[r.name]].lots.push(r);
+  }
+  return groups;
+}
 
 export default function SubMaterials() {
   const { isAdmin } = useAuth();
@@ -44,7 +58,7 @@ export default function SubMaterials() {
         <div className="desc">부재료를 품목 안에서 <b>Lot 단위</b>로 관리합니다. (입고일/Lot No/잔량/업체명)</div>
         <div className="btn-row">
           <button className="btn secondary sm" onClick={exportCsv}>⬇ CSV</button>
-          <button className="btn sm" onClick={() => setEdit({ mode: 'create', data: { ...blank } })}>+ 부재료 등록</button>
+          <button className="btn sm" onClick={() => setEdit({ mode: 'create', data: { ...blank, receivedDate: today() } })}>+ 부재료 등록</button>
         </div>
       </div>
 
@@ -72,7 +86,6 @@ export default function SubMaterials() {
             <table className="tbl compact">
               <thead>
                 <tr>
-                  <th>품목명</th>
                   <th>Lot No</th>
                   <th className="num">잔량 / 입고</th>
                   <th>업체명</th>
@@ -83,23 +96,27 @@ export default function SubMaterials() {
                 </tr>
               </thead>
               <tbody>
-                {items.map((r) => (
-                  <tr key={r.id}>
-                    <td><b>{r.name}</b></td>
-                    <td><Badge color="blue">{r.lotNo}</Badge></td>
-                    <td className="num"><b>{Number(r.weight).toLocaleString()}</b> <span className="muted">/ {Number(r.initialWeight).toLocaleString()}{r.unit}</span></td>
-                    <td className="muted">{r.vendor || '–'}</td>
-                    <td className="muted">{r.receivedDate || '–'}</td>
-                    <td className="muted">{r.note || '–'}</td>
-                    <td className="muted">{r.updatedBy}</td>
-                    <td>
-                      <div className="btn-row">
-                        <button className="btn ghost sm" onClick={() => setTx(r)}>수불</button>
-                        <button className="btn secondary sm" onClick={() => setEdit({ mode: 'edit', data: { ...r } })}>수정</button>
-                        {isAdmin && <button className="btn danger sm" onClick={() => setDel(r)}>삭제</button>}
-                      </div>
-                    </td>
-                  </tr>
+                {groupByName(items).map((g) => (
+                  <Fragment key={g.name}>
+                    <tr className="group-row"><td colSpan={7}>📦 {g.name} · {g.lots.length} Lot</td></tr>
+                    {g.lots.map((r) => (
+                      <tr key={r.id}>
+                        <td style={{ paddingLeft: 24 }}><Badge color="blue">{r.lotNo}</Badge></td>
+                        <td className="num"><b>{Number(r.weight).toLocaleString()}</b> <span className="muted">/ {Number(r.initialWeight).toLocaleString()}{r.unit}</span></td>
+                        <td className="muted">{r.vendor || '–'}</td>
+                        <td className="muted">{r.receivedDate || '–'}</td>
+                        <td className="muted">{r.note || '–'}</td>
+                        <td className="muted">{r.updatedBy}</td>
+                        <td>
+                          <div className="btn-row">
+                            <button className="btn ghost sm" onClick={() => setTx(r)}>수불</button>
+                            <button className="btn secondary sm" onClick={() => setEdit({ mode: 'edit', data: { ...r } })}>수정</button>
+                            {isAdmin && <button className="btn danger sm" onClick={() => setDel(r)}>삭제</button>}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </Fragment>
                 ))}
               </tbody>
             </table>
@@ -207,7 +224,7 @@ function SubForm({ mode, initial, onClose, onSaved, onError }) {
     >
       <Field label="품목" required hint="목록에서 선택하거나 '기타'로 직접 입력">
         {mode === 'create' ? (
-          <ItemSelect category="sub" value={f.name} onChange={(name, unit) => setF((p) => ({ ...p, name, unit: unit || p.unit }))} />
+          <ItemSelect category="sub" value={f.name} onChange={(name, unit, vendor) => setF((p) => ({ ...p, name, unit: unit || p.unit, vendor: vendor || p.vendor }))} />
         ) : (
           <TextInput value={f.name} onChange={(e) => set('name', e.target.value)} />
         )}

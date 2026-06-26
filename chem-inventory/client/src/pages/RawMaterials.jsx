@@ -1,10 +1,26 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, Fragment } from 'react';
 import { api, downloadCsv } from '../api';
 import { useAuth } from '../auth/AuthContext';
 import { Modal, Field, TextInput, Select, useToast, ConfirmDialog, Empty, Loading, Badge } from '../components/ui';
 import { UnitInput, ItemSelect } from '../components/inputs';
 
 const blank = { itemName: '', lotNo: '', quantity: '', unit: 'kg', vendor: '', receivedDate: '', note: '' };
+const today = () => new Date().toISOString().slice(0, 10);
+
+/** 행 배열을 품목명(itemName) 기준으로 묶는다(입력 순서 유지). */
+function groupByItem(rows, key) {
+  const groups = [];
+  const idx = {};
+  for (const r of rows) {
+    const k = r[key];
+    if (!(k in idx)) {
+      idx[k] = groups.length;
+      groups.push({ name: k, lots: [] });
+    }
+    groups[idx[k]].lots.push(r);
+  }
+  return groups;
+}
 
 export default function RawMaterials() {
   const { isAdmin } = useAuth();
@@ -82,7 +98,7 @@ export default function RawMaterials() {
         <div className="desc">품목은 취합 관리되며, 입출고(수불)는 <b>Lot 단위</b>로 개별 처리됩니다.</div>
         <div className="btn-row">
           <button className="btn secondary sm" onClick={exportCsv}>⬇ CSV</button>
-          <button className="btn sm" onClick={() => setEdit({ mode: 'create', data: { ...blank } })}>+ 원재료 등록</button>
+          <button className="btn sm" onClick={() => setEdit({ mode: 'create', data: { ...blank, receivedDate: today() } })}>+ 원재료 등록</button>
         </div>
       </div>
 
@@ -102,7 +118,6 @@ export default function RawMaterials() {
           <table className="tbl compact">
             <thead>
               <tr>
-                <th>품목명</th>
                 <th>Lot No</th>
                 <th className="num">수량</th>
                 <th>단위</th>
@@ -114,24 +129,30 @@ export default function RawMaterials() {
               </tr>
             </thead>
             <tbody>
-              {items.map((r) => (
-                <tr key={r.id}>
-                  <td><b>{r.itemName}</b></td>
-                  <td><Badge color="blue">{r.lotNo}</Badge></td>
-                  <td className="num">{Number(r.quantity).toLocaleString()}</td>
-                  <td className="muted">{r.unit}</td>
-                  <td className="muted">{r.vendor || '–'}</td>
-                  <td className="muted">{r.receivedDate || '–'}</td>
-                  <td className="muted">{r.note || '–'}</td>
-                  <td className="muted">{r.updatedBy}</td>
-                  <td>
-                    <div className="btn-row">
-                      <button className="btn ghost sm" onClick={() => setTx(r)}>수불</button>
-                      <button className="btn secondary sm" onClick={() => setEdit({ mode: 'edit', data: { ...r } })}>수정</button>
-                      {isAdmin && <button className="btn danger sm" onClick={() => setDel(r)}>삭제</button>}
-                    </div>
-                  </td>
-                </tr>
+              {groupByItem(items, 'itemName').map((g) => (
+                <Fragment key={g.name}>
+                  <tr className="group-row">
+                    <td colSpan={8}>📦 {g.name} · {g.lots.length} Lot</td>
+                  </tr>
+                  {g.lots.map((r) => (
+                    <tr key={r.id}>
+                      <td style={{ paddingLeft: 24 }}><Badge color="blue">{r.lotNo}</Badge></td>
+                      <td className="num">{Number(r.quantity).toLocaleString()}</td>
+                      <td className="muted">{r.unit}</td>
+                      <td className="muted">{r.vendor || '–'}</td>
+                      <td className="muted">{r.receivedDate || '–'}</td>
+                      <td className="muted">{r.note || '–'}</td>
+                      <td className="muted">{r.updatedBy}</td>
+                      <td>
+                        <div className="btn-row">
+                          <button className="btn ghost sm" onClick={() => setTx(r)}>수불</button>
+                          <button className="btn secondary sm" onClick={() => setEdit({ mode: 'edit', data: { ...r } })}>수정</button>
+                          {isAdmin && <button className="btn danger sm" onClick={() => setDel(r)}>삭제</button>}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </Fragment>
               ))}
             </tbody>
           </table>
@@ -198,7 +219,7 @@ function RawForm({ mode, initial, onClose, onSaved, onError }) {
     >
       <Field label="품목" required hint="목록에서 선택하거나 '기타'로 직접 입력">
         {mode === 'create' ? (
-          <ItemSelect category="raw" value={f.itemName} onChange={(name, unit) => setF((p) => ({ ...p, itemName: name, unit: unit || p.unit }))} />
+          <ItemSelect category="raw" value={f.itemName} onChange={(name, unit, vendor) => setF((p) => ({ ...p, itemName: name, unit: unit || p.unit, vendor: vendor || p.vendor }))} />
         ) : (
           <TextInput value={f.itemName} onChange={(e) => set('itemName', e.target.value)} />
         )}
