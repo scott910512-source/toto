@@ -3,6 +3,8 @@
 
 # 런타임 데이터(서버 PC의 CSV 저장소) — 최초 실행 시 자동 시드됨
 server/data/
+# 자동 백업 스냅샷
+server/backups/
 
 # 빌드 산출물
 client/dist/

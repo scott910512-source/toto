@@ -2,9 +2,19 @@
 
 const { createApp } = require('./app');
 const { ensureSeed } = require('./lib/seed');
+const { backupData } = require('./lib/backup');
 const { PORT, DATA_DIR } = require('./config');
 
-// 데이터 파일이 없으면 초기 시드 생성
+// 시작 시 기존 데이터를 백업(읽기만 하므로 원본은 변경되지 않음)
+try {
+  const dest = backupData();
+  if (dest) console.log(`[backup] 기존 데이터 백업 완료: ${dest}`);
+} catch (e) {
+  // eslint-disable-next-line no-console
+  console.warn('[backup] 백업 실패(무시하고 계속):', e.message);
+}
+
+// 데이터 파일이 "없을 때만" 초기 시드 생성 (기존 데이터는 절대 덮어쓰지 않음)
 const created = ensureSeed();
 if (created.length) {
   // eslint-disable-next-line no-console
