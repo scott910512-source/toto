@@ -11,6 +11,7 @@ import CanisterDetail from './pages/CanisterDetail';
 import Transactions from './pages/Transactions';
 import Admin from './pages/Admin';
 import Settings from './pages/Settings';
+import Items from './pages/Items';
 
 const NAV = [
   { to: '/', label: '대시보드', ico: '◧', end: true },
@@ -46,12 +47,17 @@ function Sidebar() {
         )}
         <div className="nav-section">설정</div>
         {isAdmin && (
+          <NavLink to="/items" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+            <span className="ico">☰</span>품목·안전재고
+          </NavLink>
+        )}
+        {isAdmin && (
           <NavLink to="/admin" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
             <span className="ico">⚙</span>사용자 관리
           </NavLink>
         )}
         <NavLink to="/settings" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
-          <span className="ico">⊙</span>안전재고 설정
+          <span className="ico">⊙</span>경고 비율 설정
         </NavLink>
       </nav>
       <div style={{ marginTop: 24, padding: '0 12px', fontSize: 12, color: 'var(--text-3)' }}>
@@ -102,8 +108,9 @@ export default function App() {
       <Route path="/canisters" element={<Protected title="Canister 관리"><Canisters /></Protected>} />
       <Route path="/canisters/:id" element={<Protected title="용기이력카드"><CanisterDetail /></Protected>} />
       <Route path="/transactions" element={<Protected title="수불 내역"><Transactions /></Protected>} />
+      <Route path="/items" element={<Protected title="품목 · 안전재고 관리" adminOnly><Items /></Protected>} />
       <Route path="/admin" element={<Protected title="사용자 관리" adminOnly><Admin /></Protected>} />
-      <Route path="/settings" element={<Protected title="안전재고 설정"><Settings /></Protected>} />
+      <Route path="/settings" element={<Protected title="안전재고 경고 비율"><Settings /></Protected>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

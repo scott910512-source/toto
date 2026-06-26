@@ -5,7 +5,7 @@ import { useAuth } from '../auth/AuthContext';
 import { Modal, Field, TextInput, Select, useToast, ConfirmDialog, Empty, Loading, Badge, statusColor } from '../components/ui';
 import { EtcSelect } from '../components/inputs';
 
-const blankCreate = { canisterNo: '', size: '50L', sizeEtc: '', location: '2공장현장', locationEtc: '', status: '수령', statusEtc: '', note: '' };
+const blankCreate = { canisterNo: '', size: '50L', sizeEtc: '', location: '2공장현장', locationEtc: '', status: '수령', statusEtc: '', content: '', weight: '', note: '' };
 
 export default function Canisters() {
   const { isAdmin } = useAuth();
@@ -15,7 +15,7 @@ export default function Canisters() {
   const [summary, setSummary] = useState(null);
   const [filters, setFilters] = useState({ q: '', size: '', location: '', status: '' });
   const [create, setCreate] = useState(false);
-  const [move, setMove] = useState(null);
+  const [moveOpen, setMoveOpen] = useState(false);
   const [del, setDel] = useState(null);
 
   const load = useCallback(async () => {
@@ -44,9 +44,10 @@ export default function Canisters() {
   return (
     <>
       <div className="page-head">
-        <div className="desc">Canister(용기)를 No.·사이즈·위치·상태로 관리하고, 반입/반출 이력을 용기이력카드로 추적합니다.</div>
+        <div className="desc">Canister별 <b>내용물(제품)·무게</b>를 관리하고, 반입/반출 이력을 용기이력카드로 추적합니다.</div>
         <div className="btn-row">
           <button className="btn secondary sm" onClick={exportCsv}>⬇ CSV</button>
+          <button className="btn secondary sm" onClick={() => setMoveOpen(true)}>↔ Canister 이력 등록</button>
           <button className="btn sm" onClick={() => setCreate(true)}>+ Canister 등록</button>
         </div>
       </div>
@@ -63,17 +64,17 @@ export default function Canisters() {
       <div className="toolbar">
         <div className="search">
           <span>🔍</span>
-          <input placeholder="Canister No. 검색" value={filters.q} onChange={(e) => setF('q', e.target.value)} />
+          <input placeholder="Canister No. / 내용물 검색" value={filters.q} onChange={(e) => setF('q', e.target.value)} />
         </div>
-        <Select value={filters.size} onChange={(e) => setF('size', e.target.value)} style={{ width: 130 }}>
+        <Select value={filters.size} onChange={(e) => setF('size', e.target.value)} style={{ width: 120 }}>
           <option value="">사이즈 전체</option>
           {meta.canisterSizes.map((s) => <option key={s} value={s}>{s}</option>)}
         </Select>
-        <Select value={filters.location} onChange={(e) => setF('location', e.target.value)} style={{ width: 150 }}>
+        <Select value={filters.location} onChange={(e) => setF('location', e.target.value)} style={{ width: 140 }}>
           <option value="">위치 전체</option>
           {meta.canisterLocations.map((s) => <option key={s} value={s}>{s}</option>)}
         </Select>
-        <Select value={filters.status} onChange={(e) => setF('status', e.target.value)} style={{ width: 140 }}>
+        <Select value={filters.status} onChange={(e) => setF('status', e.target.value)} style={{ width: 130 }}>
           <option value="">상태 전체</option>
           {meta.canisterStatuses.map((s) => <option key={s} value={s}>{s}</option>)}
         </Select>
@@ -85,11 +86,13 @@ export default function Canisters() {
         ) : items.length === 0 ? (
           <Empty>조건에 맞는 Canister가 없습니다.</Empty>
         ) : (
-          <table className="tbl">
+          <table className="tbl compact">
             <thead>
               <tr>
                 <th>Canister No.</th>
                 <th>사이즈</th>
+                <th>제품(내용물)</th>
+                <th className="num">무게</th>
                 <th>위치</th>
                 <th>상태</th>
                 <th>최종변경</th>
@@ -101,13 +104,14 @@ export default function Canisters() {
                 <tr key={c.id}>
                   <td><Link to={`/canisters/${c.id}`} className="inline-link"><b>{c.canisterNo}</b></Link></td>
                   <td><Badge>{c.sizeLabel}</Badge></td>
+                  <td>{c.content ? <b>{c.content}</b> : <span className="muted">(비어있음)</span>}</td>
+                  <td className="num">{Number(c.weight || 0).toLocaleString()}</td>
                   <td className="muted">{c.locationLabel}</td>
                   <td><Badge color={statusColor(c.status)} dot>{c.statusLabel}</Badge></td>
-                  <td className="muted" style={{ fontSize: 12 }}>{c.updatedBy}<br />{(c.updatedAt || '').slice(0, 10)}</td>
+                  <td className="muted">{(c.updatedAt || '').slice(0, 10)}</td>
                   <td>
                     <div className="btn-row">
                       <Link to={`/canisters/${c.id}`} className="btn ghost sm">이력카드</Link>
-                      <button className="btn secondary sm" onClick={() => setMove(c)}>반입/반출</button>
                       {isAdmin && <button className="btn danger sm" onClick={() => setDel(c)}>삭제</button>}
                     </div>
                   </td>
@@ -119,21 +123,10 @@ export default function Canisters() {
       </div>
 
       {create && (
-        <CanisterForm
-          meta={meta}
-          onClose={() => setCreate(false)}
-          onSaved={() => { setCreate(false); load(); toast.ok('Canister를 등록했습니다.'); }}
-          onError={(m) => toast.err(m)}
-        />
+        <CanisterForm meta={meta} onClose={() => setCreate(false)} onSaved={() => { setCreate(false); load(); toast.ok('Canister를 등록했습니다.'); }} onError={(m) => toast.err(m)} />
       )}
-      {move && (
-        <MoveForm
-          meta={meta}
-          item={move}
-          onClose={() => setMove(null)}
-          onSaved={() => { setMove(null); load(); toast.ok('이력이 기록되었습니다.'); }}
-          onError={(m) => toast.err(m)}
-        />
+      {moveOpen && (
+        <MoveForm meta={meta} canisters={items || []} onClose={() => setMoveOpen(false)} onSaved={() => { setMoveOpen(false); load(); toast.ok('이력이 기록되었습니다.'); }} onError={(m) => toast.err(m)} />
       )}
       {del && (
         <ConfirmDialog
@@ -159,7 +152,7 @@ function CanisterForm({ meta, onClose, onSaved, onError }) {
     if (!f.canisterNo.trim()) return onError('Canister No.를 입력하세요.');
     setBusy(true);
     try {
-      await api.post('/canisters', { ...f, canisterNo: f.canisterNo.trim() });
+      await api.post('/canisters', { ...f, canisterNo: f.canisterNo.trim(), weight: f.weight === '' ? 0 : Number(f.weight) });
       onSaved();
     } catch (e) { onError(e.message); } finally { setBusy(false); }
   }
@@ -167,7 +160,7 @@ function CanisterForm({ meta, onClose, onSaved, onError }) {
   return (
     <Modal
       title="Canister 등록"
-      subtitle="등록 시 '반입' 이력이 자동 생성됩니다."
+      subtitle="새 용기를 등록합니다. (내용물/무게가 있으면 반입 이력이 자동 생성)"
       onClose={onClose}
       footer={<>
         <button className="btn secondary" onClick={onClose}>취소</button>
@@ -180,6 +173,14 @@ function CanisterForm({ meta, onClose, onSaved, onError }) {
       <Field label="용기 사이즈" required>
         <EtcSelect options={meta.canisterSizes} value={f.size} etc={f.sizeEtc} onChange={(v, etc) => setF((p) => ({ ...p, size: v, sizeEtc: etc }))} placeholder="사이즈 입력" />
       </Field>
+      <div className="form-row">
+        <Field label="제품(내용물)">
+          <TextInput value={f.content} onChange={(e) => set('content', e.target.value)} placeholder="예: 톨루엔 (비어있으면 공란)" />
+        </Field>
+        <Field label="무게">
+          <TextInput type="number" value={f.weight} onChange={(e) => set('weight', e.target.value)} placeholder="0" />
+        </Field>
+      </div>
       <Field label="위치" required>
         <EtcSelect options={meta.canisterLocations} value={f.location} etc={f.locationEtc} onChange={(v, etc) => setF((p) => ({ ...p, location: v, locationEtc: etc }))} placeholder="위치 입력" />
       </Field>
@@ -193,49 +194,66 @@ function CanisterForm({ meta, onClose, onSaved, onError }) {
   );
 }
 
-function MoveForm({ meta, item, onClose, onSaved, onError }) {
-  const [f, setF] = useState({
-    type: '반출',
-    location: item.location,
-    locationEtc: item.locationEtc || '',
-    status: item.status,
-    statusEtc: item.statusEtc || '',
-    note: '',
-  });
+function MoveForm({ meta, canisters, onClose, onSaved, onError }) {
+  const [cid, setCid] = useState(canisters[0]?.id || '');
+  const sel = canisters.find((c) => c.id === cid);
+  const [f, setF] = useState({ type: '반출', content: '', weight: '', location: '', locationEtc: '', status: '', statusEtc: '', note: '' });
   const [busy, setBusy] = useState(false);
   const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
 
+  // 선택한 Canister의 현재 위치/상태/내용물을 기본값으로
+  useEffect(() => {
+    if (sel) setF((p) => ({ ...p, content: sel.content || '', location: sel.location, locationEtc: sel.locationEtc || '', status: sel.status, statusEtc: sel.statusEtc || '' }));
+  }, [cid]); // eslint-disable-line react-hooks/exhaustive-deps
+
   async function submit() {
+    if (!cid) return onError('Canister를 선택하세요.');
     setBusy(true);
     try {
-      await api.post(`/canisters/${item.id}/move`, f);
+      await api.post(`/canisters/${cid}/move`, { ...f, weight: f.weight === '' ? 0 : Number(f.weight) });
       onSaved();
     } catch (e) { onError(e.message); } finally { setBusy(false); }
   }
 
   return (
     <Modal
-      title={`반입/반출 처리 — ${item.canisterNo}`}
-      subtitle={`현재: ${item.locationLabel} · ${item.statusLabel}`}
+      title="Canister 이력 등록 (반입/반출)"
+      subtitle={sel ? `현재: ${sel.content || '비어있음'} · ${Number(sel.weight || 0).toLocaleString()} · ${sel.locationLabel} · ${sel.statusLabel}` : '목록에서 Canister를 선택하세요'}
       onClose={onClose}
       footer={<>
         <button className="btn secondary" onClick={onClose}>취소</button>
-        <button className="btn" onClick={submit} disabled={busy}>{busy ? '처리 중…' : '이력 기록'}</button>
+        <button className="btn" onClick={submit} disabled={busy || !cid}>{busy ? '처리 중…' : '이력 기록'}</button>
       </>}
     >
+      <Field label="Canister 선택" required>
+        <Select value={cid} onChange={(e) => setCid(e.target.value)}>
+          <option value="" disabled>Canister 선택</option>
+          {canisters.map((c) => <option key={c.id} value={c.id}>{c.canisterNo} ({c.content || '비어있음'} {Number(c.weight || 0)})</option>)}
+        </Select>
+      </Field>
       <Field label="구분" required>
         <Select value={f.type} onChange={(e) => set('type', e.target.value)}>
           {meta.canisterMoveTypes.map((t) => <option key={t} value={t}>{t}</option>)}
         </Select>
       </Field>
+      {f.type !== '상태변경' && (
+        <div className="form-row">
+          <Field label="제품(내용물)">
+            <TextInput value={f.content} onChange={(e) => set('content', e.target.value)} placeholder="반입 시 내용물" />
+          </Field>
+          <Field label={f.type === '반입' ? '반입 무게' : '반출 무게'} required>
+            <TextInput type="number" value={f.weight} onChange={(e) => set('weight', e.target.value)} placeholder="0" />
+          </Field>
+        </div>
+      )}
       <Field label="위치">
-        <EtcSelect options={meta.canisterLocations} value={f.location} etc={f.locationEtc} onChange={(v, etc) => setF((p) => ({ ...p, location: v, locationEtc: etc }))} />
+        <EtcSelect options={meta.canisterLocations} value={f.location || meta.canisterLocations[0]} etc={f.locationEtc} onChange={(v, etc) => setF((p) => ({ ...p, location: v, locationEtc: etc }))} />
       </Field>
       <Field label="상태">
-        <EtcSelect options={meta.canisterStatuses} value={f.status} etc={f.statusEtc} onChange={(v, etc) => setF((p) => ({ ...p, status: v, statusEtc: etc }))} />
+        <EtcSelect options={meta.canisterStatuses} value={f.status || meta.canisterStatuses[0]} etc={f.statusEtc} onChange={(v, etc) => setF((p) => ({ ...p, status: v, statusEtc: etc }))} />
       </Field>
       <Field label="비고">
-        <TextInput value={f.note} onChange={(e) => set('note', e.target.value)} placeholder="예: 2공장 → 3류창고 이동" />
+        <TextInput value={f.note} onChange={(e) => set('note', e.target.value)} placeholder="예: 2공장 충전 후 반입" />
       </Field>
     </Modal>
   );

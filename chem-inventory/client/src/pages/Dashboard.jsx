@@ -8,17 +8,40 @@ function Stat({ label, value, unit, sub, warn, ico }) {
     <div className="card stat">
       <div className="label">{ico && <span>{ico}</span>}{label}</div>
       <div className={`value ${warn ? 'warn' : ''}`}>
-        {value}
-        {unit && <span className="unit">{unit}</span>}
+        {value}{unit && <span className="unit">{unit}</span>}
       </div>
       {sub && <div className="sub">{sub}</div>}
     </div>
   );
 }
 
+function SafetyList({ rows }) {
+  const sorted = [...rows].sort((a, b) => {
+    const ra = a.level == null ? Infinity : a.level;
+    const rb = b.level == null ? Infinity : b.level;
+    return ra - rb;
+  });
+  if (!sorted.length) return <Empty>등록된 품목이 없습니다.</Empty>;
+  return sorted.map((r) => {
+    const width = r.level == null ? 100 : Math.min(r.level, 100);
+    const cls = r.below ? 'red' : r.level != null && r.level < 130 ? 'orange' : 'green';
+    return (
+      <div className="safety-row" key={r.name}>
+        <div>
+          <div className="safety-name">{r.name}</div>
+          <div className="safety-qty">재고 {r.quantity.toLocaleString()}{r.unit} / 안전 {r.safetyStock.toLocaleString()}{r.unit}</div>
+        </div>
+        <span className="bar-track"><span className={`bar-fill ${cls}`} style={{ width: `${width}%` }} /></span>
+        <span className={`ratio ${r.below ? 'warn' : 'ok'}`}>{r.level == null ? '–' : `${r.level}%`}</span>
+      </div>
+    );
+  });
+}
+
 export default function Dashboard() {
   const [data, setData] = useState(null);
   const [err, setErr] = useState('');
+  const [tab, setTab] = useState('raw');
 
   useEffect(() => {
     api.get('/dashboard').then(setData).catch((e) => setErr(e.message));
@@ -26,48 +49,28 @@ export default function Dashboard() {
 
   if (err) return <Empty>{err}</Empty>;
   if (!data) return <Loading />;
-
   const { rawMaterials, subMaterials, canisters, settings } = data;
-  const sortedRaw = [...rawMaterials.items].sort((a, b) => {
-    const ra = a.ratio == null ? Infinity : a.ratio;
-    const rb = b.ratio == null ? Infinity : b.ratio;
-    return ra - rb;
-  });
 
   return (
     <>
       <div className="grid grid-4">
-        <Stat ico="⬡" label="원재료 품목" value={rawMaterials.totalItems} unit="종" sub={`총 수량 ${rawMaterials.totalQuantity.toLocaleString()}`} />
-        <Stat ico="⚠️" label="안전재고 미달" value={rawMaterials.belowCount} unit="종" warn={rawMaterials.belowCount > 0} sub={`경고 기준 ${settings.safetyRatioPercent}%`} />
-        <Stat ico="◇" label="부재료 Lot" value={subMaterials.totalLots} unit="건" sub={`${subMaterials.distinctItems}개 품목 · 총중량 ${subMaterials.totalWeight.toLocaleString()}`} />
+        <Stat ico="⬡" label="원재료 미달" value={rawMaterials.belowCount} unit="종" warn={rawMaterials.belowCount > 0} sub={`전체 ${rawMaterials.totalItems}품목 · ${rawMaterials.totalLots}Lot`} />
+        <Stat ico="◇" label="부재료 미달" value={subMaterials.belowCount} unit="종" warn={subMaterials.belowCount > 0} sub={`전체 ${subMaterials.totalItems}품목 · ${subMaterials.totalLots}Lot`} />
+        <Stat ico="⚠️" label="안전재고 경고기준" value={settings.safetyRatioPercent} unit="%" sub="관리자 설정값" />
         <Stat ico="⬢" label="Canister 보유" value={canisters.total} unit="개" sub="위치/사이즈/상태별 관리" />
       </div>
 
       <div className="grid grid-2" style={{ marginTop: 16 }}>
         <div className="card">
           <div className="card-head">
-            <h3>원재료 안전재고 현황</h3>
-            <Link to="/raw" className="inline-link">전체 보기 →</Link>
+            <h3>안전재고 현황</h3>
+            <div className="btn-row">
+              <button className={`btn sm ${tab === 'raw' ? '' : 'secondary'}`} onClick={() => setTab('raw')}>원재료</button>
+              <button className={`btn sm ${tab === 'sub' ? '' : 'secondary'}`} onClick={() => setTab('sub')}>부재료</button>
+            </div>
           </div>
           <div className="card-pad">
-            {sortedRaw.length === 0 && <Empty>등록된 원재료가 없습니다.</Empty>}
-            {sortedRaw.map((r) => {
-              const ratio = r.ratio == null ? null : r.ratio;
-              const width = ratio == null ? 100 : Math.min(ratio, 100);
-              const cls = r.below ? 'red' : ratio != null && ratio < 130 ? 'orange' : 'green';
-              return (
-                <div className="safety-row" key={r.id}>
-                  <div>
-                    <div className="safety-name">{r.name}</div>
-                    <div className="safety-qty">
-                      재고 {r.quantity.toLocaleString()}{r.unit} / 안전 {r.safetyStock.toLocaleString()}{r.unit}
-                    </div>
-                  </div>
-                  <span className="bar-track"><span className={`bar-fill ${cls}`} style={{ width: `${width}%` }} /></span>
-                  <span className={`ratio ${r.below ? 'warn' : 'ok'}`}>{ratio == null ? '–' : `${ratio}%`}</span>
-                </div>
-              );
-            })}
+            <SafetyList rows={tab === 'raw' ? rawMaterials.items : subMaterials.items} />
           </div>
         </div>
 

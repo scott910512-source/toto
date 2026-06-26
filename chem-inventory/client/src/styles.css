@@ -152,6 +152,12 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 .tbl tr:last-child td { border-bottom: none; }
 .tbl tr:hover td { background: var(--surface-2); }
 .tbl .num { text-align: right; font-variant-numeric: tabular-nums; }
+/* 촘촘한(세로폭 작은) 표 — 가로로 길게 보기 */
+.tbl.compact th { padding: 7px 12px; }
+.tbl.compact td { padding: 6px 12px; font-size: 13px; }
+.tbl.compact .btn.sm { padding: 3px 9px; font-size: 12px; }
+.tbl.compact tr td { border-bottom: 1px solid #f0f0f3; }
+.group-row td { background: var(--surface-2) !important; font-weight: 600; font-size: 12px; color: var(--text-2); }
 .tbl .muted { color: var(--text-3); }
 .empty { padding: 44px; text-align: center; color: var(--text-3); font-size: 14px; }
 

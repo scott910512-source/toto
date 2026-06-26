@@ -13,26 +13,34 @@ function disp(value, etc) {
   return value === '기타' ? (etc || '기타') : value;
 }
 
+/** 품목 마스터 + 재고 행으로 품목별 안전재고 현황을 계산한다. */
+function buildSafety(masters, getName, getQty, rows, threshold) {
+  const names = new Set([...masters.map((m) => m.name), ...rows.map(getName)]);
+  return Array.from(names).map((name) => {
+    const master = masters.find((m) => m.name === name);
+    const total = rows.filter((r) => getName(r) === name).reduce((s, r) => s + (getQty(r) || 0), 0);
+    const safety = master ? num(master.safetyStock) || 0 : 0;
+    const unit = master ? master.unit : '';
+    const level = safety > 0 ? Math.round((total / safety) * 100) : null;
+    const below = safety > 0 && total < safety * (threshold / 100);
+    return { name, unit, quantity: total, safetyStock: safety, level, below };
+  }).sort((a, b) => a.name.localeCompare(b.name));
+}
+
 router.get(
   '/',
   asyncHandler(async (req, res) => {
-    const [raws, subs, canisters, settings] = await Promise.all([
+    const [items, raws, subs, canisters, settings] = await Promise.all([
+      readTable('items'),
       readTable('raw_materials'),
       readTable('sub_materials'),
       readTable('canisters'),
       readSettings(),
     ]);
+    const threshold = num(settings.safetyRatioPercent) || 100;
 
-    const ratioThreshold = num(settings.safetyRatioPercent) || 100;
-
-    const rawStatus = raws.map((r) => {
-      const qty = num(r.quantity) || 0;
-      const safety = num(r.safetyStock) || 0;
-      const ratio = safety > 0 ? Math.round((qty / safety) * 100) : null;
-      const below = safety > 0 && qty < safety * (ratioThreshold / 100);
-      return { id: r.id, name: r.name, unit: r.unit, quantity: qty, safetyStock: safety, ratio, below };
-    });
-    const belowCount = rawStatus.filter((r) => r.below).length;
+    const rawSafety = buildSafety(items.filter((i) => i.category === 'raw'), (r) => r.itemName, (r) => num(r.quantity), raws, threshold);
+    const subSafety = buildSafety(items.filter((i) => i.category === 'sub'), (r) => r.name, (r) => num(r.weight), subs, threshold);
 
     const count = (rows, keyFn) => {
       const m = {};
@@ -44,17 +52,20 @@ router.get(
     };
 
     res.json({
-      settings: { safetyRatioPercent: ratioThreshold },
+      settings: { safetyRatioPercent: threshold },
       rawMaterials: {
-        totalItems: raws.length,
-        belowCount,
-        totalQuantity: rawStatus.reduce((s, r) => s + r.quantity, 0),
-        items: rawStatus,
+        totalItems: rawSafety.length,
+        totalLots: raws.length,
+        belowCount: rawSafety.filter((r) => r.below).length,
+        totalQuantity: rawSafety.reduce((s, r) => s + r.quantity, 0),
+        items: rawSafety,
       },
       subMaterials: {
+        totalItems: subSafety.length,
         totalLots: subs.length,
-        totalWeight: subs.reduce((s, r) => s + (num(r.weight) || 0), 0),
-        distinctItems: new Set(subs.map((s) => s.name)).size,
+        belowCount: subSafety.filter((r) => r.below).length,
+        totalWeight: subSafety.reduce((s, r) => s + r.quantity, 0),
+        items: subSafety,
       },
       canisters: {
         total: canisters.length,

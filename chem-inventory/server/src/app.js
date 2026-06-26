@@ -8,6 +8,7 @@ const { SESSION_SECRET, NODE_ENV } = require('./config');
 
 const authRoutes = require('./routes/auth');
 const usersRoutes = require('./routes/users');
+const { router: itemsRoutes } = require('./routes/items');
 const { router: rawRoutes } = require('./routes/rawMaterials');
 const { router: subRoutes } = require('./routes/subMaterials');
 const { router: canisterRoutes } = require('./routes/canisters');
@@ -40,6 +41,7 @@ function createApp() {
 
   app.use('/api/auth', authRoutes);
   app.use('/api/users', usersRoutes);
+  app.use('/api/items', itemsRoutes);
   app.use('/api/raw-materials', rawRoutes);
   app.use('/api/sub-materials', subRoutes);
   app.use('/api/canisters', canisterRoutes);

@@ -48,7 +48,8 @@ export default function Login() {
           계정이 없으신가요? <Link to="/signup">사용 신청</Link>
         </div>
         <div className="seed-tip">
-          최초 관리자 계정 — 아이디 <b>admin</b> / 비밀번호 <b>admin1234</b>
+          사용 및 에러 문의<br />
+          <b>생산2팀 임종수 PL</b>
         </div>
       </div>
     </div>

@@ -21,16 +21,19 @@ function filterRows(rows, query) {
   });
 }
 
-// 목록
+// 목록 (품목명 → Lot 입고일순)
 router.get(
   '/',
   asyncHandler(async (req, res) => {
     const rows = await readTable('sub_materials');
-    res.json({ items: filterRows(rows, req.query) });
+    const sorted = filterRows(rows, req.query).sort((a, b) =>
+      a.name === b.name ? (a.receivedDate < b.receivedDate ? 1 : -1) : a.name.localeCompare(b.name),
+    );
+    res.json({ items: sorted });
   }),
 );
 
-// 품목별 내역현황(품목명 기준 집계)
+// 품목별 내역현황(품목명 기준 집계, Lot은 입고일 오름차순 정렬)
 router.get(
   '/by-item',
   asyncHandler(async (req, res) => {
@@ -44,7 +47,9 @@ router.get(
       g.totalWeight += num(r.weight) || 0;
       g.items.push(r);
     }
-    res.json({ items: Array.from(map.values()) });
+    const groups = Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
+    for (const g of groups) g.items.sort((a, b) => (a.receivedDate > b.receivedDate ? 1 : -1));
+    res.json({ items: groups });
   }),
 );
 

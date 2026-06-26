@@ -1,117 +1,125 @@
 'use strict';
 
 const express = require('express');
-const { mutate, readTable } = require('../lib/store');
+const { mutate, readTable, headersOf } = require('../lib/store');
 const { asyncHandler, str, num, badRequest, notFound, sendCsv } = require('../lib/http');
 const { newId, now } = require('../lib/ids');
 const { appendTransaction } = require('../lib/tx');
-const { headersOf } = require('../lib/store');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
+const { readSettings } = require('./settings');
 
 const router = express.Router();
 const UNITS = ['kg', 'ea', 'L', '기타'];
 
 router.use(requireAuth);
 
-/** 쿼리 조건으로 원재료 목록을 필터링한다. */
 function filterRows(rows, query) {
   const q = str(query.q).toLowerCase();
-  const unit = str(query.unit);
+  const item = str(query.item);
   return rows.filter((r) => {
-    if (q && !(`${r.name}`.toLowerCase().includes(q))) return false;
-    if (unit && r.unit !== unit) return false;
+    if (q && !`${r.itemName} ${r.lotNo}`.toLowerCase().includes(q)) return false;
+    if (item && r.itemName !== item) return false;
     return true;
   });
 }
 
-function validateUnit(unit) {
-  // kg/ea/L 외에는 '기타(직접작성)'을 허용하므로 빈 값만 막는다.
-  if (!unit) throw badRequest('단위를 입력하세요.');
-}
-
-// 목록
+// Lot 목록
 router.get(
   '/',
   asyncHandler(async (req, res) => {
     const rows = await readTable('raw_materials');
-    res.json({ items: filterRows(rows, req.query) });
+    const sorted = filterRows(rows, req.query).sort((a, b) =>
+      a.itemName === b.itemName ? (a.receivedDate < b.receivedDate ? 1 : -1) : a.itemName.localeCompare(b.itemName),
+    );
+    res.json({ items: sorted });
   }),
 );
 
-// CSV Export (필터 적용)
+// 품목별 현황 요약(상단): 총수량/재고수준%/최근입고/최근사용
+router.get(
+  '/summary',
+  asyncHandler(async (req, res) => {
+    const [rows, items, txns, settings] = await Promise.all([
+      readTable('raw_materials'),
+      readTable('items'),
+      readTable('transactions'),
+      readSettings(),
+    ]);
+    const threshold = num(settings.safetyRatioPercent) || 100;
+    const masters = items.filter((i) => i.category === 'raw');
+
+    // 품목명 기준 집계 (마스터에 없는 '기타' 품목도 포함)
+    const names = new Set([...masters.map((m) => m.name), ...rows.map((r) => r.itemName)]);
+    const summary = Array.from(names).map((name) => {
+      const lots = rows.filter((r) => r.itemName === name);
+      const master = masters.find((m) => m.name === name);
+      const unit = master ? master.unit : (lots[0] && lots[0].unit) || '';
+      const total = lots.reduce((s, r) => s + (num(r.quantity) || 0), 0);
+      const safety = master ? num(master.safetyStock) || 0 : 0;
+      const level = safety > 0 ? Math.round((total / safety) * 100) : null;
+      const below = safety > 0 && total < safety * (threshold / 100);
+      const lastReceived = lots.reduce((d, r) => (r.receivedDate > d ? r.receivedDate : d), '');
+      const used = txns.filter((t) => t.materialType === 'raw' && t.materialName === name && t.type === '출고');
+      const lastUsed = used.reduce((d, t) => (t.createdAt > d ? t.createdAt : d), '');
+      return { name, unit, totalQuantity: total, safetyStock: safety, level, below, lots: lots.length, lastReceived, lastUsed: lastUsed ? lastUsed.slice(0, 10) : '', isMaster: !!master };
+    });
+    summary.sort((a, b) => a.name.localeCompare(b.name));
+    res.json({ items: summary, threshold });
+  }),
+);
+
 router.get(
   '/export',
   asyncHandler(async (req, res) => {
     const rows = await readTable('raw_materials');
-    sendCsv(res, headersOf('raw_materials'), filterRows(rows, req.query), '원재료목록');
+    sendCsv(res, headersOf('raw_materials'), filterRows(rows, req.query), '원재료Lot목록');
   }),
 );
 
-// 등록
+// Lot 등록
 router.post(
   '/',
   asyncHandler(async (req, res) => {
-    const name = str(req.body.name);
-    const unit = str(req.body.unit);
+    const itemName = str(req.body.itemName);
+    const unit = str(req.body.unit) || 'kg';
+    const lotNo = str(req.body.lotNo);
     const quantity = num(req.body.quantity);
-    const safetyStock = req.body.safetyStock === undefined || req.body.safetyStock === '' ? 0 : num(req.body.safetyStock);
-    if (!name) throw badRequest('품목명을 입력하세요.');
-    validateUnit(unit);
+    if (!itemName) throw badRequest('품목을 선택하거나 입력하세요.');
+    if (!lotNo) throw badRequest('Lot No를 입력하세요.');
     if (Number.isNaN(quantity) || quantity < 0) throw badRequest('수량은 0 이상의 숫자여야 합니다.');
-    if (Number.isNaN(safetyStock) || safetyStock < 0) throw badRequest('안전재고 기준수량은 0 이상의 숫자여야 합니다.');
 
     const me = req.session.user.id;
     const item = await mutate('raw_materials', (rows) => {
+      if (rows.some((r) => r.itemName === itemName && r.lotNo === lotNo)) throw badRequest('동일 품목/Lot No가 이미 존재합니다.');
       const row = {
-        id: newId('rm'),
-        name,
-        quantity: String(quantity),
-        unit,
-        safetyStock: String(safetyStock),
-        receivedDate: str(req.body.receivedDate),
-        note: str(req.body.note),
-        createdBy: me,
-        createdAt: now(),
-        updatedBy: me,
-        updatedAt: now(),
+        id: newId('rm'), itemName, lotNo, quantity: String(quantity), unit,
+        vendor: str(req.body.vendor), receivedDate: str(req.body.receivedDate), note: str(req.body.note),
+        createdBy: me, createdAt: now(), updatedBy: me, updatedAt: now(),
       };
       rows.push(row);
       return row;
     });
     if (quantity > 0) {
       await appendTransaction({
-        materialType: 'raw', materialId: item.id, materialName: item.name,
-        type: '입고', quantity, unit, balanceAfter: quantity, note: '신규 등록', user: me,
+        materialType: 'raw', materialId: item.id, materialName: item.itemName, lotNo,
+        type: '입고', quantity, unit, balanceAfter: quantity, note: '신규 입고', user: me,
       });
     }
     res.status(201).json({ item });
   }),
 );
 
-// 수정(메타 정보)
+// Lot 수정
 router.patch(
   '/:id',
   asyncHandler(async (req, res) => {
     const me = req.session.user.id;
     const item = await mutate('raw_materials', (rows) => {
       const r = rows.find((x) => x.id === req.params.id);
-      if (!r) throw notFound('원재료를 찾을 수 없습니다.');
-      if (req.body.name !== undefined) {
-        const name = str(req.body.name);
-        if (!name) throw badRequest('품목명을 입력하세요.');
-        r.name = name;
+      if (!r) throw notFound('원재료 Lot을 찾을 수 없습니다.');
+      for (const f of ['itemName', 'lotNo', 'unit', 'vendor', 'receivedDate', 'note']) {
+        if (req.body[f] !== undefined) r[f] = str(req.body[f]);
       }
-      if (req.body.unit !== undefined) {
-        validateUnit(str(req.body.unit));
-        r.unit = str(req.body.unit);
-      }
-      if (req.body.safetyStock !== undefined) {
-        const s = num(req.body.safetyStock);
-        if (Number.isNaN(s) || s < 0) throw badRequest('안전재고 기준수량은 0 이상의 숫자여야 합니다.');
-        r.safetyStock = String(s);
-      }
-      if (req.body.receivedDate !== undefined) r.receivedDate = str(req.body.receivedDate);
-      if (req.body.note !== undefined) r.note = str(req.body.note);
       r.updatedBy = me;
       r.updatedAt = now();
       return r;
@@ -120,7 +128,7 @@ router.patch(
   }),
 );
 
-// 수불(입고/출고) → 수량 증감 + 내역 기록
+// 수불(입고/출고) — Lot 단위 개별 처리
 router.post(
   '/:id/transaction',
   asyncHandler(async (req, res) => {
@@ -133,7 +141,7 @@ router.post(
     const me = req.session.user.id;
     const item = await mutate('raw_materials', (rows) => {
       const r = rows.find((x) => x.id === req.params.id);
-      if (!r) throw notFound('원재료를 찾을 수 없습니다.');
+      if (!r) throw notFound('원재료 Lot을 찾을 수 없습니다.');
       const cur = num(r.quantity) || 0;
       const next = type === '입고' ? cur + qty : cur - qty;
       if (next < 0) throw badRequest(`출고 수량이 현재 재고(${cur}${r.unit})를 초과합니다.`);
@@ -143,7 +151,7 @@ router.post(
       return r;
     });
     const txn = await appendTransaction({
-      materialType: 'raw', materialId: item.id, materialName: item.name,
+      materialType: 'raw', materialId: item.id, materialName: item.itemName, lotNo: item.lotNo,
       type, quantity: qty, unit: item.unit, balanceAfter: item.quantity, note, user: me,
     });
     res.status(201).json({ item, transaction: txn });
@@ -157,7 +165,7 @@ router.delete(
   asyncHandler(async (req, res) => {
     await mutate('raw_materials', (rows) => {
       const idx = rows.findIndex((x) => x.id === req.params.id);
-      if (idx < 0) throw notFound('원재료를 찾을 수 없습니다.');
+      if (idx < 0) throw notFound('원재료 Lot을 찾을 수 없습니다.');
       rows.splice(idx, 1);
     });
     res.json({ ok: true });

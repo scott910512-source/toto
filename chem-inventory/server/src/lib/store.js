@@ -8,11 +8,15 @@ const { DATA_DIR } = require('../config');
 // 각 테이블(CSV 파일)의 컬럼 정의. 저장 순서를 고정한다.
 const TABLES = {
   users: ['id', 'passwordHash', 'name', 'role', 'status', 'createdAt', 'approvedAt', 'approvedBy'],
-  raw_materials: ['id', 'name', 'quantity', 'unit', 'safetyStock', 'receivedDate', 'note', 'createdBy', 'createdAt', 'updatedBy', 'updatedAt'],
+  // 품목 마스터(원/부재료 공통): 안전재고 목표값을 품목 단위로 관리(관리자 전용)
+  items: ['id', 'category', 'name', 'unit', 'safetyStock', 'note', 'createdBy', 'createdAt', 'updatedBy', 'updatedAt'],
+  // 원재료: Lot 단위로 개별 관리(품목으로 취합)
+  raw_materials: ['id', 'itemName', 'lotNo', 'quantity', 'unit', 'vendor', 'receivedDate', 'note', 'createdBy', 'createdAt', 'updatedBy', 'updatedAt'],
   sub_materials: ['id', 'name', 'receivedDate', 'lotNo', 'vendor', 'unit', 'initialWeight', 'weight', 'note', 'createdBy', 'createdAt', 'updatedBy', 'updatedAt'],
-  canisters: ['id', 'canisterNo', 'size', 'sizeEtc', 'location', 'locationEtc', 'status', 'statusEtc', 'note', 'createdBy', 'createdAt', 'updatedBy', 'updatedAt'],
-  canister_history: ['id', 'canisterId', 'canisterNo', 'date', 'type', 'location', 'status', 'note', 'createdBy', 'createdAt'],
-  transactions: ['id', 'materialType', 'materialId', 'materialName', 'lotNo', 'type', 'quantity', 'unit', 'balanceAfter', 'note', 'createdBy', 'createdAt'],
+  // Canister: 현재 내용물(제품)+무게 보유, 반입/반출로 수불
+  canisters: ['id', 'canisterNo', 'size', 'sizeEtc', 'location', 'locationEtc', 'status', 'statusEtc', 'content', 'weight', 'note', 'createdBy', 'createdAt', 'updatedBy', 'updatedAt'],
+  canister_history: ['id', 'canisterId', 'canisterNo', 'date', 'type', 'content', 'weight', 'location', 'status', 'note', 'createdBy', 'createdAt'],
+  transactions: ['id', 'materialType', 'materialId', 'materialName', 'lotNo', 'content', 'type', 'quantity', 'unit', 'balanceAfter', 'note', 'createdBy', 'createdAt'],
   settings: ['key', 'value'],
 };
 

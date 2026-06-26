@@ -2,8 +2,9 @@
 
 const express = require('express');
 const { mutate, readTable, headersOf } = require('../lib/store');
-const { asyncHandler, str, badRequest, notFound, sendCsv } = require('../lib/http');
+const { asyncHandler, str, num, badRequest, notFound, sendCsv } = require('../lib/http');
 const { newId, now } = require('../lib/ids');
+const { appendTransaction } = require('../lib/tx');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
 
 const router = express.Router();
@@ -15,11 +16,9 @@ const MOVE_TYPES = ['반입', '반출', '상태변경'];
 
 router.use(requireAuth);
 
-/** enum + Etc 텍스트를 표시값으로 합친다. */
 function disp(value, etc) {
   return value === '기타' ? (etc || '기타') : value;
 }
-
 function decorate(r) {
   return {
     ...r,
@@ -28,21 +27,19 @@ function decorate(r) {
     statusLabel: disp(r.status, r.statusEtc),
   };
 }
-
 function filterRows(rows, query) {
   const q = str(query.q).toLowerCase();
   const size = str(query.size);
   const location = str(query.location);
   const status = str(query.status);
   return rows.filter((r) => {
-    if (q && !`${r.canisterNo}`.toLowerCase().includes(q)) return false;
+    if (q && !`${r.canisterNo} ${r.content}`.toLowerCase().includes(q)) return false;
     if (size && r.size !== size) return false;
     if (location && r.location !== location) return false;
     if (status && r.status !== status) return false;
     return true;
   });
 }
-
 function validateEnum(label, value, allowed) {
   if (!allowed.includes(value)) throw badRequest(`${label} 값이 올바르지 않습니다.`);
 }
@@ -52,7 +49,8 @@ router.get(
   '/',
   asyncHandler(async (req, res) => {
     const rows = await readTable('canisters');
-    res.json({ items: filterRows(rows, req.query).map(decorate) });
+    const sorted = filterRows(rows, req.query).sort((a, b) => a.canisterNo.localeCompare(b.canisterNo));
+    res.json({ items: sorted.map(decorate) });
   }),
 );
 
@@ -78,7 +76,6 @@ router.get(
   }),
 );
 
-// CSV Export(마스터)
 router.get(
   '/export',
   asyncHandler(async (req, res) => {
@@ -98,19 +95,16 @@ router.get(
   }),
 );
 
-// 특정 Canister 이력(용기이력카드)
+// 용기이력카드(수불 이력)
 router.get(
   '/:id/history',
   asyncHandler(async (req, res) => {
     const all = await readTable('canister_history');
-    const items = all
-      .filter((h) => h.canisterId === req.params.id)
-      .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
+    const items = all.filter((h) => h.canisterId === req.params.id).sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
     res.json({ items });
   }),
 );
 
-// 특정 Canister 이력 CSV Export
 router.get(
   '/:id/history/export',
   asyncHandler(async (req, res) => {
@@ -120,7 +114,7 @@ router.get(
   }),
 );
 
-// 등록(+ 반입 이력 자동 적재)
+// Canister 등록 (+ 등록 이력)
 router.post(
   '/',
   asyncHandler(async (req, res) => {
@@ -128,47 +122,101 @@ router.post(
     const size = str(req.body.size);
     const location = str(req.body.location);
     const status = str(req.body.status) || '수령';
+    const content = str(req.body.content);
+    const weight = req.body.weight === '' || req.body.weight === undefined ? 0 : num(req.body.weight);
     if (!canisterNo) throw badRequest('Canister No.를 입력하세요.');
     validateEnum('용기 사이즈', size, SIZES);
     validateEnum('위치', location, LOCATIONS);
     validateEnum('상태', status, STATUSES);
+    if (Number.isNaN(weight) || weight < 0) throw badRequest('무게는 0 이상의 숫자여야 합니다.');
 
     const me = req.session.user.id;
     const item = await mutate('canisters', (rows) => {
       if (rows.some((r) => r.canisterNo === canisterNo)) throw badRequest('이미 등록된 Canister No.입니다.');
       const row = {
-        id: newId('cn'),
-        canisterNo,
-        size,
-        sizeEtc: str(req.body.sizeEtc),
-        location,
-        locationEtc: str(req.body.locationEtc),
-        status,
-        statusEtc: str(req.body.statusEtc),
-        note: str(req.body.note),
-        createdBy: me,
-        createdAt: now(),
-        updatedBy: me,
-        updatedAt: now(),
+        id: newId('cn'), canisterNo, size, sizeEtc: str(req.body.sizeEtc),
+        location, locationEtc: str(req.body.locationEtc), status, statusEtc: str(req.body.statusEtc),
+        content, weight: String(weight), note: str(req.body.note),
+        createdBy: me, createdAt: now(), updatedBy: me, updatedAt: now(),
       };
       rows.push(row);
       return row;
     });
     await mutate('canister_history', (rows) => {
       rows.push({
-        id: newId('ch'),
-        canisterId: item.id,
-        canisterNo: item.canisterNo,
-        date: now().slice(0, 10),
-        type: '반입',
-        location: disp(item.location, item.locationEtc),
-        status: disp(item.status, item.statusEtc),
-        note: '신규 등록',
-        createdBy: me,
-        createdAt: now(),
+        id: newId('ch'), canisterId: item.id, canisterNo: item.canisterNo, date: now().slice(0, 10),
+        type: '반입', content, weight: String(weight),
+        location: disp(item.location, item.locationEtc), status: disp(item.status, item.statusEtc),
+        note: '신규 등록', createdBy: me, createdAt: now(),
       });
     });
+    if (weight > 0) {
+      await appendTransaction({
+        materialType: 'canister', materialId: item.id, materialName: item.canisterNo, content,
+        type: '반입', quantity: weight, unit: str(req.body.unit) || 'kg', balanceAfter: weight, note: '신규 등록', user: me,
+      });
+    }
     res.status(201).json({ item: decorate(item) });
+  }),
+);
+
+// Canister 이력 등록(반입/반출/상태변경) — 내용물 수불
+router.post(
+  '/:id/move',
+  asyncHandler(async (req, res) => {
+    const type = str(req.body.type);
+    const amount = req.body.weight === '' || req.body.weight === undefined ? 0 : num(req.body.weight);
+    const unit = str(req.body.unit) || 'kg';
+    if (!MOVE_TYPES.includes(type)) throw badRequest('구분은 반입/반출/상태변경 중 하나여야 합니다.');
+    if (Number.isNaN(amount) || amount < 0) throw badRequest('무게는 0 이상의 숫자여야 합니다.');
+
+    const me = req.session.user.id;
+    let snap;
+    const item = await mutate('canisters', (rows) => {
+      const r = rows.find((x) => x.id === req.params.id);
+      if (!r) throw notFound('Canister를 찾을 수 없습니다.');
+      const cur = num(r.weight) || 0;
+      if (type === '반입') {
+        if (req.body.content !== undefined && str(req.body.content) !== '') r.content = str(req.body.content);
+        r.weight = String(cur + amount);
+      } else if (type === '반출') {
+        const next = cur - amount;
+        if (next < 0) throw badRequest(`반출 무게가 현재 내용물(${cur}${unit})을 초과합니다.`);
+        r.weight = String(next);
+        if (next === 0 && str(req.body.content) === '') r.content = '';
+      }
+      if (req.body.location !== undefined && req.body.location !== '') {
+        validateEnum('위치', str(req.body.location), LOCATIONS);
+        r.location = str(req.body.location);
+        r.locationEtc = str(req.body.locationEtc);
+      }
+      if (req.body.status !== undefined && req.body.status !== '') {
+        validateEnum('상태', str(req.body.status), STATUSES);
+        r.status = str(req.body.status);
+        r.statusEtc = str(req.body.statusEtc);
+      }
+      r.updatedBy = me;
+      r.updatedAt = now();
+      snap = r;
+      return r;
+    });
+    const history = await mutate('canister_history', (rows) => {
+      const row = {
+        id: newId('ch'), canisterId: item.id, canisterNo: item.canisterNo,
+        date: str(req.body.date) || now().slice(0, 10), type, content: snap.content, weight: snap.weight,
+        location: disp(snap.location, snap.locationEtc), status: disp(snap.status, snap.statusEtc),
+        note: str(req.body.note), createdBy: me, createdAt: now(),
+      };
+      rows.push(row);
+      return row;
+    });
+    if (type !== '상태변경' && amount > 0) {
+      await appendTransaction({
+        materialType: 'canister', materialId: item.id, materialName: item.canisterNo, content: snap.content,
+        type, quantity: amount, unit, balanceAfter: snap.weight, note: str(req.body.note), user: me,
+      });
+    }
+    res.status(201).json({ item: decorate(item), history });
   }),
 );
 
@@ -191,6 +239,7 @@ router.patch(
         r.size = str(req.body.size);
         r.sizeEtc = str(req.body.sizeEtc);
       }
+      if (req.body.content !== undefined) r.content = str(req.body.content);
       if (req.body.note !== undefined) r.note = str(req.body.note);
       r.updatedBy = me;
       r.updatedAt = now();
@@ -200,54 +249,7 @@ router.patch(
   }),
 );
 
-// 반입/반출/상태변경 → 위치·상태 갱신 + 이력 적재
-router.post(
-  '/:id/move',
-  asyncHandler(async (req, res) => {
-    const type = str(req.body.type);
-    if (!MOVE_TYPES.includes(type)) throw badRequest('구분은 반입/반출/상태변경 중 하나여야 합니다.');
-
-    const me = req.session.user.id;
-    let snapshot;
-    const item = await mutate('canisters', (rows) => {
-      const r = rows.find((x) => x.id === req.params.id);
-      if (!r) throw notFound('Canister를 찾을 수 없습니다.');
-      if (req.body.location !== undefined && req.body.location !== '') {
-        validateEnum('위치', str(req.body.location), LOCATIONS);
-        r.location = str(req.body.location);
-        r.locationEtc = str(req.body.locationEtc);
-      }
-      if (req.body.status !== undefined && req.body.status !== '') {
-        validateEnum('상태', str(req.body.status), STATUSES);
-        r.status = str(req.body.status);
-        r.statusEtc = str(req.body.statusEtc);
-      }
-      r.updatedBy = me;
-      r.updatedAt = now();
-      snapshot = r;
-      return r;
-    });
-    const history = await mutate('canister_history', (rows) => {
-      const row = {
-        id: newId('ch'),
-        canisterId: item.id,
-        canisterNo: item.canisterNo,
-        date: str(req.body.date) || now().slice(0, 10),
-        type,
-        location: disp(snapshot.location, snapshot.locationEtc),
-        status: disp(snapshot.status, snapshot.statusEtc),
-        note: str(req.body.note),
-        createdBy: me,
-        createdAt: now(),
-      };
-      rows.push(row);
-      return row;
-    });
-    res.status(201).json({ item: decorate(item), history });
-  }),
-);
-
-// 삭제(관리자) - 이력도 함께 삭제
+// 삭제(관리자) — 이력 함께 삭제
 router.delete(
   '/:id',
   requireAdmin,
@@ -258,9 +260,7 @@ router.delete(
       rows.splice(idx, 1);
     });
     await mutate('canister_history', (rows) => {
-      for (let i = rows.length - 1; i >= 0; i--) {
-        if (rows[i].canisterId === req.params.id) rows.splice(i, 1);
-      }
+      for (let i = rows.length - 1; i >= 0; i--) if (rows[i].canisterId === req.params.id) rows.splice(i, 1);
     });
     res.json({ ok: true });
   }),
