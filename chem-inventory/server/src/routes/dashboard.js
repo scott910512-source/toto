@@ -4,11 +4,12 @@ const express = require('express');
 const { readTable } = require('../lib/store');
 const { asyncHandler, num } = require('../lib/http');
 const { requireAuth } = require('../middleware/auth');
+const { resolvePlant } = require('../middleware/plant');
 const { readSettings } = require('./settings');
 const { safetyStatus } = require('../lib/warnings');
 
 const router = express.Router();
-router.use(requireAuth);
+router.use(requireAuth, resolvePlant);
 
 function disp(value, etc) {
   return value === '기타' ? (etc || '기타') : value;
@@ -39,7 +40,7 @@ router.get(
   '/',
   asyncHandler(async (req, res) => {
     const [items, raws, subs, canisters, settings] = await Promise.all([
-      readTable('items'), readTable('raw_materials'), readTable('sub_materials'), readTable('canisters'), readSettings(),
+      readTable('items', req.plant), readTable('raw_materials', req.plant), readTable('sub_materials', req.plant), readTable('canisters', req.plant), readSettings(req.plant),
     ]);
     const threshold = num(settings.safetyRatioPercent) || 100;
 

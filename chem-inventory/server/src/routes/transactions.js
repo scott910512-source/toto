@@ -1,12 +1,13 @@
 'use strict';
 
 const express = require('express');
-const { readTable, headersOf } = require('../lib/store');
-const { asyncHandler, str, sendCsv } = require('../lib/http');
-const { requireAuth } = require('../middleware/auth');
+const { readTable, mutate, headersOf } = require('../lib/store');
+const { asyncHandler, str, badRequest, notFound, sendCsv } = require('../lib/http');
+const { requireAuth, requireAdmin } = require('../middleware/auth');
+const { resolvePlant } = require('../middleware/plant');
 
 const router = express.Router();
-router.use(requireAuth);
+router.use(requireAuth, resolvePlant);
 
 const TYPE_ORDER = { raw: 0, sub: 1, canister: 2 };
 
@@ -44,7 +45,7 @@ function filterRows(rows, query) {
 router.get(
   '/',
   asyncHandler(async (req, res) => {
-    const rows = await readTable('transactions');
+    const rows = await readTable('transactions', req.plant);
     res.json({ items: filterRows(rows, req.query) });
   }),
 );
@@ -52,8 +53,44 @@ router.get(
 router.get(
   '/export',
   asyncHandler(async (req, res) => {
-    const rows = await readTable('transactions');
+    const rows = await readTable('transactions', req.plant);
     sendCsv(res, headersOf('transactions'), filterRows(rows, req.query), '수불내역');
+  }),
+);
+
+// 수불 내역 수정(비고·구분·수량 등 기록 정정). 재고는 재계산하지 않는 단순 기록 정정.
+router.patch(
+  '/:id',
+  asyncHandler(async (req, res) => {
+    const item = await mutate('transactions', req.plant, (rows) => {
+      const r = rows.find((x) => x.id === req.params.id);
+      if (!r) throw notFound('수불 내역을 찾을 수 없습니다.');
+      for (const f of ['note', 'materialName', 'lotNo', 'content']) {
+        if (req.body[f] !== undefined) r[f] = str(req.body[f]);
+      }
+      if (req.body.type !== undefined) {
+        const t = str(req.body.type);
+        if (!['입고', '출고', '반입', '반출'].includes(t)) throw badRequest('구분 값이 올바르지 않습니다.');
+        r.type = t;
+      }
+      if (req.body.quantity !== undefined) r.quantity = str(req.body.quantity);
+      return r;
+    });
+    res.json({ item });
+  }),
+);
+
+// 수불 내역 삭제(관리자)
+router.delete(
+  '/:id',
+  requireAdmin,
+  asyncHandler(async (req, res) => {
+    await mutate('transactions', req.plant, (rows) => {
+      const idx = rows.findIndex((x) => x.id === req.params.id);
+      if (idx < 0) throw notFound('수불 내역을 찾을 수 없습니다.');
+      rows.splice(idx, 1);
+    });
+    res.json({ ok: true });
   }),
 );
 

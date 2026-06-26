@@ -14,9 +14,9 @@ function QuickGroup({ icon, color, title, actions, navigate }) {
         <div className="quick-ico" style={{ background: color }}><Icon name={icon} size={22} /></div>
         <div className="qt" style={{ fontSize: 15 }}>{title}</div>
       </div>
-      <div className="btn-row">
-        {actions.map(([label, to, kind]) => (
-          <button key={label} className={`btn sm ${kind || 'secondary'}`} onClick={() => navigate(to)}>{label}</button>
+      <div className="quick-acts">
+        {actions.map(([label, to]) => (
+          <button key={label} className="quick-act" onClick={() => navigate(to)}>{label}</button>
         ))}
       </div>
     </div>
@@ -71,8 +71,8 @@ export default function Dashboard() {
     <>
       {/* 1) 퀵메뉴 (묶음) */}
       <div className="quickmenu">
-        <QuickGroup navigate={navigate} icon="canister" color="#0071e3" title="원재료" actions={[['입고', '/raw?new=1', ''], ['사용', '/raw']]} />
-        <QuickGroup navigate={navigate} icon="drum" color="#5e5ce6" title="부재료" actions={[['입고', '/sub?new=1', ''], ['사용', '/sub']]} />
+        <QuickGroup navigate={navigate} icon="canister" color="#0071e3" title="원재료" actions={[['입고', '/raw?new=1', ''], ['사용', '/raw?use=1']]} />
+        <QuickGroup navigate={navigate} icon="drum" color="#5e5ce6" title="부재료" actions={[['입고', '/sub?new=1', ''], ['사용', '/sub?use=1']]} />
         <QuickGroup navigate={navigate} icon="star" color="#34c759" title="Canister" actions={[['수불 등록', '/canisters?move=1', '']]} />
       </div>
 
@@ -147,17 +147,21 @@ export default function Dashboard() {
             {dash.canisterSummary.length === 0 ? <Empty>Canister가 없습니다.</Empty> : (
               <table className="tbl compact">
                 <thead>
-                  <tr><th>사용 제품</th><th>종류</th><th className="num">개수</th><th className="num">Total 무게</th><th>최대 무게 비고</th></tr>
+                  <tr><th>종류</th><th className="num">개수</th><th className="num">Total 무게</th><th>최대 무게 비고</th></tr>
                 </thead>
                 <tbody>
-                  {dash.canisterSummary.map((c, i) => (
-                    <tr key={i} style={{ cursor: 'pointer' }} onClick={() => navigate('/canisters')}>
-                      <td><b className="inline-link">{c.content}</b></td>
-                      <td><Badge>{c.size}</Badge></td>
-                      <td className="num">{c.count}</td>
-                      <td className="num">{c.totalWeight.toLocaleString()}</td>
-                      <td className="muted">{c.heaviestNote || '–'}</td>
-                    </tr>
+                  {groupByProduct(dash.canisterSummary.map((c) => ({ ...c, product: c.content }))).map((g) => (
+                    <Fragment key={g.product}>
+                      <tr className="group-row"><td colSpan={4}>🛢 사용제품: {g.product}</td></tr>
+                      {g.rows.map((c, i) => (
+                        <tr key={i} style={{ cursor: 'pointer' }} onClick={() => navigate('/canisters')}>
+                          <td style={{ paddingLeft: 24 }}><Badge>{c.size}</Badge></td>
+                          <td className="num">{c.count}</td>
+                          <td className="num">{c.totalWeight.toLocaleString()}</td>
+                          <td className="muted">{c.heaviestNote || '–'}</td>
+                        </tr>
+                      ))}
+                    </Fragment>
                   ))}
                 </tbody>
               </table>

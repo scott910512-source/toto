@@ -6,15 +6,16 @@ import { Loading, Empty, Badge, useToast, ConfirmDialog, Select, Field, TextInpu
 const statusBadge = { pending: { c: 'orange', t: '승인대기' }, approved: { c: 'green', t: '승인됨' }, rejected: { c: 'red', t: '거절/금지' } };
 
 export default function Admin() {
-  const { user } = useAuth();
+  const { user, isSuper } = useAuth();
   const toast = useToast();
   const [items, setItems] = useState(null);
   const [del, setDel] = useState(null);
 
   const load = useCallback(async () => {
+    if (!isSuper) { setItems([]); return; }
     const d = await api.get('/users');
     setItems(d.items);
-  }, []);
+  }, [isSuper]);
   useEffect(() => {
     load();
   }, [load]);
@@ -40,7 +41,13 @@ export default function Admin() {
 
       <SafetyRatioCard toast={toast} />
 
-      {pending.length > 0 && (
+      {!isSuper && (
+        <div className="card card-pad">
+          <p className="hint" style={{ margin: 0 }}>현재 공장의 <b>기준정보·경고 비율</b>을 관리할 수 있습니다. 사용자 관리는 총괄관리자만 가능합니다.</p>
+        </div>
+      )}
+
+      {isSuper && pending.length > 0 && (
         <div className="card" style={{ marginBottom: 16, borderColor: 'var(--orange)' }}>
           <div className="card-head"><h3>승인 대기 {pending.length}건</h3></div>
           <div className="card-pad">
@@ -61,6 +68,7 @@ export default function Admin() {
         </div>
       )}
 
+      {isSuper && (
       <div className="card table-wrap">
         <div className="card-head"><h3>전체 사용자 {items.length}명</h3></div>
         {items.length === 0 ? (
@@ -106,6 +114,7 @@ export default function Admin() {
           </table>
         )}
       </div>
+      )}
 
       {del && (
         <ConfirmDialog

@@ -6,6 +6,7 @@ const { asyncHandler, str, num, badRequest, notFound, sendCsv } = require('../li
 const { newId, now } = require('../lib/ids');
 const { appendTransaction } = require('../lib/tx');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
+const { resolvePlant } = require('../middleware/plant');
 
 const router = express.Router();
 
@@ -14,7 +15,7 @@ const LOCATIONS = ['2공장현장', '3류창고', '4류창고', '기타'];
 const STATUSES = ['수령', '사용중', '사용완료', '세정의뢰', '사용금지', '기타'];
 const MOVE_TYPES = ['반입', '반출', '상태변경'];
 
-router.use(requireAuth);
+router.use(requireAuth, resolvePlant);
 
 function disp(value, etc) {
   return value === '기타' ? (etc || '기타') : value;
@@ -48,8 +49,14 @@ function validateEnum(label, value, allowed) {
 router.get(
   '/',
   asyncHandler(async (req, res) => {
-    const rows = await readTable('canisters');
-    const sorted = filterRows(rows, req.query).sort((a, b) => a.canisterNo.localeCompare(b.canisterNo));
+    const rows = await readTable('canisters', req.plant);
+    // 기본 정렬: 제품(내용물) 그룹 → Canister No.
+    const sorted = filterRows(rows, req.query).sort((a, b) => {
+      const ca = a.content || '~';
+      const cb = b.content || '~';
+      if (ca !== cb) return ca < cb ? -1 : 1;
+      return a.canisterNo.localeCompare(b.canisterNo);
+    });
     res.json({ items: sorted.map(decorate) });
   }),
 );
@@ -58,7 +65,7 @@ router.get(
 router.get(
   '/summary',
   asyncHandler(async (req, res) => {
-    const rows = await readTable('canisters');
+    const rows = await readTable('canisters', req.plant);
     const count = (keyFn) => {
       const m = {};
       for (const r of rows) {
@@ -79,7 +86,7 @@ router.get(
 router.get(
   '/export',
   asyncHandler(async (req, res) => {
-    const rows = await readTable('canisters');
+    const rows = await readTable('canisters', req.plant);
     sendCsv(res, headersOf('canisters'), filterRows(rows, req.query), 'Canister목록');
   }),
 );
@@ -88,7 +95,7 @@ router.get(
 router.get(
   '/:id',
   asyncHandler(async (req, res) => {
-    const rows = await readTable('canisters');
+    const rows = await readTable('canisters', req.plant);
     const r = rows.find((x) => x.id === req.params.id);
     if (!r) throw notFound('Canister를 찾을 수 없습니다.');
     res.json({ item: decorate(r) });
@@ -99,7 +106,7 @@ router.get(
 router.get(
   '/:id/history',
   asyncHandler(async (req, res) => {
-    const all = await readTable('canister_history');
+    const all = await readTable('canister_history', req.plant);
     const items = all.filter((h) => h.canisterId === req.params.id).sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
     res.json({ items });
   }),
@@ -108,7 +115,7 @@ router.get(
 router.get(
   '/:id/history/export',
   asyncHandler(async (req, res) => {
-    const all = await readTable('canister_history');
+    const all = await readTable('canister_history', req.plant);
     const items = all.filter((h) => h.canisterId === req.params.id);
     sendCsv(res, headersOf('canister_history'), items, `Canister이력_${req.params.id}`);
   }),
@@ -131,7 +138,7 @@ router.post(
     if (Number.isNaN(weight) || weight < 0) throw badRequest('무게는 0 이상의 숫자여야 합니다.');
 
     const me = req.session.user.id;
-    const item = await mutate('canisters', (rows) => {
+    const item = await mutate('canisters', req.plant, (rows) => {
       if (rows.some((r) => r.canisterNo === canisterNo)) throw badRequest('이미 등록된 Canister No.입니다.');
       const row = {
         id: newId('cn'), canisterNo, size, sizeEtc: str(req.body.sizeEtc),
@@ -142,7 +149,7 @@ router.post(
       rows.push(row);
       return row;
     });
-    await mutate('canister_history', (rows) => {
+    await mutate('canister_history', req.plant, (rows) => {
       rows.push({
         id: newId('ch'), canisterId: item.id, canisterNo: item.canisterNo, date: now().slice(0, 10),
         type: '반입', content, weight: String(weight),
@@ -152,7 +159,7 @@ router.post(
     });
     if (weight > 0) {
       await appendTransaction({
-        materialType: 'canister', materialId: item.id, materialName: item.canisterNo, content,
+        plant: req.plant, materialType: 'canister', materialId: item.id, materialName: item.canisterNo, content,
         type: '반입', quantity: weight, unit: str(req.body.unit) || 'kg', balanceAfter: weight, note: '신규 등록', user: me,
       });
     }
@@ -172,7 +179,7 @@ router.post(
 
     const me = req.session.user.id;
     let snap;
-    const item = await mutate('canisters', (rows) => {
+    const item = await mutate('canisters', req.plant, (rows) => {
       const r = rows.find((x) => x.id === req.params.id);
       if (!r) throw notFound('Canister를 찾을 수 없습니다.');
       const cur = num(r.weight) || 0;
@@ -200,7 +207,7 @@ router.post(
       snap = r;
       return r;
     });
-    const history = await mutate('canister_history', (rows) => {
+    const history = await mutate('canister_history', req.plant, (rows) => {
       const row = {
         id: newId('ch'), canisterId: item.id, canisterNo: item.canisterNo,
         date: str(req.body.date) || now().slice(0, 10), type, content: snap.content, weight: snap.weight,
@@ -212,7 +219,7 @@ router.post(
     });
     if (type !== '상태변경' && amount > 0) {
       await appendTransaction({
-        materialType: 'canister', materialId: item.id, materialName: item.canisterNo, content: snap.content,
+        plant: req.plant, materialType: 'canister', materialId: item.id, materialName: item.canisterNo, content: snap.content,
         type, quantity: amount, unit, balanceAfter: snap.weight, note: str(req.body.note), user: me,
       });
     }
@@ -221,11 +228,13 @@ router.post(
 );
 
 // 수정(메타)
+// Canister No./사이즈 변경은 관리자만 (위치/상태는 /move 로 사용자도 가능)
 router.patch(
   '/:id',
+  requireAdmin,
   asyncHandler(async (req, res) => {
     const me = req.session.user.id;
-    const item = await mutate('canisters', (rows) => {
+    const item = await mutate('canisters', req.plant, (rows) => {
       const r = rows.find((x) => x.id === req.params.id);
       if (!r) throw notFound('Canister를 찾을 수 없습니다.');
       if (req.body.canisterNo !== undefined) {
@@ -254,12 +263,12 @@ router.delete(
   '/:id',
   requireAdmin,
   asyncHandler(async (req, res) => {
-    await mutate('canisters', (rows) => {
+    await mutate('canisters', req.plant, (rows) => {
       const idx = rows.findIndex((x) => x.id === req.params.id);
       if (idx < 0) throw notFound('Canister를 찾을 수 없습니다.');
       rows.splice(idx, 1);
     });
-    await mutate('canister_history', (rows) => {
+    await mutate('canister_history', req.plant, (rows) => {
       for (let i = rows.length - 1; i >= 0; i--) if (rows[i].canisterId === req.params.id) rows.splice(i, 1);
     });
     res.json({ ok: true });

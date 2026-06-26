@@ -7,8 +7,8 @@ const { newId, now } = require('./ids');
  * 수불(입출고) 내역 1건을 transactions 테이블에 추가한다.
  * materialType: 'raw' | 'sub' | 'canister'
  */
-function appendTransaction({ materialType, materialId, materialName, lotNo = '', content = '', type, quantity, unit, balanceAfter, note = '', user }) {
-  return mutate('transactions', (rows) => {
+function appendTransaction({ plant, materialType, materialId, materialName, lotNo = '', content = '', type, quantity, unit, balanceAfter, note = '', user }) {
+  return mutate('transactions', plant, (rows) => {
     const row = {
       id: newId('tx'),
       materialType,

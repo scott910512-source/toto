@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, Fragment } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api, downloadCsv } from '../api';
 import { useAuth } from '../auth/AuthContext';
@@ -6,6 +6,18 @@ import { Modal, Field, TextInput, Select, useToast, ConfirmDialog, Empty, Loadin
 import { EtcSelect } from '../components/inputs';
 
 const blankCreate = { canisterNo: '', size: '50L', sizeEtc: '', location: '2공장현장', locationEtc: '', status: '수령', statusEtc: '', content: '', weight: '', note: '' };
+
+/** Canister 목록을 제품(내용물)별로 묶는다. */
+function groupByContent(rows) {
+  const groups = [];
+  const idx = {};
+  for (const c of rows) {
+    const k = c.content || '(비어있음)';
+    if (!(k in idx)) { idx[k] = groups.length; groups.push({ content: k, rows: [] }); }
+    groups[idx[k]].rows.push(c);
+  }
+  return groups;
+}
 
 export default function Canisters() {
   const { isAdmin } = useAuth();
@@ -16,6 +28,7 @@ export default function Canisters() {
   const [filters, setFilters] = useState({ q: '', size: '', location: '', status: '' });
   const [create, setCreate] = useState(false);
   const [moveOpen, setMoveOpen] = useState(false);
+  const [edit, setEdit] = useState(null);
   const [del, setDel] = useState(null);
   const [sp] = useSearchParams();
 
@@ -105,22 +118,28 @@ export default function Canisters() {
               </tr>
             </thead>
             <tbody>
-              {items.map((c) => (
-                <tr key={c.id}>
-                  <td><Link to={`/canisters/${c.id}`} className="inline-link"><b>{c.canisterNo}</b></Link></td>
-                  <td><Badge>{c.sizeLabel}</Badge></td>
-                  <td>{c.content ? <b>{c.content}</b> : <span className="muted">(비어있음)</span>}</td>
-                  <td className="num">{Number(c.weight || 0).toLocaleString()}</td>
-                  <td className="muted">{c.locationLabel}</td>
-                  <td><Badge color={statusColor(c.status)} dot>{c.statusLabel}</Badge></td>
-                  <td className="muted">{(c.updatedAt || '').slice(0, 10)}</td>
-                  <td>
-                    <div className="btn-row">
-                      <Link to={`/canisters/${c.id}`} className="btn ghost sm">이력카드</Link>
-                      {isAdmin && <button className="btn danger sm" onClick={() => setDel(c)}>삭제</button>}
-                    </div>
-                  </td>
-                </tr>
+              {groupByContent(items).map((g) => (
+                <Fragment key={g.content}>
+                  <tr className="group-row"><td colSpan={8}>🛢 사용제품: {g.content} · {g.rows.length}개</td></tr>
+                  {g.rows.map((c) => (
+                    <tr key={c.id}>
+                      <td style={{ paddingLeft: 24 }}><Link to={`/canisters/${c.id}`} className="inline-link"><b>{c.canisterNo}</b></Link></td>
+                      <td><Badge>{c.sizeLabel}</Badge></td>
+                      <td>{c.content ? c.content : <span className="muted">(비어있음)</span>}</td>
+                      <td className="num">{Number(c.weight || 0).toLocaleString()}</td>
+                      <td className="muted">{c.locationLabel}</td>
+                      <td><Badge color={statusColor(c.status)} dot>{c.statusLabel}</Badge></td>
+                      <td className="muted">{(c.updatedAt || '').slice(0, 10)}</td>
+                      <td>
+                        <div className="btn-row">
+                          <Link to={`/canisters/${c.id}`} className="btn ghost sm">이력카드</Link>
+                          {isAdmin && <button className="btn secondary sm" onClick={() => setEdit(c)}>수정</button>}
+                          {isAdmin && <button className="btn danger sm" onClick={() => setDel(c)}>삭제</button>}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </Fragment>
               ))}
             </tbody>
           </table>
@@ -132,6 +151,9 @@ export default function Canisters() {
       )}
       {moveOpen && (
         <MoveForm meta={meta} canisters={items || []} onClose={() => setMoveOpen(false)} onSaved={() => { setMoveOpen(false); load(); toast.ok('이력이 기록되었습니다.'); }} onError={(m) => toast.err(m)} />
+      )}
+      {edit && (
+        <CanisterEditForm meta={meta} item={edit} onClose={() => setEdit(null)} onSaved={() => { setEdit(null); load(); toast.ok('수정했습니다.'); }} onError={(m) => toast.err(m)} />
       )}
       {del && (
         <ConfirmDialog
@@ -269,6 +291,40 @@ function MoveForm({ meta, canisters, onClose, onSaved, onError }) {
       </Field>
       <Field label="비고">
         <TextInput value={f.note} onChange={(e) => set('note', e.target.value)} placeholder="예: 2공장 충전 후 반입" />
+      </Field>
+    </Modal>
+  );
+}
+
+function CanisterEditForm({ meta, item, onClose, onSaved, onError }) {
+  const [f, setF] = useState({ canisterNo: item.canisterNo, size: item.size, sizeEtc: item.sizeEtc || '', note: item.note || '' });
+  const [busy, setBusy] = useState(false);
+  async function submit() {
+    if (!f.canisterNo.trim()) return onError('Canister No.를 입력하세요.');
+    setBusy(true);
+    try {
+      await api.patch('/canisters/' + item.id, { canisterNo: f.canisterNo.trim(), size: f.size, sizeEtc: f.sizeEtc, note: f.note });
+      onSaved();
+    } catch (e) { onError(e.message); } finally { setBusy(false); }
+  }
+  return (
+    <Modal
+      title={`Canister 수정 — ${item.canisterNo}`}
+      subtitle="No.·사이즈는 관리자만 변경할 수 있습니다. (위치/상태는 이력 등록에서)"
+      onClose={onClose}
+      footer={<>
+        <button className="btn secondary" onClick={onClose}>취소</button>
+        <button className="btn" onClick={submit} disabled={busy}>{busy ? '저장 중…' : '저장'}</button>
+      </>}
+    >
+      <Field label="Canister No." required>
+        <TextInput value={f.canisterNo} onChange={(e) => setF((p) => ({ ...p, canisterNo: e.target.value }))} autoFocus />
+      </Field>
+      <Field label="용기 사이즈" required>
+        <EtcSelect options={meta.canisterSizes} value={f.size} etc={f.sizeEtc} onChange={(v, etc) => setF((p) => ({ ...p, size: v, sizeEtc: etc }))} placeholder="사이즈 입력" />
+      </Field>
+      <Field label="비고">
+        <TextInput value={f.note} onChange={(e) => setF((p) => ({ ...p, note: e.target.value }))} placeholder="선택 입력" />
       </Field>
     </Modal>
   );

@@ -5,6 +5,7 @@ import { useAuth } from '../auth/AuthContext';
 import { Modal, Field, TextInput, Select, useToast, ConfirmDialog, Empty, Loading, Badge } from '../components/ui';
 import { UnitInput, ItemSelect, expandLot } from '../components/inputs';
 import { TrendModal } from '../components/TrendModal';
+import { UseModal } from '../components/UseModal';
 
 const blank = { itemName: '', lotNo: '', quantity: '', unit: 'kg', vendor: '', receivedDate: '', note: '' };
 const today = () => new Date().toISOString().slice(0, 10);
@@ -32,6 +33,7 @@ export default function RawMaterials() {
   const [q, setQ] = useState('');
   const [showAll, setShowAll] = useState(false);
   const [trend, setTrend] = useState(false);
+  const [useOpen, setUseOpen] = useState(false);
   const [edit, setEdit] = useState(null);
   const [tx, setTx] = useState(null);
   const [del, setDel] = useState(null);
@@ -53,6 +55,7 @@ export default function RawMaterials() {
   // 퀵메뉴(?new=1)로 진입 시 등록 모달 자동 오픈
   useEffect(() => {
     if (sp.get('new') === '1') setEdit({ mode: 'create', data: { ...blank, receivedDate: today() } });
+    if (sp.get('use') === '1') setUseOpen(true);
   }, [sp]);
 
   function exportCsv() {
@@ -112,7 +115,8 @@ export default function RawMaterials() {
         <div className="btn-row">
           <button className="btn secondary sm" onClick={() => setTrend(true)}>📈 사용량 분석</button>
           <button className="btn secondary sm" onClick={exportCsv}>⬇ CSV</button>
-          <button className="btn sm" onClick={() => setEdit({ mode: 'create', data: { ...blank, receivedDate: today() } })}>+ 원재료 등록</button>
+          <button className="btn secondary sm" onClick={() => setUseOpen(true)}>− 원재료 사용</button>
+          <button className="btn sm" onClick={() => setEdit({ mode: 'create', data: { ...blank, receivedDate: today() } })}>+ 원재료 입고</button>
         </div>
       </div>
 
@@ -200,6 +204,14 @@ export default function RawMaterials() {
         />
       )}
       {trend && <TrendModal category="raw" onClose={() => setTrend(false)} />}
+      {useOpen && (
+        <UseModal
+          title="원재료 사용 (출고)" base="raw-materials" items={items || []} nameField="itemName" qtyField="quantity"
+          onClose={() => setUseOpen(false)}
+          onSaved={() => { setUseOpen(false); load(); toast.ok('사용 처리되었습니다.'); }}
+          onError={(m) => toast.err(m)}
+        />
+      )}
     </>
   );
 }
@@ -227,7 +239,7 @@ function RawForm({ mode, initial, onClose, onSaved, onError }) {
 
   return (
     <Modal
-      title={mode === 'create' ? '원재료 등록 (Lot)' : '원재료 Lot 수정'}
+      title={mode === 'create' ? '원재료 입고 (Lot)' : '원재료 Lot 수정'}
       subtitle={mode === 'edit' ? '수량은 수불(입고/출고)로 변경하세요.' : undefined}
       onClose={onClose}
       footer={<>

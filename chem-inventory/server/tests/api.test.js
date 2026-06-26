@@ -119,6 +119,33 @@ describe('트렌드', () => {
   });
 });
 
+describe('멀티 공장(1·2공장) 격리/권한', () => {
+  let admin1;
+  beforeAll(async () => {
+    admin1 = request.agent(app);
+    await admin1.post('/api/auth/login').send({ id: 'admin1', password: 'admin1234' }).expect(200);
+  });
+  test('2공장에 등록한 품목은 1공장에서 보이지 않는다', async () => {
+    await admin.post('/api/items').set('X-Plant', encodeURIComponent('2공장')).send({ category: 'raw', name: '격리테스트', unit: 'kg', safetyStock: 1 }).expect(201);
+    const p2 = await admin.get('/api/items?category=raw').set('X-Plant', encodeURIComponent('2공장')).expect(200);
+    const p1 = await admin.get('/api/items?category=raw').set('X-Plant', encodeURIComponent('1공장')).expect(200);
+    expect(p2.body.items.some((i) => i.name === '격리테스트')).toBe(true);
+    expect(p1.body.items.some((i) => i.name === '격리테스트')).toBe(false);
+  });
+  test('1공장 관리자(admin1)는 1공장 접근 가능, 2공장은 403', async () => {
+    await admin1.get('/api/items?category=raw').expect(200); // 기본 1공장
+    await admin1.get('/api/items?category=raw').set('X-Plant', encodeURIComponent('2공장')).expect(403);
+  });
+  test('admin1은 사용자 관리 불가(총괄관리자만)', async () => {
+    await admin1.get('/api/users').expect(403);
+    await admin.get('/api/users').expect(200);
+  });
+  test('로그인 응답에 접근 가능 공장 목록 포함', async () => {
+    const me = await admin1.get('/api/auth/me').expect(200);
+    expect(me.body.plants).toEqual(['1공장']);
+  });
+});
+
 describe('권한(삭제=관리자)', () => {
   test('사용자 등록 가능 / 삭제는 관리자', async () => {
     const res = await user.post('/api/raw-materials').send({ itemName: '톨루엔', lotNo: 'U-9', quantity: 3, unit: 'kg', receivedDate: '2026-06-26' }).expect(201);

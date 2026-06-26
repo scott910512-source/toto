@@ -5,15 +5,16 @@ const { readTable, mutate } = require('../lib/store');
 const { asyncHandler, str, num, badRequest } = require('../lib/http');
 const { newId, now } = require('../lib/ids');
 const { requireAuth } = require('../middleware/auth');
+const { resolvePlant } = require('../middleware/plant');
 const { computeWarnings } = require('../lib/warnings');
 const { readSettings } = require('./settings');
 
 const router = express.Router();
-router.use(requireAuth);
+router.use(requireAuth, resolvePlant);
 
-async function activeWarnings() {
+async function activeWarnings(plant) {
   const [items, raws, subs, canisters, settings] = await Promise.all([
-    readTable('items'), readTable('raw_materials'), readTable('sub_materials'), readTable('canisters'), readSettings(),
+    readTable('items', plant), readTable('raw_materials', plant), readTable('sub_materials', plant), readTable('canisters', plant), readSettings(plant),
   ]);
   const threshold = num(settings.safetyRatioPercent) || 100;
   return computeWarnings({ items, raws, subs, canisters, threshold });
@@ -25,7 +26,7 @@ router.get(
   asyncHandler(async (req, res) => {
     const me = req.session.user.id;
     const [warnings, acks, dismissed, users] = await Promise.all([
-      activeWarnings(), readTable('warning_acks'), readTable('warning_dismissed'), readTable('users'),
+      activeWarnings(req.plant), readTable('warning_acks', req.plant), readTable('warning_dismissed', req.plant), readTable('users'),
     ]);
     const dismissedKeys = new Set(dismissed.map((d) => d.warningKey));
     const approved = users.filter((u) => u.status === 'approved');
@@ -57,7 +58,7 @@ router.post(
     const key = str(req.body.key);
     if (!key) throw badRequest('경고 키가 필요합니다.');
     const me = req.session.user.id;
-    await mutate('warning_acks', (rows) => {
+    await mutate('warning_acks', req.plant, (rows) => {
       if (!rows.some((r) => r.warningKey === key && r.account === me)) {
         rows.push({ id: newId('wa'), warningKey: key, account: me, content: str(req.body.content), createdAt: now() });
       }
@@ -73,7 +74,7 @@ router.post(
     const key = str(req.body.key);
     if (!key) throw badRequest('경고 키가 필요합니다.');
     const me = req.session.user.id;
-    await mutate('warning_dismissed', (rows) => {
+    await mutate('warning_dismissed', req.plant, (rows) => {
       rows.push({ id: newId('wd'), warningKey: key, account: me, content: str(req.body.content), createdAt: now() });
     });
     res.json({ ok: true });
@@ -84,7 +85,7 @@ router.post(
 router.get(
   '/logs',
   asyncHandler(async (req, res) => {
-    const [acks, dismissed] = await Promise.all([readTable('warning_acks'), readTable('warning_dismissed')]);
+    const [acks, dismissed] = await Promise.all([readTable('warning_acks', req.plant), readTable('warning_dismissed', req.plant)]);
     const logs = [
       ...acks.map((a) => ({ ...a, action: '확인' })),
       ...dismissed.map((d) => ({ ...d, action: '삭제' })),

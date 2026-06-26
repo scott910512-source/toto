@@ -5,8 +5,8 @@ const { num } = require('./http');
 const { newId, now } = require('./ids');
 
 /** 이상발생 1건 기록 */
-function appendAnomaly({ type, itemName, lotInfo, account, note = '' }) {
-  return mutate('anomalies', (rows) => {
+function appendAnomaly({ plant, type, itemName, lotInfo, account, note = '' }) {
+  return mutate('anomalies', plant, (rows) => {
     const r = { id: newId('an'), type, itemName, lotInfo, account, note, createdAt: now() };
     rows.push(r);
     return r;

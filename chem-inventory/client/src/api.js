@@ -1,10 +1,32 @@
-// REST API 클라이언트. 동일 출처 세션 쿠키를 사용한다.
+// REST API 클라이언트. 동일 출처 세션 쿠키 + 공장(X-Plant) 헤더 사용.
 const BASE = '/api';
 
+// 현재 선택된 공장(멀티 사이트). localStorage에 보존.
+let currentPlant = '';
+try {
+  currentPlant = localStorage.getItem('plant') || '';
+} catch {
+  currentPlant = '';
+}
+export function setPlant(p) {
+  currentPlant = p || '';
+  try {
+    localStorage.setItem('plant', currentPlant);
+  } catch {
+    /* ignore */
+  }
+}
+export function getPlant() {
+  return currentPlant;
+}
+
 async function request(path, { method = 'GET', body } = {}) {
+  const headers = {};
+  if (body) headers['Content-Type'] = 'application/json';
+  if (currentPlant) headers['X-Plant'] = encodeURIComponent(currentPlant); // 헤더는 ASCII만 허용 → 인코딩
   const res = await fetch(BASE + path, {
     method,
-    headers: body ? { 'Content-Type': 'application/json' } : {},
+    headers,
     body: body ? JSON.stringify(body) : undefined,
     credentials: 'include',
   });
@@ -17,7 +39,7 @@ async function request(path, { method = 'GET', body } = {}) {
   if (!res.ok) {
     const err = new Error((data && data.error) || (data && data.message) || '요청을 처리하지 못했습니다.');
     err.status = res.status;
-    err.data = data; // 409 선입선출 경고 등 상세 정보 전달
+    err.data = data;
     throw err;
   }
   return data;
@@ -30,10 +52,12 @@ export const api = {
   del: (p) => request(p, { method: 'DELETE' }),
 };
 
-// CSV 다운로드: 동일 출처 GET이라 세션 쿠키가 자동 전송된다.
+// CSV 다운로드: 동일 출처 GET(쿠키 자동). 공장은 쿼리로 전달.
 export function downloadCsv(path) {
+  const sep = path.includes('?') ? '&' : '?';
+  const url = currentPlant ? `${BASE}${path}${sep}plant=${encodeURIComponent(currentPlant)}` : BASE + path;
   const a = document.createElement('a');
-  a.href = BASE + path;
+  a.href = url;
   a.rel = 'noopener';
   document.body.appendChild(a);
   a.click();

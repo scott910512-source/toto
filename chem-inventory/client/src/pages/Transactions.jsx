@@ -1,13 +1,18 @@
 import { useEffect, useState, useCallback } from 'react';
 import { api, downloadCsv } from '../api';
-import { Loading, Empty, Badge, Select } from '../components/ui';
+import { useAuth } from '../auth/AuthContext';
+import { Loading, Empty, Badge, Select, Modal, Field, TextInput, ConfirmDialog, useToast } from '../components/ui';
 
 const catLabel = { raw: '원재료', sub: '부재료', canister: 'Canister' };
 const catColor = { raw: 'blue', sub: 'purple', canister: 'green' };
 const inTypes = ['입고', '반입'];
 
 export default function Transactions() {
+  const { isAdmin } = useAuth();
+  const toast = useToast();
   const [items, setItems] = useState(null);
+  const [edit, setEdit] = useState(null);
+  const [del, setDel] = useState(null);
   const [f, setF] = useState({ materialType: '', type: '', q: '', from: '', to: '', sort: 'category' });
   const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
 
@@ -80,6 +85,7 @@ export default function Transactions() {
                 <th className="num">처리후</th>
                 <th>비고</th>
                 <th>작성자</th>
+                <th style={{ width: 1 }}></th>
               </tr>
             </thead>
             <tbody>
@@ -94,12 +100,55 @@ export default function Transactions() {
                   <td className="num muted">{t.balanceAfter !== '' && t.balanceAfter != null ? Number(t.balanceAfter).toLocaleString() + (t.unit || '') : ''}</td>
                   <td className="muted">{t.note || ''}</td>
                   <td className="muted">{t.createdBy || ''}</td>
+                  <td>
+                    <div className="btn-row">
+                      <button className="btn secondary sm" onClick={() => setEdit(t)}>수정</button>
+                      {isAdmin && <button className="btn danger sm" onClick={() => setDel(t)}>삭제</button>}
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         )}
       </div>
+
+      {edit && (
+        <TxEditForm tx={edit} onClose={() => setEdit(null)} onSaved={() => { setEdit(null); load(); toast.ok('수정했습니다.'); }} onError={(m) => toast.err(m)} />
+      )}
+      {del && (
+        <ConfirmDialog
+          title="수불 내역 삭제"
+          message="이 수불 내역을 삭제할까요? (재고 수량은 자동 보정되지 않습니다)"
+          onClose={() => setDel(null)}
+          onConfirm={async () => { try { await api.del('/transactions/' + del.id); setDel(null); load(); toast.ok('삭제했습니다.'); } catch (e) { toast.err(e.message); } }}
+        />
+      )}
     </>
+  );
+}
+
+function TxEditForm({ tx, onClose, onSaved, onError }) {
+  const [note, setNote] = useState(tx.note || '');
+  const [busy, setBusy] = useState(false);
+  async function submit() {
+    setBusy(true);
+    try { await api.patch('/transactions/' + tx.id, { note }); onSaved(); }
+    catch (e) { onError(e.message); } finally { setBusy(false); }
+  }
+  return (
+    <Modal
+      title="수불 내역 수정"
+      subtitle={`${tx.materialName} · ${tx.type} ${tx.quantity}${tx.unit || ''}`}
+      onClose={onClose}
+      footer={<>
+        <button className="btn secondary" onClick={onClose}>취소</button>
+        <button className="btn" onClick={submit} disabled={busy}>{busy ? '저장 중…' : '저장'}</button>
+      </>}
+    >
+      <Field label="비고" hint="수량·구분 등 기록 정정은 관리자에게 문의(재고는 자동 보정되지 않음)">
+        <TextInput value={note} onChange={(e) => setNote(e.target.value)} placeholder="비고 입력" autoFocus />
+      </Field>
+    </Modal>
   );
 }

@@ -5,18 +5,19 @@ const { mutate, readTable } = require('../lib/store');
 const { asyncHandler, str, num, badRequest, notFound } = require('../lib/http');
 const { newId, now } = require('../lib/ids');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
+const { resolvePlant } = require('../middleware/plant');
 
 const router = express.Router();
 const CATEGORIES = ['raw', 'sub'];
 
-router.use(requireAuth);
+router.use(requireAuth, resolvePlant);
 
 // 품목 마스터 목록 (category=raw|sub 필터)
 router.get(
   '/',
   asyncHandler(async (req, res) => {
     const category = str(req.query.category);
-    const rows = await readTable('items');
+    const rows = await readTable('items', req.plant);
     const items = category ? rows.filter((r) => r.category === category) : rows;
     items.sort((a, b) => (a.category === b.category ? a.name.localeCompare(b.name) : a.category < b.category ? -1 : 1));
     res.json({ items });
@@ -37,7 +38,7 @@ router.post(
     if (Number.isNaN(safetyStock) || safetyStock < 0) throw badRequest('안전재고 목표값은 0 이상의 숫자여야 합니다.');
 
     const me = req.session.user.id;
-    const item = await mutate('items', (rows) => {
+    const item = await mutate('items', req.plant, (rows) => {
       if (rows.some((r) => r.category === category && r.name === name)) throw badRequest('이미 등록된 품목입니다.');
       const row = {
         id: newId('it'), category, name, unit,
@@ -59,7 +60,7 @@ router.patch(
   requireAdmin,
   asyncHandler(async (req, res) => {
     const me = req.session.user.id;
-    const item = await mutate('items', (rows) => {
+    const item = await mutate('items', req.plant, (rows) => {
       const r = rows.find((x) => x.id === req.params.id);
       if (!r) throw notFound('품목을 찾을 수 없습니다.');
       if (req.body.name !== undefined) {
@@ -92,7 +93,7 @@ router.delete(
   '/:id',
   requireAdmin,
   asyncHandler(async (req, res) => {
-    await mutate('items', (rows) => {
+    await mutate('items', req.plant, (rows) => {
       const idx = rows.findIndex((x) => x.id === req.params.id);
       if (idx < 0) throw notFound('품목을 찾을 수 없습니다.');
       rows.splice(idx, 1);

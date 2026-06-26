@@ -4,6 +4,7 @@ const express = require('express');
 const { mutate, readTable } = require('../lib/store');
 const { asyncHandler, str, num, badRequest } = require('../lib/http');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
+const { resolvePlant } = require('../middleware/plant');
 
 const router = express.Router();
 
@@ -15,8 +16,8 @@ const DEFAULTS = {
 };
 const STRING_KEYS = ['canisterDefaultSize', 'canisterDefaultLocation', 'canisterDefaultStatus'];
 
-async function readSettings() {
-  const rows = await readTable('settings');
+async function readSettings(plant) {
+  const rows = await readTable('settings', plant);
   const map = { ...DEFAULTS };
   for (const r of rows) map[r.key] = r.value;
   return map;
@@ -31,16 +32,18 @@ function setKey(rows, key, value) {
 router.get(
   '/',
   requireAuth,
+  resolvePlant,
   asyncHandler(async (req, res) => {
-    res.json({ settings: await readSettings() });
+    res.json({ settings: await readSettings(req.plant) });
   }),
 );
 
 router.patch(
   '/',
   requireAdmin,
+  resolvePlant,
   asyncHandler(async (req, res) => {
-    await mutate('settings', (rows) => {
+    await mutate('settings', req.plant, (rows) => {
       if (req.body.safetyRatioPercent !== undefined) {
         const p = num(req.body.safetyRatioPercent);
         if (Number.isNaN(p) || p < 0 || p > 1000) throw badRequest('안전재고 비율(%)은 0~1000 사이여야 합니다.');
@@ -50,7 +53,7 @@ router.patch(
         if (req.body[k] !== undefined) setKey(rows, k, str(req.body[k]));
       }
     });
-    res.json({ settings: await readSettings() });
+    res.json({ settings: await readSettings(req.plant) });
   }),
 );
 

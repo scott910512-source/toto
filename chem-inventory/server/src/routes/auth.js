@@ -6,11 +6,12 @@ const { mutate, readTable } = require('../lib/store');
 const { asyncHandler, str, badRequest } = require('../lib/http');
 const { now } = require('../lib/ids');
 const { requireAuth } = require('../middleware/auth');
+const { allowedPlants } = require('../middleware/plant');
 
 const router = express.Router();
 
 function publicUser(u) {
-  return { id: u.id, name: u.name, role: u.role, status: u.status };
+  return { id: u.id, name: u.name, role: u.role, status: u.status, plant: u.plant, plantScope: u.plantScope };
 }
 
 // 가입(사용신청): 대기(pending) 상태로 생성, 관리자 승인 필요
@@ -24,7 +25,7 @@ router.post(
     if (!/^[A-Za-z0-9_.-]{3,20}$/.test(id)) throw badRequest('아이디는 영문/숫자 3~20자여야 합니다.');
     if (password.length < 4) throw badRequest('비밀번호는 4자 이상이어야 합니다.');
 
-    const result = await mutate('users', (rows) => {
+    const result = await mutate('users', null, (rows) => {
       if (rows.some((r) => r.id === id)) throw badRequest('이미 사용 중인 아이디입니다.');
       const user = {
         id,
@@ -32,6 +33,8 @@ router.post(
         name,
         role: 'user',
         status: 'pending',
+        plant: '2공장',
+        plantScope: '2공장',
         createdAt: now(),
         approvedAt: '',
         approvedBy: '',
@@ -59,8 +62,8 @@ router.post(
     if (user.status === 'pending') throw badRequest('가입 승인 대기 중입니다. 관리자에게 문의하세요.');
     if (user.status !== 'approved') throw badRequest('사용이 제한된 계정입니다. 관리자에게 문의하세요.');
 
-    req.session.user = { id: user.id, name: user.name, role: user.role };
-    res.json({ user: publicUser(user) });
+    req.session.user = { id: user.id, name: user.name, role: user.role, plant: user.plant, plantScope: user.plantScope };
+    res.json({ user: publicUser(user), plants: allowedPlants(user) });
   }),
 );
 
@@ -80,7 +83,7 @@ router.get(
   '/me',
   requireAuth,
   asyncHandler(async (req, res) => {
-    res.json({ user: req.session.user });
+    res.json({ user: req.session.user, plants: allowedPlants(req.session.user) });
   }),
 );
 

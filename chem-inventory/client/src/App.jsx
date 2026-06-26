@@ -28,7 +28,7 @@ const NAV = [
 ];
 
 function Sidebar() {
-  const { user, isAdmin } = useAuth();
+  const { user, isAdmin, plants, plant, changePlant } = useAuth();
   return (
     <aside className="sidebar">
       <div className="brand">
@@ -37,6 +37,16 @@ function Sidebar() {
           <div className="brand-title">수불관리</div>
           <div className="brand-sub">화학공장 운영관리</div>
         </div>
+      </div>
+      <div className="plant-pick">
+        <span className="plant-label">공장</span>
+        {plants && plants.length > 1 ? (
+          <select className="plant-select" value={plant} onChange={(e) => changePlant(e.target.value)}>
+            {plants.map((p) => <option key={p} value={p}>{p}</option>)}
+          </select>
+        ) : (
+          <span className="plant-single">{plant || (plants && plants[0]) || '-'}</span>
+        )}
       </div>
       <nav className="nav">
         {NAV.map((n, i) =>

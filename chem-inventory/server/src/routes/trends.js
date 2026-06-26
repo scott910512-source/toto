@@ -4,9 +4,10 @@ const express = require('express');
 const { readTable } = require('../lib/store');
 const { asyncHandler, str, num } = require('../lib/http');
 const { requireAuth } = require('../middleware/auth');
+const { resolvePlant } = require('../middleware/plant');
 
 const router = express.Router();
-router.use(requireAuth);
+router.use(requireAuth, resolvePlant);
 
 function weekLabel(d) {
   const date = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
@@ -33,7 +34,7 @@ router.get(
     const category = str(req.query.category) || 'raw'; // raw | sub
     const period = ['week', 'month', 'year'].includes(str(req.query.period)) ? str(req.query.period) : 'month';
 
-    const txns = (await readTable('transactions')).filter((t) => t.materialType === category);
+    const txns = (await readTable('transactions', req.plant)).filter((t) => t.materialType === category);
     const labelSet = new Set();
     const byItem = {};
 

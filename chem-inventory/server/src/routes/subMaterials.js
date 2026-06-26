@@ -7,10 +7,11 @@ const { newId, now } = require('../lib/ids');
 const { appendTransaction } = require('../lib/tx');
 const { appendAnomaly, findEarlierLot } = require('../lib/anomaly');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
+const { resolvePlant } = require('../middleware/plant');
 
 const router = express.Router();
 
-router.use(requireAuth);
+router.use(requireAuth, resolvePlant);
 
 function filterRows(rows, query) {
   const q = str(query.q).toLowerCase();
@@ -28,7 +29,7 @@ function filterRows(rows, query) {
 router.get(
   '/',
   asyncHandler(async (req, res) => {
-    const rows = await readTable('sub_materials');
+    const rows = await readTable('sub_materials', req.plant);
     const sorted = filterRows(rows, req.query).sort((a, b) =>
       a.name === b.name ? (a.receivedDate < b.receivedDate ? 1 : -1) : a.name.localeCompare(b.name),
     );
@@ -40,7 +41,7 @@ router.get(
 router.get(
   '/by-item',
   asyncHandler(async (req, res) => {
-    const rows = await readTable('sub_materials');
+    const rows = await readTable('sub_materials', req.plant);
     const map = new Map();
     for (const r of rows) {
       const key = r.name;
@@ -60,7 +61,7 @@ router.get(
 router.get(
   '/export',
   asyncHandler(async (req, res) => {
-    const rows = await readTable('sub_materials');
+    const rows = await readTable('sub_materials', req.plant);
     sendCsv(res, headersOf('sub_materials'), filterRows(rows, req.query), '부재료목록');
   }),
 );
@@ -81,7 +82,7 @@ router.post(
     if (!receivedDate) throw badRequest('입고일은 필수 입력입니다.');
 
     const me = req.session.user.id;
-    const item = await mutate('sub_materials', (rows) => {
+    const item = await mutate('sub_materials', req.plant, (rows) => {
       if (rows.some((r) => r.lotNo === lotNo && r.name === name)) {
         throw badRequest('동일 품목/Lot No가 이미 존재합니다.');
       }
@@ -105,7 +106,7 @@ router.post(
     });
     if (weight > 0) {
       await appendTransaction({
-        materialType: 'sub', materialId: item.id, materialName: item.name, lotNo,
+        plant: req.plant, materialType: 'sub', materialId: item.id, materialName: item.name, lotNo,
         type: '입고', quantity: weight, unit, balanceAfter: weight, note: '신규 입고', user: me,
       });
     }
@@ -118,7 +119,7 @@ router.patch(
   '/:id',
   asyncHandler(async (req, res) => {
     const me = req.session.user.id;
-    const item = await mutate('sub_materials', (rows) => {
+    const item = await mutate('sub_materials', req.plant, (rows) => {
       const r = rows.find((x) => x.id === req.params.id);
       if (!r) throw notFound('부재료를 찾을 수 없습니다.');
       for (const f of ['name', 'receivedDate', 'lotNo', 'vendor', 'unit', 'note']) {
@@ -152,7 +153,7 @@ router.post(
 
     let violation = null;
     if (type === '출고') {
-      const all = await readTable('sub_materials');
+      const all = await readTable('sub_materials', req.plant);
       const target = all.find((x) => x.id === req.params.id);
       if (!target) throw notFound('부재료를 찾을 수 없습니다.');
       violation = findEarlierLot(all, target, 'name');
@@ -165,7 +166,7 @@ router.post(
       }
     }
 
-    const item = await mutate('sub_materials', (rows) => {
+    const item = await mutate('sub_materials', req.plant, (rows) => {
       const r = rows.find((x) => x.id === req.params.id);
       if (!r) throw notFound('부재료를 찾을 수 없습니다.');
       const cur = num(r.weight) || 0;
@@ -177,12 +178,12 @@ router.post(
       return r;
     });
     const txn = await appendTransaction({
-      materialType: 'sub', materialId: item.id, materialName: item.name, lotNo: item.lotNo,
+      plant: req.plant, materialType: 'sub', materialId: item.id, materialName: item.name, lotNo: item.lotNo,
       type, quantity: qty, unit: item.unit, balanceAfter: item.weight, note, user: me,
     });
     if (violation && force && type === '출고') {
       await appendAnomaly({
-        type: '선입선출 오류', itemName: item.name,
+        plant: req.plant, type: '선입선출 오류', itemName: item.name,
         lotInfo: `${item.lotNo}(입고 ${item.receivedDate || '-'}) — 더 빠른 Lot ${violation.lotNo}(${violation.receivedDate}) 존재`,
         account: me, note: '강제 사용',
       });
@@ -196,7 +197,7 @@ router.delete(
   '/:id',
   requireAdmin,
   asyncHandler(async (req, res) => {
-    await mutate('sub_materials', (rows) => {
+    await mutate('sub_materials', req.plant, (rows) => {
       const idx = rows.findIndex((x) => x.id === req.params.id);
       if (idx < 0) throw notFound('부재료를 찾을 수 없습니다.');
       rows.splice(idx, 1);

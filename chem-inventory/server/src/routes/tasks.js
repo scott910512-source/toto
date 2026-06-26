@@ -5,13 +5,14 @@ const { readTable, mutate } = require('../lib/store');
 const { asyncHandler, str, badRequest, notFound } = require('../lib/http');
 const { newId, now } = require('../lib/ids');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
+const { resolvePlant } = require('../middleware/plant');
 
 const router = express.Router();
 const CATEGORIES = ['공정', '원부재료', '현장관리', '안전', '공사', '기타'];
 const PRIORITIES = ['상', '중', '하'];
 const STATUSES = ['완료', '진행중', '대기', '지연'];
 
-router.use(requireAuth);
+router.use(requireAuth, resolvePlant);
 
 const PRIO_ORDER = { 상: 0, 중: 1, 하: 2 };
 
@@ -20,7 +21,7 @@ router.get(
   '/',
   asyncHandler(async (req, res) => {
     const includeAll = str(req.query.all) === '1';
-    let rows = await readTable('tasks');
+    let rows = await readTable('tasks', req.plant);
     if (!includeAll) rows = rows.filter((r) => r.status !== '완료');
     rows.sort((a, b) => {
       const pa = PRIO_ORDER[a.priority] ?? 9;
@@ -46,7 +47,7 @@ router.post(
     if (!STATUSES.includes(status)) throw badRequest('진행현황 값이 올바르지 않습니다.');
 
     const me = req.session.user.id;
-    const item = await mutate('tasks', (rows) => {
+    const item = await mutate('tasks', req.plant, (rows) => {
       const row = {
         id: newId('tk'), title, category, categoryEtc: str(req.body.categoryEtc),
         priority, assignee: str(req.body.assignee), dueDate: str(req.body.dueDate), status,
@@ -64,7 +65,7 @@ router.patch(
   '/:id',
   asyncHandler(async (req, res) => {
     const me = req.session.user.id;
-    const item = await mutate('tasks', (rows) => {
+    const item = await mutate('tasks', req.plant, (rows) => {
       const r = rows.find((x) => x.id === req.params.id);
       if (!r) throw notFound('Task를 찾을 수 없습니다.');
       if (req.body.title !== undefined) r.title = str(req.body.title);
@@ -91,7 +92,7 @@ router.delete(
   '/:id',
   requireAdmin,
   asyncHandler(async (req, res) => {
-    await mutate('tasks', (rows) => {
+    await mutate('tasks', req.plant, (rows) => {
       const idx = rows.findIndex((x) => x.id === req.params.id);
       if (idx < 0) throw notFound('Task를 찾을 수 없습니다.');
       rows.splice(idx, 1);
