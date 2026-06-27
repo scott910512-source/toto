@@ -7,177 +7,260 @@
 </head>
 
 <!--
-  ┌─────────────────────────────────────────────────────────────┐
-  │  지식블로그 보고서 템플릿 (web 실제 표시폭 ≈ 800px 기준)        │
-  │  - 사용법: <body> 안의 .report 블록을 복사해서 에디터에 붙여넣기  │
-  │  - 모든 스타일은 인라인/내부 CSS 로 자체 완결되어 있어           │
-  │    외부 CSS 가 막힌 에디터에서도 그대로 동작합니다.             │
-  │  - [   ] 표시된 부분만 내용으로 바꾸면 됩니다.                  │
-  └─────────────────────────────────────────────────────────────┘
+  ┌──────────────────────────────────────────────────────────────┐
+  │  지식블로그 보고서 템플릿 · Refined Edition                      │
+  │  web 실제 표시폭 ≈ 780px 기준 / 모던·미니멀 스타일             │
+  │                                                                │
+  │  · 사용법 : <article class="doc"> 블록을 복사해 에디터에 붙여넣기 │
+  │  · 모든 스타일은 인라인으로 자체 완결 → 외부 CSS 불필요          │
+  │  · [   ] 부분만 내용으로 교체하세요.                            │
+  │  · 포인트 컬러는 #2c5f8a (검색·치환으로 한번에 변경 가능)        │
+  └──────────────────────────────────────────────────────────────┘
 -->
 
-<body style="margin:0; background:#f4f5f7;">
+<body style="margin:0; padding:32px 0; background:#fbfbfc;">
 
 <!-- ===================== 보고서 본문 시작 ===================== -->
-<div class="report" style="
+<article class="doc" style="
     max-width:780px;
     margin:0 auto;
-    padding:0 4px;
+    padding:0 6px;
     box-sizing:border-box;
-    font-family:'Malgun Gothic','맑은 고딕',-apple-system,'Apple SD Gothic Neo',sans-serif;
-    color:#222;
-    line-height:1.7;
+    font-family:'Pretendard','Noto Sans KR','Malgun Gothic','맑은 고딕',-apple-system,'Apple SD Gothic Neo',sans-serif;
+    color:#2b2f36;
+    line-height:1.78;
     font-size:15px;
+    letter-spacing:-0.01em;
     -webkit-font-smoothing:antialiased;
 ">
 
-  <!-- ── 표지 / 헤더 ───────────────────────────────────────── -->
-  <header style="
-      border-top:4px solid #1f4e79;
-      border-bottom:1px solid #e0e0e0;
-      padding:22px 0 18px;
-      margin-bottom:26px;
-  ">
-    <div style="font-size:12px; letter-spacing:1px; color:#1f4e79; font-weight:700; margin-bottom:8px;">
-      [ 카테고리 / 부서명 ]
+  <!-- ── 헤더 ──────────────────────────────────────────────── -->
+  <header style="padding:8px 0 36px;">
+    <div style="
+        display:inline-block;
+        font-size:11px; font-weight:700; letter-spacing:0.14em;
+        color:#2c5f8a; text-transform:uppercase;
+        padding:5px 12px; border:1px solid #d6e2ee;
+        border-radius:100px; background:#f3f8fc; margin-bottom:20px;
+    ">
+      [ CATEGORY ]
     </div>
-    <h1 style="margin:0 0 10px; font-size:26px; line-height:1.35; color:#111; font-weight:800;">
-      [ 보고서 제목을 입력하세요 ]
+
+    <h1 style="
+        margin:0 0 16px; font-size:32px; line-height:1.3;
+        font-weight:800; color:#161a20; letter-spacing:-0.025em;
+    ">
+      [ 보고서 제목을<br>입력하세요 ]
     </h1>
-    <p style="margin:0; font-size:15px; color:#666;">
-      [ 한 줄 부제 · 핵심 요약을 적어주세요 ]
+
+    <p style="margin:0; font-size:16px; color:#6b7280; line-height:1.65;">
+      [ 한 줄 부제 — 이 보고서가 다루는 핵심을 간결하게 요약합니다. ]
     </p>
-    <div style="margin-top:14px; font-size:12.5px; color:#888;">
-      작성자 [ 홍길동 ] &nbsp;|&nbsp; 작성일 [ 2026.06.25 ] &nbsp;|&nbsp; 버전 [ v1.0 ]
+
+    <div style="
+        display:flex; gap:20px; flex-wrap:wrap;
+        margin-top:24px; font-size:12.5px; color:#9aa1ab;
+    ">
+      <span>✍&nbsp; [ 홍길동 ]</span>
+      <span>🗓&nbsp; [ 2026.06.25 ]</span>
+      <span>🏷&nbsp; [ v1.0 ]</span>
     </div>
   </header>
 
-  <!-- ── 핵심 요약 박스 ────────────────────────────────────── -->
+  <!-- 얇은 구분선 -->
+  <div style="height:1px; background:linear-gradient(to right,#e5e9ee,#e5e9ee 70%,transparent); margin-bottom:36px;"></div>
+
+  <!-- ── 핵심 요약 카드 ─────────────────────────────────────── -->
   <div style="
-      background:#eef4fb;
-      border-left:4px solid #1f4e79;
-      border-radius:0 6px 6px 0;
-      padding:16px 18px;
-      margin:0 0 28px;
+      background:#ffffff;
+      border:1px solid #eceef1;
+      border-radius:14px;
+      padding:24px 26px;
+      margin:0 0 40px;
+      box-shadow:0 1px 2px rgba(16,24,40,0.04), 0 8px 24px rgba(16,24,40,0.04);
   ">
-    <div style="font-size:13px; font-weight:700; color:#1f4e79; margin-bottom:6px;">
-      ✦ 핵심 요약
+    <div style="
+        font-size:11px; font-weight:700; letter-spacing:0.12em;
+        color:#2c5f8a; text-transform:uppercase; margin-bottom:14px;
+    ">
+      Key Takeaways
     </div>
-    <ul style="margin:0; padding-left:18px; font-size:14px; color:#33414f;">
-      <li>[ 첫 번째 핵심 메시지 ]</li>
-      <li>[ 두 번째 핵심 메시지 ]</li>
-      <li>[ 세 번째 핵심 메시지 ]</li>
-    </ul>
+    <table style="width:100%; border-collapse:collapse;">
+      <tr>
+        <td style="vertical-align:top; padding:0 0 10px; width:26px;">
+          <span style="color:#2c5f8a; font-weight:800;">01</span>
+        </td>
+        <td style="vertical-align:top; padding:0 0 10px; font-size:14.5px; color:#3a3f47;">[ 첫 번째 핵심 메시지 ]</td>
+      </tr>
+      <tr>
+        <td style="vertical-align:top; padding:0 0 10px; width:26px;">
+          <span style="color:#2c5f8a; font-weight:800;">02</span>
+        </td>
+        <td style="vertical-align:top; padding:0 0 10px; font-size:14.5px; color:#3a3f47;">[ 두 번째 핵심 메시지 ]</td>
+      </tr>
+      <tr>
+        <td style="vertical-align:top; padding:0; width:26px;">
+          <span style="color:#2c5f8a; font-weight:800;">03</span>
+        </td>
+        <td style="vertical-align:top; padding:0; font-size:14.5px; color:#3a3f47;">[ 세 번째 핵심 메시지 ]</td>
+      </tr>
+    </table>
   </div>
 
   <!-- ── 섹션 1 ───────────────────────────────────────────── -->
-  <section style="margin-bottom:30px;">
+  <section style="margin-bottom:44px;">
     <h2 style="
-        font-size:19px; font-weight:800; color:#1f4e79;
-        margin:0 0 12px; padding-bottom:8px;
-        border-bottom:2px solid #1f4e79;
+        font-size:13px; font-weight:700; letter-spacing:0.06em;
+        color:#2c5f8a; margin:0 0 6px;
     ">
-      1. [ 섹션 제목 ]
+      SECTION&nbsp;01
     </h2>
+    <h3 style="
+        font-size:22px; font-weight:800; color:#161a20;
+        margin:0 0 18px; letter-spacing:-0.02em;
+    ">
+      [ 섹션 제목 ]
+    </h3>
 
-    <p style="margin:0 0 14px;">
-      [ 본문을 입력하세요. 가독성을 위해 한 문단은 3~4줄 내외로 끊어 쓰는 것을
-      권장합니다. 실제 표시 폭이 좁기 때문에 문장이 길면 줄바꿈이 많아져
-      답답해 보입니다. ]
+    <p style="margin:0 0 18px; color:#3f444c;">
+      [ 본문을 입력하세요. 표시 폭이 좁기 때문에 한 문단은 3~4줄 내외로
+      끊어 쓰면 훨씬 깔끔하게 읽힙니다. 행간을 넉넉히 두어 여백의 미를
+      살렸습니다. ]
     </p>
 
-    <h3 style="font-size:15.5px; font-weight:700; color:#333; margin:18px 0 8px;">
-      ▎[ 소제목 ]
-    </h3>
-    <p style="margin:0 0 14px;">
+    <h4 style="font-size:16px; font-weight:700; color:#22262d; margin:26px 0 10px;">
+      [ 소제목 ]
+    </h4>
+    <p style="margin:0; color:#3f444c;">
       [ 소제목 아래 세부 내용 ]
     </p>
   </section>
 
-  <!-- ── 강조 / 콜아웃 박스 ────────────────────────────────── -->
-  <div style="
-      background:#fff8e6;
-      border:1px solid #f0d98a;
-      border-radius:6px;
-      padding:14px 16px;
-      margin:0 0 28px;
-      font-size:14px;
+  <!-- ── 인용 / 강조 ───────────────────────────────────────── -->
+  <blockquote style="
+      margin:0 0 44px; padding:4px 0 4px 22px;
+      border-left:3px solid #2c5f8a;
+      font-size:18px; line-height:1.6; color:#22262d;
+      font-weight:600; letter-spacing:-0.01em;
   ">
-    <strong style="color:#9a6a00;">💡 참고</strong>
-    &nbsp;[ 주의·참고할 내용을 강조 박스로 표시할 때 사용하세요. ]
+    “ [ 강조하고 싶은 핵심 문장이나 인용구를 여기에 적으면
+    시선을 끌 수 있습니다. ] ”
+  </blockquote>
+
+  <!-- ── 콜아웃 박스 ───────────────────────────────────────── -->
+  <div style="
+      display:flex; gap:14px;
+      background:#fef9ed; border:1px solid #f5e6bf;
+      border-radius:12px; padding:16px 18px; margin:0 0 44px;
+  ">
+    <div style="font-size:18px; line-height:1.4;">💡</div>
+    <div style="font-size:14px; color:#7a5d12; line-height:1.65;">
+      <strong style="color:#5f480a;">참고&nbsp;</strong>
+      [ 주의·참고할 내용을 부드러운 톤의 박스로 표시합니다. ]
+    </div>
   </div>
 
   <!-- ── 섹션 2 + 표 ─────────────────────────────────────── -->
-  <section style="margin-bottom:30px;">
+  <section style="margin-bottom:44px;">
     <h2 style="
-        font-size:19px; font-weight:800; color:#1f4e79;
-        margin:0 0 12px; padding-bottom:8px;
-        border-bottom:2px solid #1f4e79;
+        font-size:13px; font-weight:700; letter-spacing:0.06em;
+        color:#2c5f8a; margin:0 0 6px;
     ">
-      2. [ 데이터 / 비교 표 ]
+      SECTION&nbsp;02
     </h2>
+    <h3 style="
+        font-size:22px; font-weight:800; color:#161a20;
+        margin:0 0 18px; letter-spacing:-0.02em;
+    ">
+      [ 데이터 비교 ]
+    </h3>
 
     <table style="
         width:100%; border-collapse:collapse;
-        font-size:13.5px; margin:0 0 8px;
+        font-size:14px; overflow:hidden; border-radius:12px;
+        box-shadow:0 0 0 1px #eceef1;
     ">
       <thead>
-        <tr style="background:#1f4e79; color:#fff;">
-          <th style="padding:10px; text-align:left; border:1px solid #1f4e79;">구분</th>
-          <th style="padding:10px; text-align:left; border:1px solid #1f4e79;">항목 A</th>
-          <th style="padding:10px; text-align:left; border:1px solid #1f4e79;">항목 B</th>
+        <tr style="background:#f7f9fb;">
+          <th style="padding:13px 16px; text-align:left; font-weight:700; color:#384049; border-bottom:1px solid #eceef1;">구분</th>
+          <th style="padding:13px 16px; text-align:left; font-weight:700; color:#384049; border-bottom:1px solid #eceef1;">항목 A</th>
+          <th style="padding:13px 16px; text-align:left; font-weight:700; color:#384049; border-bottom:1px solid #eceef1;">항목 B</th>
         </tr>
       </thead>
       <tbody>
         <tr>
-          <td style="padding:9px 10px; border:1px solid #e0e0e0; background:#fafbfc; font-weight:600;">[ 행 1 ]</td>
-          <td style="padding:9px 10px; border:1px solid #e0e0e0;">[ 값 ]</td>
-          <td style="padding:9px 10px; border:1px solid #e0e0e0;">[ 값 ]</td>
+          <td style="padding:12px 16px; border-bottom:1px solid #f1f3f5; font-weight:600; color:#22262d;">[ 행 1 ]</td>
+          <td style="padding:12px 16px; border-bottom:1px solid #f1f3f5; color:#4a4f57;">[ 값 ]</td>
+          <td style="padding:12px 16px; border-bottom:1px solid #f1f3f5; color:#4a4f57;">[ 값 ]</td>
         </tr>
-        <tr>
-          <td style="padding:9px 10px; border:1px solid #e0e0e0; background:#fafbfc; font-weight:600;">[ 행 2 ]</td>
-          <td style="padding:9px 10px; border:1px solid #e0e0e0;">[ 값 ]</td>
-          <td style="padding:9px 10px; border:1px solid #e0e0e0;">[ 값 ]</td>
+        <tr style="background:#fcfdfe;">
+          <td style="padding:12px 16px; font-weight:600; color:#22262d;">[ 행 2 ]</td>
+          <td style="padding:12px 16px; color:#4a4f57;">[ 값 ]</td>
+          <td style="padding:12px 16px; color:#4a4f57;">[ 값 ]</td>
         </tr>
       </tbody>
     </table>
-    <p style="margin:0; font-size:12px; color:#999;">※ [ 표 출처 / 비고 ]</p>
+    <p style="margin:10px 0 0; font-size:12px; color:#a3a9b2;">※ [ 표 출처 / 비고 ]</p>
   </section>
 
+  <!-- ── 통계 하이라이트 (3분할) ───────────────────────────── -->
+  <table style="width:100%; border-collapse:separate; border-spacing:12px 0; margin:0 -12px 44px;">
+    <tr>
+      <td style="width:33%; vertical-align:top; text-align:center; background:#f6f9fc; border-radius:14px; padding:22px 8px;">
+        <div style="font-size:30px; font-weight:800; color:#2c5f8a; letter-spacing:-0.02em;">[ 99% ]</div>
+        <div style="font-size:12.5px; color:#7b828c; margin-top:4px;">[ 지표 설명 ]</div>
+      </td>
+      <td style="width:33%; vertical-align:top; text-align:center; background:#f6f9fc; border-radius:14px; padding:22px 8px;">
+        <div style="font-size:30px; font-weight:800; color:#2c5f8a; letter-spacing:-0.02em;">[ 2.4x ]</div>
+        <div style="font-size:12.5px; color:#7b828c; margin-top:4px;">[ 지표 설명 ]</div>
+      </td>
+      <td style="width:33%; vertical-align:top; text-align:center; background:#f6f9fc; border-radius:14px; padding:22px 8px;">
+        <div style="font-size:30px; font-weight:800; color:#2c5f8a; letter-spacing:-0.02em;">[ 190 ]</div>
+        <div style="font-size:12.5px; color:#7b828c; margin-top:4px;">[ 지표 설명 ]</div>
+      </td>
+    </tr>
+  </table>
+
   <!-- ── 이미지 영역 ──────────────────────────────────────── -->
-  <figure style="margin:0 0 30px; text-align:center;">
+  <figure style="margin:0 0 44px; text-align:center;">
     <div style="
-        background:#eceff3; border:1px dashed #c2c9d2; border-radius:6px;
-        padding:48px 0; color:#9aa3ad; font-size:13px;
+        background:linear-gradient(135deg,#f3f5f8,#eaeef3);
+        border-radius:14px; padding:60px 0;
+        color:#aab1bb; font-size:13px; letter-spacing:0.02em;
     ">
-      [ 이미지 / 그래프 영역 — 여기에 이미지를 넣으세요 ]
+      [ 이미지 / 그래프를 여기에 넣으세요 ]
     </div>
-    <figcaption style="margin-top:8px; font-size:12px; color:#888;">
+    <figcaption style="margin-top:12px; font-size:12px; color:#a3a9b2;">
       그림 1. [ 이미지 설명 ]
     </figcaption>
   </figure>
 
-  <!-- ── 2단 레이아웃 (좁은 폭에서도 안정적) ─────────────────── -->
-  <section style="margin-bottom:30px;">
+  <!-- ── 2단 레이아웃 ─────────────────────────────────────── -->
+  <section style="margin-bottom:44px;">
     <h2 style="
-        font-size:19px; font-weight:800; color:#1f4e79;
-        margin:0 0 12px; padding-bottom:8px;
-        border-bottom:2px solid #1f4e79;
+        font-size:13px; font-weight:700; letter-spacing:0.06em;
+        color:#2c5f8a; margin:0 0 6px;
     ">
-      3. [ 2단 구성 ]
+      SECTION&nbsp;03
     </h2>
-    <table style="width:100%; border-collapse:collapse;">
+    <h3 style="
+        font-size:22px; font-weight:800; color:#161a20;
+        margin:0 0 18px; letter-spacing:-0.02em;
+    ">
+      [ 2단 구성 ]
+    </h3>
+    <table style="width:100%; border-collapse:separate; border-spacing:14px 0; margin:0 -14px;">
       <tr>
-        <td style="width:50%; vertical-align:top; padding:0 10px 0 0;">
-          <div style="background:#f7f9fb; border-radius:6px; padding:14px;">
-            <strong style="color:#1f4e79;">[ 왼쪽 제목 ]</strong>
-            <p style="margin:6px 0 0; font-size:13.5px;">[ 내용 ]</p>
+        <td style="width:50%; vertical-align:top;">
+          <div style="border:1px solid #eceef1; border-radius:14px; padding:20px;">
+            <div style="font-size:13px; font-weight:700; color:#2c5f8a; margin-bottom:8px;">[ 왼쪽 제목 ]</div>
+            <p style="margin:0; font-size:14px; color:#4a4f57; line-height:1.7;">[ 내용 ]</p>
           </div>
         </td>
-        <td style="width:50%; vertical-align:top; padding:0 0 0 10px;">
-          <div style="background:#f7f9fb; border-radius:6px; padding:14px;">
-            <strong style="color:#1f4e79;">[ 오른쪽 제목 ]</strong>
-            <p style="margin:6px 0 0; font-size:13.5px;">[ 내용 ]</p>
+        <td style="width:50%; vertical-align:top;">
+          <div style="border:1px solid #eceef1; border-radius:14px; padding:20px;">
+            <div style="font-size:13px; font-weight:700; color:#2c5f8a; margin-bottom:8px;">[ 오른쪽 제목 ]</div>
+            <p style="margin:0; font-size:14px; color:#4a4f57; line-height:1.7;">[ 내용 ]</p>
           </div>
         </td>
       </tr>
@@ -185,31 +268,37 @@
   </section>
 
   <!-- ── 결론 ─────────────────────────────────────────────── -->
-  <section style="margin-bottom:24px;">
-    <h2 style="
-        font-size:19px; font-weight:800; color:#1f4e79;
-        margin:0 0 12px; padding-bottom:8px;
-        border-bottom:2px solid #1f4e79;
-    ">
-      4. 결론 및 제언
-    </h2>
-    <p style="margin:0 0 14px;">[ 결론 요약 ]</p>
-    <ol style="margin:0; padding-left:20px;">
-      <li style="margin-bottom:6px;">[ 제언 1 ]</li>
-      <li style="margin-bottom:6px;">[ 제언 2 ]</li>
-    </ol>
+  <section style="
+      background:#161a20; border-radius:16px;
+      padding:30px 28px; margin-bottom:40px; color:#e8eaed;
+  ">
+    <h3 style="margin:0 0 14px; font-size:20px; font-weight:800; color:#ffffff; letter-spacing:-0.02em;">
+      결론 및 제언
+    </h3>
+    <p style="margin:0 0 18px; font-size:14.5px; color:#b9bec6; line-height:1.75;">
+      [ 결론 요약 ]
+    </p>
+    <div style="height:1px; background:#2b313a; margin:0 0 18px;"></div>
+    <table style="width:100%; border-collapse:collapse;">
+      <tr>
+        <td style="vertical-align:top; padding:0 0 10px; width:26px; color:#6fa8d6; font-weight:800;">→</td>
+        <td style="vertical-align:top; padding:0 0 10px; font-size:14.5px; color:#dde0e4;">[ 제언 1 ]</td>
+      </tr>
+      <tr>
+        <td style="vertical-align:top; padding:0; width:26px; color:#6fa8d6; font-weight:800;">→</td>
+        <td style="vertical-align:top; padding:0; font-size:14.5px; color:#dde0e4;">[ 제언 2 ]</td>
+      </tr>
+    </table>
   </section>
 
   <!-- ── 푸터 ─────────────────────────────────────────────── -->
-  <footer style="
-      border-top:1px solid #e0e0e0;
-      margin-top:30px; padding-top:14px;
-      font-size:12px; color:#999; text-align:center;
-  ">
-    © 2026 [ 작성 부서 ] · 본 문서는 사내 공유용입니다.
+  <footer style="text-align:center; padding-top:8px;">
+    <div style="font-size:12px; color:#aab1bb; letter-spacing:0.02em;">
+      © 2026 [ 작성 부서 ] &nbsp;·&nbsp; 사내 공유용 문서
+    </div>
   </footer>
 
-</div>
+</article>
 <!-- ===================== 보고서 본문 끝 ===================== -->
 
 </body>
