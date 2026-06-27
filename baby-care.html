@@ -108,7 +108,8 @@
     @keyframes kenburns { from { transform: scale(1) } to { transform: scale(1.08) } }
     .slide-img { animation: slideFade 1.6s ease-in-out, kenburns 60s ease-out forwards; }
     /* safe-area (아이폰 하단) */
-    .pb-safe { padding-bottom: calc(env(safe-area-inset-bottom) + 4.75rem); }
+    /* 하단 고정 네비게이션에 콘텐츠(그래프)가 가리지 않도록 넉넉한 여백 */
+    .pb-safe { padding-bottom: calc(env(safe-area-inset-bottom) + 7.5rem); }
     .nav-safe { padding-bottom: env(safe-area-inset-bottom); }
   </style>
 </head>
