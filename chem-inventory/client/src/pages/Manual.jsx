@@ -20,19 +20,7 @@ export default function Manual() {
       </div>
 
       <div className="card card-pad">
-        <Step title="1. 로그인 & 계정" img="guide-login.png">
-          <p>브라우저에서 <b>http://(서버IP):4000</b> 으로 접속해 로그인합니다.</p>
-          <p className="acct">기본 계정(운영 시 비밀번호 변경 권장):</p>
-          <ul className="acct">
-            <li>통합관리자 <b>admin</b> / admin1234 — 전체(1·2공장)</li>
-            <li>공장관리자 <b>admin1·admin2</b> / admin1234 — 해당 공장</li>
-            <li>팀관리자 <b>team1</b> / team1234 — 전체 <b>조회 전용</b></li>
-            <li>사용자 <b>user1·user2</b> / user1234 — 해당 공장 수불</li>
-          </ul>
-          <p>계정이 없으면 로그인 화면의 <b>“사용 신청”</b> → 관리자가 승인합니다.</p>
-        </Step>
-
-        <Step title="2. 종합현황 (한눈에 보기)" img="guide-dashboard.png">
+        <Step title="1. 종합현황 (한눈에 보기)" img="guide-dashboard.png">
           <p>로그인하면 나오는 첫 화면입니다.</p>
           <ul>
             <li><b>퀵메뉴</b> — 원/부재료 입고·사용, Canister 수불을 바로 시작</li>
@@ -43,13 +31,13 @@ export default function Manual() {
           </ul>
         </Step>
 
-        <Step title="3. 원·부재료 입고 / 사용" img="guide-raw.png">
+        <Step title="2. 원·부재료 입고 / 사용" img="guide-raw.png">
           <p><b>입고</b> = [+ 원재료 입고]로 품목·Lot·수량·단위·입고일을 등록합니다. (품목 선택 시 단위·업체·Lot양식 자동)</p>
           <p><b>사용</b> = [− 원재료 사용]에서 품목 → 재고 있는 Lot → 수량을 입력합니다.</p>
           <p>입고일이 더 빠른 Lot이 있는데 사용하면 <b>선입선출 경고</b>가 뜨고, 강제 사용 시 [이상발생 목록]에 자동 기록됩니다.</p>
         </Step>
 
-        <Step title="4. Canister 관리" img="guide-canister.png">
+        <Step title="3. Canister 관리" img="guide-canister.png">
           <p>용기를 제품(내용물)별로 관리합니다.</p>
           <ul>
             <li>[+ Canister 등록] — 새 용기 등록</li>
@@ -59,7 +47,7 @@ export default function Manual() {
           </ul>
         </Step>
 
-        <Step title="5. AI 검색 (자연어)" img="guide-search.png">
+        <Step title="4. AI 검색 (자연어)" img="guide-search.png">
           <p>좌측 <b>[AI 검색]</b> 또는 종합현황 상단 검색창에 말로 물어보세요.</p>
           <ul>
             <li>“이번달 톨루엔 사용량”, “부족 품목”, “세정의뢰 Canister”</li>
@@ -68,7 +56,7 @@ export default function Manual() {
           <p>실제 데이터로 계산해 답과 목록을 보여줍니다(숫자를 지어내지 않음).</p>
         </Step>
 
-        <Step title="6. 역할 · 공장 · 데이터">
+        <Step title="5. 역할 · 공장 · 데이터">
           <ul>
             <li><b>통합관리자/팀관리자</b> = 1·2공장 모두 / <b>공장관리자·사용자</b> = 본인 공장만</li>
             <li><b>팀관리자</b>는 전체를 보지만 <b>등록·수불·삭제 불가(조회 전용)</b></li>
