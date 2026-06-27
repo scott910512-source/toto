@@ -1046,8 +1046,24 @@
     const items = useRecords("sleep");
     const [napKind, setNapKind] = useState("nap");
     const [busy, setBusy] = useState(false);
+    // 직접 입력 모드
+    const [manKind, setManKind] = useState("nap");
+    const [manStart, setManStart] = useState(toLocalInput(new Date()));
+    const [manEnd, setManEnd] = useState(toLocalInput(new Date()));
 
     const ongoing = items && items.find((r) => !r.end);
+
+    const manualSave = async () => {
+      const s = fromLocalInput(manStart), e = fromLocalInput(manEnd);
+      if (e <= s) { toast("일어난 시간이 잠든 시간보다 뒤여야 해요.", "error"); return; }
+      const min = Math.max(1, Math.round((e - s) / 60000));
+      setBusy(true);
+      try {
+        await addRecord("sleep", { naptype: manKind, start: s, end: e, durationMin: min, at: s }, user, profile);
+        toast(`수면 기록 추가 · ${hm(min)}`, "success");
+        setManStart(toLocalInput(new Date())); setManEnd(toLocalInput(new Date()));
+      } catch (ex) { toast(errMsg(ex), "error"); } finally { setBusy(false); }
+    };
 
     const start = async () => {
       setBusy(true);
@@ -1096,10 +1112,22 @@
             <>
               <ChipGroup value={napKind} onChange={setNapKind}
                 options={[{ value: "nap", label: "🌤️ 낮잠" }, { value: "night", label: "🌙 밤잠" }]} />
-              <Btn variant="primary" onClick={start} disabled={busy} className="w-full mt-3">😴 수면 시작</Btn>
+              <Btn variant="primary" onClick={start} disabled={busy} className="w-full mt-3">😴 수면 시작 (타이머)</Btn>
             </>
           )}
         </Card>
+
+        {/* 직접 입력 (잠든 시간 / 일어난 시간) */}
+        {!ongoing && (
+          <Card className="p-4 space-y-3">
+            <h3 className="font-bold text-slate-800 dark:text-white">⏱️ 시간 직접 입력</h3>
+            <ChipGroup value={manKind} onChange={setManKind}
+              options={[{ value: "nap", label: "🌤️ 낮잠" }, { value: "night", label: "🌙 밤잠" }]} />
+            <DateTimeField value={manStart} onChange={setManStart} label="잠든 시간" />
+            <DateTimeField value={manEnd} onChange={setManEnd} label="일어난 시간" />
+            <Btn variant="lavender" onClick={manualSave} disabled={busy} className="w-full">{busy ? "저장 중..." : "수면 기록 저장"}</Btn>
+          </Card>
+        )}
 
         <Card className="p-4">
           <div className="flex items-center justify-between mb-1">
@@ -1167,12 +1195,51 @@
     const lastPee = items && items.find((r) => r.diaperType === "pee" || r.diaperType === "both");
     const noPee24 = lastPee && (Date.now() - toDate(lastPee.at)) > 24 * 3600000;
 
+    // 최근 7일 트렌드 (소변=pee+both, 대변=poo+both, 총합=전체)
+    const trend = useMemo(() => {
+      if (!items) return [];
+      const days = [];
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date(); d.setDate(d.getDate() - i); const key = ymd(d);
+        const dayItems = items.filter((r) => ymd(r.at) === key);
+        days.push({
+          day: d.toLocaleDateString("ko-KR", { weekday: "short" }),
+          소변: dayItems.filter((r) => r.diaperType === "pee" || r.diaperType === "both").length,
+          대변: dayItems.filter((r) => r.diaperType === "poo" || r.diaperType === "both").length,
+          총합: dayItems.length,
+        });
+      }
+      return days;
+    }, [items]);
+    const peeCnt = today.filter((r) => r.diaperType === "pee" || r.diaperType === "both").length;
+    const pooCnt = today.filter((r) => r.diaperType === "poo" || r.diaperType === "both").length;
+
     return (
       <div className="space-y-4">
-        <div className="grid grid-cols-2 gap-3">
-          <Card className="p-3 text-center"><p className="text-xs text-slate-400">오늘 교체</p><p className="text-xl font-bold text-slate-800 dark:text-white">{today.length}회</p></Card>
-          <Card className="p-3 text-center"><p className="text-xs text-slate-400">대변</p><p className="text-xl font-bold text-slate-800 dark:text-white">{today.filter((r) => r.diaperType !== "pee").length}회</p></Card>
+        <div className="grid grid-cols-3 gap-2">
+          <Card className="p-3 text-center"><p className="text-xs text-slate-400">오늘 소변</p><p className="text-xl font-bold text-sky-500">{peeCnt}회</p></Card>
+          <Card className="p-3 text-center"><p className="text-xs text-slate-400">오늘 대변</p><p className="text-xl font-bold text-amber-600">{pooCnt}회</p></Card>
+          <Card className="p-3 text-center"><p className="text-xs text-slate-400">총합</p><p className="text-xl font-bold text-slate-800 dark:text-white">{today.length}회</p></Card>
         </div>
+
+        {/* 최근 7일 트렌드 */}
+        <Card className="p-4">
+          <h3 className="font-bold text-slate-800 dark:text-white mb-2">최근 7일 트렌드</h3>
+          <div style={{ width: "100%", height: 180 }}>
+            <ResponsiveContainer>
+              <BarChart data={trend} margin={{ top: 5, right: 5, left: -24, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                <XAxis dataKey="day" tick={{ fontSize: 11 }} />
+                <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
+                <Tooltip />
+                <Legend wrapperStyle={{ fontSize: 11 }} />
+                <Bar dataKey="소변" fill="#38bdf8" radius={[3, 3, 0, 0]} />
+                <Bar dataKey="대변" fill="#d97706" radius={[3, 3, 0, 0]} />
+                <Bar dataKey="총합" fill="#a78bfa" radius={[3, 3, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </Card>
 
         {noPee24 && <div role="alert" className="text-xs text-rose-600 bg-rose-50 dark:bg-rose-900/30 rounded-xl px-3 py-2.5">🚨 24시간 이상 소변 기록이 없습니다. 탈수 위험이 있으니 소아과 상담을 권장합니다.</div>}
 
@@ -1643,8 +1710,12 @@
         </>
       );
       case "sleep": return (
-        <ChipGroup label="구분" value={e.naptype || "nap"} onChange={(v) => upd({ ...e, naptype: v })}
-          options={[{ value: "nap", label: "🌤️ 낮잠" }, { value: "night", label: "🌙 밤잠" }]} />
+        <>
+          <ChipGroup label="구분" value={e.naptype || "nap"} onChange={(v) => upd({ ...e, naptype: v })}
+            options={[{ value: "nap", label: "🌤️ 낮잠" }, { value: "night", label: "🌙 밤잠" }]} />
+          <DateTimeField value={e.start || ""} onChange={(v) => upd({ ...e, start: v })} label="잠든 시간" />
+          {e.end !== undefined && <DateTimeField value={e.end || ""} onChange={(v) => upd({ ...e, end: v })} label="일어난 시간" />}
+        </>
       );
       default: return null;
     }
@@ -1656,7 +1727,12 @@
       case "diaper": return { at, diaperType: e.diaperType, color: e.color || null };
       case "growth": return { at, height: numOrNull(e.height), weight: numOrNull(e.weight), head: numOrNull(e.head) };
       case "health": return { at, temp: numOrNull(e.temp), symptom: e.symptom || null, hospital: e.hospital || null };
-      case "sleep": return { at, naptype: e.naptype || "nap" };
+      case "sleep": {
+        const s = e.start ? fromLocalInput(e.start) : at;
+        const en = e.end ? fromLocalInput(e.end) : null;
+        const durationMin = en ? Math.max(1, Math.round((en - s) / 60000)) : null;
+        return { at: s, start: s, end: en, durationMin, naptype: e.naptype || "nap" };
+      }
       default: return { at };
     }
   };
@@ -1685,7 +1761,9 @@
                   <p className="text-[11px] text-slate-400">{fmtDateTime(r.at)} · {r.creatorName}</p>
                 </div>
                 {mine && (
-                  <button onClick={() => setEditing({ ...r, at: toLocalInput(r.at) })}
+                  <button onClick={() => setEditing({ ...r, at: toLocalInput(r.at),
+                    ...(r.start != null ? { start: toLocalInput(r.start) } : {}),
+                    ...(r.end != null ? { end: toLocalInput(r.end) } : { end: r.type === "sleep" ? "" : undefined }) })}
                     aria-label="기록 수정" className="text-slate-300 hover:text-teal-500 text-base px-1">✏️</button>
                 )}
                 {mine && (
@@ -1701,7 +1779,8 @@
           {editing && (
             <div className="space-y-4">
               {renderEditFields(editing, setEditing)}
-              <DateTimeField value={editing.at} onChange={(v) => setEditing({ ...editing, at: v })} />
+              {/* 수면은 잠든/일어난 시간으로 대체하므로 일반 시각칸 숨김 */}
+              {editing.type !== "sleep" && <DateTimeField value={editing.at} onChange={(v) => setEditing({ ...editing, at: v })} />}
               <Btn onClick={saveEdit} className="w-full">저장</Btn>
             </div>
           )}
@@ -2568,10 +2647,19 @@
   const Letters = () => {
     const { user, profile, isAdmin } = useAuth();
     const all = useRecords("letter", 100);
-    const items = all && all.filter((l) => canSeeLetter(l, user.uid, isAdmin)); // 공개 범위 필터
+    const visible = all && all.filter((l) => canSeeLetter(l, user.uid, isAdmin)); // 공개 범위 필터
+    const [who, setWho] = useState("all"); // 등록자별 필터
+    const items = visible && (who === "all" ? visible : visible.filter((l) => l.createdBy === who));
     const [editorOpen, setEditorOpen] = useState(false);
     const [editing, setEditing] = useState(null); // 수정할 편지
     const [viewing, setViewing] = useState(null); // 열람할 편지
+
+    // 등록자 목록 (보이는 편지 기준)
+    const authors = useMemo(() => {
+      const m = new Map();
+      (visible || []).forEach((l) => { if (l.createdBy) m.set(l.createdBy, l.creatorName || "이름없음"); });
+      return [...m.entries()];
+    }, [visible]);
 
     const openNew = () => { setEditing(null); setEditorOpen(true); };
     const openEdit = (l) => { setEditing(l); setEditorOpen(true); };
@@ -2585,6 +2673,14 @@
           </div>
           <Btn onClick={openNew} className="text-sm py-2 px-3">+ 편지 쓰기</Btn>
         </div>
+
+        {/* 등록자별 필터 */}
+        {authors.length > 1 && (
+          <select value={who} onChange={(e) => setWho(e.target.value)} aria-label="등록자별 보기" className={inputCls + " py-2 text-sm"}>
+            <option value="all">✍️ 전체 등록자</option>
+            {authors.map(([uid, nm]) => <option key={uid} value={uid}>{nm}</option>)}
+          </select>
+        )}
 
         {!items ? <Spinner /> : items.length === 0 ? (
           <Card className="p-8 text-center text-sm text-slate-400">아직 편지가 없어요.<br />첫 편지를 남겨보세요 💛</Card>
@@ -2779,6 +2875,79 @@
     );
   };
 
+  // 사용자별 현황 (접속기록 + 활동기록)
+  const UserStatusModal = ({ open, onClose, u }) => {
+    const [recs, setRecs] = useState(null);
+    const [photoN, setPhotoN] = useState(0);
+    useEffect(() => {
+      if (!open || !u) return;
+      setRecs(null); setPhotoN(0);
+      Promise.all([
+        COL.records().where("createdBy", "==", u.uid).limit(300).get(),
+        COL.photos().where("uploadedBy", "==", u.uid).limit(300).get(),
+      ]).then(([rs, ps]) => {
+        setRecs(rs.docs.map((d) => ({ id: d.id, ...d.data() })));
+        setPhotoN(ps.size);
+      }).catch(() => setRecs([]));
+    }, [open, u && u.uid]);
+    if (!u) return null;
+    const cnt = (t) => (recs || []).filter((r) => r.type === t).length;
+    const recentDays = (u.loginDays || []).slice().sort().reverse().slice(0, 14);
+    const recent = [...(recs || [])].sort((a, b) => toDate(b.createdAt || b.at) - toDate(a.createdAt || a.at)).slice(0, 12);
+    const TLABEL = { feeding: "🍼 수유", sleep: "😴 수면", diaper: "👶 기저귀", growth: "📏 성장", health: "🩺 건강", letter: "💌 편지", prenatal: "🔬 초음파" };
+    return (
+      <Modal open={open} onClose={onClose} title={`${u.name} 현황`}>
+        <div className="space-y-4">
+          <div>
+            <p className="text-xs text-slate-400">{u.email} · {roleLabel(u.role)}</p>
+          </div>
+          {/* 메달 */}
+          <MedalGrid u={u} />
+          {/* 접속 기록 */}
+          <div>
+            <h4 className="text-sm font-bold text-slate-700 dark:text-slate-200 mb-1">🗓️ 접속 기록 · 총 {(u.loginDays || []).length}일</h4>
+            {recentDays.length === 0 ? <p className="text-xs text-slate-400">기록 없음</p> : (
+              <div className="flex flex-wrap gap-1">
+                {recentDays.map((d) => <span key={d} className="text-[11px] bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300 rounded px-1.5 py-0.5">{d.slice(5)}</span>)}
+              </div>
+            )}
+          </div>
+          {/* 활동 통계 */}
+          <div>
+            <h4 className="text-sm font-bold text-slate-700 dark:text-slate-200 mb-1">📊 활동 기록</h4>
+            {recs == null ? <Spinner /> : (
+              <>
+                <div className="grid grid-cols-4 gap-2 text-center">
+                  {[["feeding", "수유"], ["sleep", "수면"], ["diaper", "기저귀"], ["growth", "성장"], ["health", "건강"], ["prenatal", "초음파"], ["letter", "편지"]].map(([t, l]) => (
+                    <div key={t} className="bg-slate-50 dark:bg-slate-700/40 rounded-lg py-1.5">
+                      <p className="text-sm font-bold text-slate-700 dark:text-slate-200">{t === "letter" ? (u.letterCount || cnt("letter")) : cnt(t)}</p>
+                      <p className="text-[10px] text-slate-400">{l}</p>
+                    </div>
+                  ))}
+                  <div className="bg-slate-50 dark:bg-slate-700/40 rounded-lg py-1.5">
+                    <p className="text-sm font-bold text-slate-700 dark:text-slate-200">{photoN}</p>
+                    <p className="text-[10px] text-slate-400">사진</p>
+                  </div>
+                </div>
+                {/* 최근 활동 */}
+                {recent.length > 0 && (
+                  <ul className="mt-3 divide-y divide-slate-100 dark:divide-slate-700">
+                    {recent.map((r) => (
+                      <li key={r.id} className="flex items-center justify-between py-1.5 text-xs">
+                        <span className="text-slate-600 dark:text-slate-300">{TLABEL[r.type] || r.type}</span>
+                        <span className="text-slate-400">{fmtDateTime(r.createdAt || r.at)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      </Modal>
+    );
+  };
+
   /* ========================================================================
      23. 설정 탭 (관리자 계정 관리 + 아기 정보)
      ======================================================================== */
@@ -2790,6 +2959,7 @@
     const [babyForm, setBabyForm] = useState({ name: baby.name, birthDate: baby.birthDate || "", dueDate: baby.dueDate || "", sex: baby.sex || "" });
     const [addOpen, setAddOpen] = useState(false);
     const [nickOpen, setNickOpen] = useState(false);
+    const [statusUser, setStatusUser] = useState(null); // 현황보기 대상
 
     useEffect(() => setBabyForm({ name: baby.name, birthDate: baby.birthDate || "", dueDate: baby.dueDate || "", sex: baby.sex || "" }), [baby]);
 
@@ -2877,7 +3047,10 @@
                       <span className={`text-xs px-2 py-0.5 rounded-full whitespace-nowrap ${pending ? "bg-amber-200 text-amber-700" : u.role === "admin" ? "bg-violet-100 text-violet-600 dark:bg-violet-900/40" : u.role === "viewer" ? "bg-amber-100 text-amber-600 dark:bg-amber-900/40" : "bg-slate-100 text-slate-500 dark:bg-slate-700"}`}>{pending ? "승인대기" : roleLabel(u.role)}</span>
                     </div>
                     {/* 메달 현황 */}
-                    <p className="text-[11px] text-slate-400 mt-1">🏅 접속 {medalStats(u).login}일 · ✍️ 편지 {medalStats(u).letter}회 · {earnedMedals(u).map((m) => m.icon).join(" ") || "획득 메달 없음"}</p>
+                    <div className="flex items-center justify-between mt-1">
+                      <p className="text-[11px] text-slate-400">🏅 접속 {medalStats(u).login}일 · ✍️ 편지 {medalStats(u).letter}회 · {earnedMedals(u).map((m) => m.icon).join(" ") || "메달 없음"}</p>
+                      <button onClick={() => setStatusUser(u)} className="text-[11px] text-teal-600 dark:text-teal-400 whitespace-nowrap shrink-0">현황보기 ›</button>
+                    </div>
 
                     {pending ? (
                       <div className="flex flex-wrap gap-1.5 mt-2">
@@ -2917,6 +3090,7 @@
         )}
 
         <AddAccountModal open={addOpen} onClose={() => setAddOpen(false)} />
+        <UserStatusModal open={!!statusUser} onClose={() => setStatusUser(null)} u={statusUser} />
       </div>
     );
   };
