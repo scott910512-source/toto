@@ -7,6 +7,30 @@
   <title>아기수첩 · 우리 가족 육아 공유</title>
 
   <!-- ============================================================
+       PWA: 홈 화면 설치 · 전체화면(standalone) · 아이콘 · 오프라인
+       ============================================================ -->
+  <link rel="manifest" href="manifest.webmanifest" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="아기수첩" />
+  <meta name="application-name" content="아기수첩" />
+  <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+  <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png" />
+  <script>
+    // 서비스워커 등록 (오프라인 앱 셸 + 빠른 재방문). 실패해도 앱은 정상 동작.
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", function () {
+        navigator.serviceWorker.register("sw.js").catch(function () {});
+      });
+    }
+    // 설치 프롬프트는 React 마운트 전에 발생할 수 있어 미리 보관
+    window.addEventListener("beforeinstallprompt", function (e) {
+      e.preventDefault(); window.__bipEvent = e;
+    });
+  </script>
+
+  <!-- ============================================================
        CDN: Firebase compat / React 18 / Babel / Recharts / Tailwind
        ============================================================ -->
   <!-- 버전 고정 + crossorigin: 'latest' 변경/CORS 가림(Script error.) 방지 -->
@@ -657,6 +681,41 @@
           <Btn onClick={save} disabled={busy} className="w-full">{busy ? "저장 중..." : "저장"}</Btn>
         </div>
       </Modal>
+    );
+  };
+
+  // PWA 설치 유도 배너 (이미 설치/standalone이면 숨김)
+  const isStandalone = () =>
+    (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches) || window.navigator.standalone === true;
+  const isIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent || "");
+  const InstallBanner = () => {
+    const [bip, setBip] = useState(window.__bipEvent || null);
+    const [dismissed, setDismissed] = useState(localStorage.getItem("baby-install-dismiss") === "1");
+    useEffect(() => {
+      const onBip = (e) => { e.preventDefault(); window.__bipEvent = e; setBip(e); };
+      const onInstalled = () => { setDismissed(true); window.__bipEvent = null; };
+      window.addEventListener("beforeinstallprompt", onBip);
+      window.addEventListener("appinstalled", onInstalled);
+      return () => { window.removeEventListener("beforeinstallprompt", onBip); window.removeEventListener("appinstalled", onInstalled); };
+    }, []);
+    if (isStandalone() || dismissed) return null;
+    const close = () => { setDismissed(true); localStorage.setItem("baby-install-dismiss", "1"); };
+    const install = async () => {
+      if (!bip) return;
+      bip.prompt();
+      try { await bip.userChoice; } catch (e) {}
+      window.__bipEvent = null; setBip(null);
+    };
+    if (!bip && !isIOS()) return null; // 설치 불가 환경(데스크톱 브라우저 등)
+    return (
+      <div className="bg-teal-50 dark:bg-slate-700/60 border-b border-teal-100 dark:border-slate-700 px-4 py-2.5 flex items-center gap-3">
+        <span className="text-xl" aria-hidden="true">📲</span>
+        <p className="flex-1 text-xs text-slate-600 dark:text-slate-200 leading-snug">
+          {bip ? "홈 화면에 앱처럼 설치할 수 있어요." : "공유 버튼 → ‘홈 화면에 추가’로 앱처럼 쓸 수 있어요."}
+        </p>
+        {bip && <button onClick={install} className="text-xs px-3 py-1.5 rounded-lg bg-teal-500 text-white font-medium whitespace-nowrap">설치</button>}
+        <button onClick={close} aria-label="닫기" className="text-slate-400 text-lg w-7 h-7">×</button>
+      </div>
     );
   };
 
@@ -2760,6 +2819,7 @@
     return (
       <div className="app-shell bg-warm">
         <Header dark={dark} setDark={setDark} />
+        <InstallBanner />
         <main>
           {tab === "dashboard" && <Dashboard go={go} />}
           {tab === "records" && <Records sub={recSub} setSub={setRecSub} openUpload={() => openUpload("ultrasound")} />}

@@ -1,0 +1,17 @@
+{
+  "name": "아기수첩 · 우리 가족 육아 공유",
+  "short_name": "아기수첩",
+  "description": "가족이 함께 쓰는 육아 기록·사진·편지 공유 앱",
+  "lang": "ko",
+  "start_url": "./baby-care.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#fdfbf7",
+  "theme_color": "#7dd3c0",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icon-512-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
