@@ -94,7 +94,9 @@
     /* 한 손 조작용 큰 터치 타깃 */
     button { touch-action: manipulation; }
     /* 모바일 퍼스트: 앱 최대 폭 430px */
-    .app-shell { max-width: 430px; margin: 0 auto; min-height: 100vh; min-height: 100dvh; }
+    /* 앱 셸: 화면 높이에 맞춰 세로 플렉스 → 본문(.app-main)만 내부 스크롤, 하단 메뉴바는 항상 고정 */
+    .app-shell { max-width: 430px; margin: 0 auto; height: 100vh; height: 100dvh; display: flex; flex-direction: column; }
+    .app-main { flex: 1 1 auto; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; }
     /* 스크롤바 숨김 (가로 필터 등) */
     .no-scrollbar::-webkit-scrollbar { display: none; }
     .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
@@ -108,8 +110,8 @@
     @keyframes kenburns { from { transform: scale(1) } to { transform: scale(1.08) } }
     .slide-img { animation: slideFade 1.6s ease-in-out, kenburns 60s ease-out forwards; }
     /* safe-area (아이폰 하단) */
-    /* 하단 고정 네비게이션에 콘텐츠(그래프)가 가리지 않도록 넉넉한 여백 */
-    .pb-safe { padding-bottom: calc(env(safe-area-inset-bottom) + 7.5rem); }
+    /* 본문이 내부 스크롤되므로 하단 여백은 약간만 (메뉴바는 본문 바깥) */
+    .pb-safe { padding-bottom: 1.5rem; }
     .nav-safe { padding-bottom: env(safe-area-inset-bottom); }
   </style>
 </head>
@@ -682,7 +684,7 @@
     };
 
     return (
-      <div className="app-shell flex flex-col justify-center px-6 py-10 bg-warm">
+      <div className="app-shell justify-center px-6 py-10 bg-warm overflow-y-auto">
         <div className="text-center mb-8">
           <div className="text-6xl mb-3" aria-hidden="true">🍼</div>
           <h1 className="text-2xl font-bold text-slate-800 dark:text-white">아기수첩</h1>
@@ -3228,7 +3230,7 @@
       { id: "settings", icon: "⚙️", label: "설정" },
     ];
     return (
-      <nav className="fixed bottom-0 inset-x-0 z-30 bg-white/95 dark:bg-slate-800/95 backdrop-blur border-t border-slate-100 dark:border-slate-700 nav-safe" aria-label="주요 메뉴">
+      <nav className="shrink-0 bg-white/95 dark:bg-slate-800/95 backdrop-blur border-t border-slate-100 dark:border-slate-700 nav-safe" aria-label="주요 메뉴">
         <div className="max-w-[430px] mx-auto flex">
           {navs.map((n) => {
             const active = tab === n.id;
@@ -3259,7 +3261,7 @@
       <div className="app-shell bg-warm">
         <Header dark={dark} setDark={setDark} />
         <MedalWatcher />
-        <main>
+        <main className="app-main">
           <div className="px-4 pt-3">
             <p className="text-xs text-slate-400">관람 계정 · 사진 감상 ❤️ · 편지 작성 · 메달 수집이 가능해요</p>
           </div>
@@ -3267,7 +3269,7 @@
           {tab === "letters" && <Letters />}
           {tab === "medals" && <div className="p-4 pb-safe"><MyMedals /></div>}
         </main>
-        <nav className="fixed bottom-0 inset-x-0 z-30 bg-white/95 dark:bg-slate-800/95 backdrop-blur border-t border-slate-100 dark:border-slate-700 nav-safe" aria-label="주요 메뉴">
+        <nav className="shrink-0 bg-white/95 dark:bg-slate-800/95 backdrop-blur border-t border-slate-100 dark:border-slate-700 nav-safe" aria-label="주요 메뉴">
           <div className="max-w-[430px] mx-auto flex">
             {navs.map((n) => (
               <button key={n.id} onClick={() => setTab(n.id)} aria-current={tab === n.id ? "page" : undefined}
@@ -3299,7 +3301,7 @@
     // 비활성화된 계정 차단
     if (profile && profile.disabled) {
       return (
-        <div className="app-shell flex flex-col items-center justify-center text-center p-8 bg-warm">
+        <div className="app-shell items-center justify-center text-center p-8 bg-warm overflow-y-auto">
           <div className="text-5xl mb-3">🚫</div>
           <p className="text-slate-700 dark:text-white font-bold">비활성화된 계정입니다.</p>
           <p className="text-sm text-slate-400 mt-1">관리자에게 문의하세요.</p>
@@ -3311,7 +3313,7 @@
     // 승인 대기 (자가 회원가입 후 관리자 승인 전)
     if (profile && !approved) {
       return (
-        <div className="app-shell flex flex-col items-center justify-center text-center p-8 bg-warm">
+        <div className="app-shell items-center justify-center text-center p-8 bg-warm overflow-y-auto">
           <div className="text-5xl mb-3">⏳</div>
           <p className="text-slate-700 dark:text-white font-bold">승인 대기 중이에요</p>
           <p className="text-sm text-slate-400 mt-2 leading-relaxed">관리자(엄마·아빠)가 승인하면<br />바로 사용할 수 있어요.<br />승인 후 다시 들어오면 됩니다.</p>
@@ -3330,7 +3332,7 @@
         <Header dark={dark} setDark={setDark} />
         <MedalWatcher />
         <InstallBanner />
-        <main>
+        <main className="app-main">
           {tab === "dashboard" && <Dashboard go={go} />}
           {tab === "records" && <Records sub={recSub} setSub={setRecSub} openUpload={() => openUpload("ultrasound")} />}
           {tab === "gallery" && <Gallery openUpload={() => openUpload("baby")} />}
@@ -3348,7 +3350,7 @@
      26. 루트 게이트 (설정 미입력 / 로그인 분기)
      ======================================================================== */
   const ConfigNeeded = () => (
-    <div className="app-shell flex flex-col items-center justify-center text-center p-8 bg-warm">
+    <div className="app-shell items-center justify-center text-center p-8 bg-warm overflow-y-auto">
       <div className="text-6xl mb-4">⚙️</div>
       <h1 className="text-xl font-bold text-slate-800 dark:text-white">Firebase 설정을 먼저 입력해주세요</h1>
       <p className="text-sm text-slate-500 dark:text-slate-400 mt-3 leading-relaxed">
@@ -3361,7 +3363,7 @@
 
   const Root = () => {
     const { user } = useAuth();
-    if (user === undefined) return <div className="app-shell flex items-center justify-center bg-warm"><Spinner label="불러오는 중..." /></div>;
+    if (user === undefined) return <div className="app-shell items-center justify-center bg-warm"><Spinner label="불러오는 중..." /></div>;
     if (!user) return <Login />;
     return (
       <BabyProvider>
@@ -3381,7 +3383,7 @@
     render() {
       if (this.state.err) {
         return (
-          <div className="app-shell flex flex-col items-center justify-center text-center p-8 bg-warm" style={{ minHeight: "100vh" }}>
+          <div className="app-shell items-center justify-center text-center p-8 bg-warm overflow-y-auto" style={{ minHeight: "100vh" }}>
             <div className="text-5xl mb-3">🙏</div>
             <p className="font-bold text-slate-800 dark:text-white">일시적인 오류가 발생했어요</p>
             <pre className="text-[11px] text-slate-400 mt-2 whitespace-pre-wrap max-w-full overflow-auto">{(this.state.err && (this.state.err.message || String(this.state.err)))}</pre>
