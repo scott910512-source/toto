@@ -10,10 +10,12 @@ const hash = (pw) => bcrypt.hashSync(pw, 10);
 // 전역 사용자(공장 공통)
 function userRows() {
   return [
-    { id: 'admin', passwordHash: hash('admin1234'), name: '총괄관리자', role: 'admin', status: 'approved', plant: '2공장', plantScope: 'all', createdAt: T, approvedAt: T, approvedBy: 'system' },
+    { id: 'admin', passwordHash: hash('admin1234'), name: '통합관리자', role: 'admin', status: 'approved', plant: '2공장', plantScope: 'all', createdAt: T, approvedAt: T, approvedBy: 'system' },
     { id: 'admin1', passwordHash: hash('admin1234'), name: '1공장 관리자', role: 'admin', status: 'approved', plant: '1공장', plantScope: '1공장', createdAt: T, approvedAt: T, approvedBy: 'system' },
-    { id: 'user1', passwordHash: hash('user1234'), name: '홍길동', role: 'user', status: 'approved', plant: '2공장', plantScope: '2공장', createdAt: T, approvedAt: T, approvedBy: 'admin' },
-    { id: 'user2', passwordHash: hash('user1234'), name: '김영희', role: 'user', status: 'pending', plant: '1공장', plantScope: '1공장', createdAt: T, approvedAt: '', approvedBy: '' },
+    { id: 'admin2', passwordHash: hash('admin1234'), name: '2공장 관리자', role: 'admin', status: 'approved', plant: '2공장', plantScope: '2공장', createdAt: T, approvedAt: T, approvedBy: 'system' },
+    { id: 'team1', passwordHash: hash('team1234'), name: '팀관리자(팀장)', role: 'viewer', status: 'approved', plant: '2공장', plantScope: 'all', createdAt: T, approvedAt: T, approvedBy: 'system' },
+    { id: 'user1', passwordHash: hash('user1234'), name: '홍길동(2공장)', role: 'user', status: 'approved', plant: '2공장', plantScope: '2공장', createdAt: T, approvedAt: T, approvedBy: 'admin' },
+    { id: 'user2', passwordHash: hash('user1234'), name: '김영희(1공장)', role: 'user', status: 'approved', plant: '1공장', plantScope: '1공장', createdAt: T, approvedAt: T, approvedBy: 'admin' },
   ];
 }
 

@@ -3,11 +3,13 @@ import { useParams, Link } from 'react-router-dom';
 import { api, downloadCsv } from '../api';
 import { Loading, Empty, Badge, statusColor, useToast, Modal, Field, TextInput, Select } from '../components/ui';
 import { EtcSelect } from '../components/inputs';
+import { useAuth } from '../auth/AuthContext';
 
 const typeColor = { 반입: 'green', 반출: 'orange', 상태변경: 'purple' };
 
 export default function CanisterDetail() {
   const { id } = useParams();
+  const { canWrite } = useAuth();
   const toast = useToast();
   const [item, setItem] = useState(null);
   const [history, setHistory] = useState(null);
@@ -44,7 +46,7 @@ export default function CanisterDetail() {
         </div>
         <div className="btn-row">
           <button className="btn secondary sm" onClick={() => { downloadCsv(`/canisters/${id}/history/export`); toast.ok('이력 CSV를 내려받습니다.'); }}>⬇ 이력 CSV</button>
-          <button className="btn sm" onClick={() => setMove(true)} disabled={!meta}>↔ 반입/반출 등록</button>
+          {canWrite && <button className="btn sm" onClick={() => setMove(true)} disabled={!meta}>↔ 반입/반출 등록</button>}
         </div>
       </div>
 

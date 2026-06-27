@@ -36,10 +36,17 @@ function migrate() {
       if (!u.plant) { u.plant = '2공장'; changed = true; }
       if (!u.plantScope) { u.plantScope = u.role === 'admin' ? 'all' : (u.plant || '2공장'); changed = true; }
     }
-    if (!rows.some((u) => u.id === 'admin1')) {
-      const ts = new Date().toISOString();
-      rows.push({ id: 'admin1', passwordHash: bcrypt.hashSync('admin1234', 10), name: '1공장 관리자', role: 'admin', status: 'approved', plant: '1공장', plantScope: '1공장', createdAt: ts, approvedAt: ts, approvedBy: 'system' });
-      changed = true;
+    const ts = new Date().toISOString();
+    const ensure = [
+      { id: 'admin1', name: '1공장 관리자', role: 'admin', plant: '1공장', plantScope: '1공장', pw: 'admin1234' },
+      { id: 'admin2', name: '2공장 관리자', role: 'admin', plant: '2공장', plantScope: '2공장', pw: 'admin1234' },
+      { id: 'team1', name: '팀관리자(팀장)', role: 'viewer', plant: '2공장', plantScope: 'all', pw: 'team1234' },
+    ];
+    for (const u of ensure) {
+      if (!rows.some((r) => r.id === u.id)) {
+        rows.push({ id: u.id, passwordHash: bcrypt.hashSync(u.pw, 10), name: u.name, role: u.role, status: 'approved', plant: u.plant, plantScope: u.plantScope, createdAt: ts, approvedAt: ts, approvedBy: 'system' });
+        changed = true;
+      }
     }
     if (changed) _writeSync('users', null, rows);
   }

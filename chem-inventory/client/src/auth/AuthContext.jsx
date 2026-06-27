@@ -54,10 +54,18 @@ export function AuthProvider({ children }) {
   }, []);
 
   const isAdmin = user && user.role === 'admin';
-  const isSuper = user && (user.plantScope === 'all' || !user.plantScope);
+  const isViewer = user && user.role === 'viewer';
+  const canWrite = !!user && user.role !== 'viewer'; // 팀관리자(viewer)는 조회 전용
+  const isSuper = user && user.role === 'admin' && user.plantScope === 'all';
+  const roleLabel = (() => {
+    if (!user) return '';
+    if (user.role === 'viewer') return '팀관리자(조회전용)';
+    if (user.role === 'admin') return user.plantScope === 'all' ? '통합관리자' : `${user.plantScope} 관리자`;
+    return '사용자';
+  })();
 
   return (
-    <AuthCtx.Provider value={{ user, plants, plant, loading, login, signup, logout, changePlant, isAdmin, isSuper }}>
+    <AuthCtx.Provider value={{ user, plants, plant, loading, login, signup, logout, changePlant, isAdmin, isViewer, canWrite, isSuper, roleLabel }}>
       {children}
     </AuthCtx.Provider>
   );

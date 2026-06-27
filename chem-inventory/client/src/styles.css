@@ -89,6 +89,7 @@ button { font-family: inherit; }
   position: sticky; top: 0; z-index: 10;
 }
 .topbar h1 { font-size: 19px; }
+.topbar-plant { margin-left: 10px; font-size: 12px; font-weight: 600; color: var(--accent); background: var(--accent-soft); padding: 3px 10px; border-radius: 980px; vertical-align: middle; }
 .topbar .user { display: flex; align-items: center; gap: 12px; font-size: 13px; color: var(--text-2); }
 .content { padding: 26px 28px 60px; max-width: 1200px; width: 100%; margin: 0 auto; }
 

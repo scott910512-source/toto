@@ -43,6 +43,15 @@ function createApp() {
 
   app.get('/api/health', (req, res) => res.json({ ok: true, env: NODE_ENV }));
 
+  // 팀관리자(viewer)는 전체 조회만 가능 — 모든 쓰기(POST/PATCH/DELETE) 차단(인증/로그아웃 제외)
+  app.use((req, res, next) => {
+    const u = req.session && req.session.user;
+    if (u && u.role === 'viewer' && req.method !== 'GET' && req.path.startsWith('/api/') && !req.path.startsWith('/api/auth/')) {
+      return res.status(403).json({ error: '팀관리자(조회 전용)는 등록·수정·삭제를 할 수 없습니다.' });
+    }
+    next();
+  });
+
   app.use('/api/auth', authRoutes);
   app.use('/api/users', usersRoutes);
   app.use('/api/items', itemsRoutes);

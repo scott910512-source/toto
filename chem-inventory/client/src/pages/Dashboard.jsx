@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, Fragment } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api';
+import { useAuth } from '../auth/AuthContext';
 import { Loading, Empty, Badge, useToast } from '../components/ui';
 import { Icon } from '../components/icons';
 
@@ -36,6 +37,7 @@ function groupByProduct(rows) {
 }
 
 export default function Dashboard() {
+  const { canWrite } = useAuth();
   const toast = useToast();
   const navigate = useNavigate();
   const [dash, setDash] = useState(null);
@@ -69,12 +71,14 @@ export default function Dashboard() {
 
   return (
     <>
-      {/* 1) 퀵메뉴 (묶음) */}
-      <div className="quickmenu">
-        <QuickGroup navigate={navigate} icon="canister" color="#0071e3" title="원재료" actions={[['입고', '/raw?new=1', ''], ['사용', '/raw?use=1']]} />
-        <QuickGroup navigate={navigate} icon="drum" color="#5e5ce6" title="부재료" actions={[['입고', '/sub?new=1', ''], ['사용', '/sub?use=1']]} />
-        <QuickGroup navigate={navigate} icon="star" color="#34c759" title="Canister" actions={[['수불 등록', '/canisters?move=1', '']]} />
-      </div>
+      {/* 1) 퀵메뉴 (묶음) — 조회 전용(팀관리자)에는 숨김 */}
+      {canWrite && (
+        <div className="quickmenu">
+          <QuickGroup navigate={navigate} icon="canister" color="#0071e3" title="원재료" actions={[['입고', '/raw?new=1', ''], ['사용', '/raw?use=1']]} />
+          <QuickGroup navigate={navigate} icon="drum" color="#5e5ce6" title="부재료" actions={[['입고', '/sub?new=1', ''], ['사용', '/sub?use=1']]} />
+          <QuickGroup navigate={navigate} icon="star" color="#34c759" title="Canister" actions={[['수불 등록', '/canisters?move=1', '']]} />
+        </div>
+      )}
 
       {/* 2) 경고 영역 */}
       <div className="card" style={{ marginBottom: 16 }}>
@@ -95,8 +99,8 @@ export default function Dashboard() {
                   {w.pending && w.pending.length > 0 && <> · 미확인: {w.pending.join(', ')}</>}
                 </div>
               </div>
-              {!w.ackedByMe && <button className="btn sm" onClick={() => ack(w.key, w.content)}>확인</button>}
-              <button className="btn secondary sm" onClick={() => dismiss(w.key, w.content)}>삭제</button>
+              {canWrite && !w.ackedByMe && <button className="btn sm" onClick={() => ack(w.key, w.content)}>확인</button>}
+              {canWrite && <button className="btn secondary sm" onClick={() => dismiss(w.key, w.content)}>삭제</button>}
             </div>
           ))}
         </div>
@@ -193,7 +197,7 @@ export default function Dashboard() {
                     <td className="muted">{t.assignee || '–'}</td>
                     <td className="muted">{t.dueDate || '–'}</td>
                     <td><Badge color={statColor[t.status]} dot>{t.status}</Badge></td>
-                    <td><div className="btn-row"><button className="btn ghost sm" onClick={() => completeTask(t)}>완료</button></div></td>
+                    <td>{canWrite && <div className="btn-row"><button className="btn ghost sm" onClick={() => completeTask(t)}>완료</button></div>}</td>
                   </tr>
                 ))}
               </tbody>

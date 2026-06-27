@@ -8,7 +8,7 @@ const catColor = { raw: 'blue', sub: 'purple', canister: 'green' };
 const inTypes = ['입고', '반입'];
 
 export default function Transactions() {
-  const { isAdmin } = useAuth();
+  const { isAdmin, canWrite } = useAuth();
   const toast = useToast();
   const [items, setItems] = useState(null);
   const [edit, setEdit] = useState(null);
@@ -102,8 +102,9 @@ export default function Transactions() {
                   <td className="muted">{t.createdBy || ''}</td>
                   <td>
                     <div className="btn-row">
-                      <button className="btn secondary sm" onClick={() => setEdit(t)}>수정</button>
+                      {canWrite && <button className="btn secondary sm" onClick={() => setEdit(t)}>수정</button>}
                       {isAdmin && <button className="btn danger sm" onClick={() => setDel(t)}>삭제</button>}
+                      {!canWrite && <span className="muted" style={{ fontSize: 12 }}>조회</span>}
                     </div>
                   </td>
                 </tr>

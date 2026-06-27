@@ -146,6 +146,27 @@ describe('멀티 공장(1·2공장) 격리/권한', () => {
   });
 });
 
+describe('팀관리자(viewer) 조회 전용', () => {
+  let team;
+  beforeAll(async () => {
+    team = request.agent(app);
+    await team.post('/api/auth/login').send({ id: 'team1', password: 'team1234' }).expect(200);
+  });
+  test('전체 공장 조회 가능', async () => {
+    await team.get('/api/items?category=raw').set('X-Plant', encodeURIComponent('1공장')).expect(200);
+    await team.get('/api/items?category=raw').set('X-Plant', encodeURIComponent('2공장')).expect(200);
+    await team.get('/api/dashboard').set('X-Plant', encodeURIComponent('1공장')).expect(200);
+  });
+  test('쓰기(등록/수불)는 403 차단', async () => {
+    await team.post('/api/raw-materials').set('X-Plant', encodeURIComponent('2공장')).send({ itemName: '톨루엔', lotNo: 'V-1', quantity: 1, unit: 'kg', receivedDate: '2026-06-26' }).expect(403);
+    await team.post('/api/tasks').set('X-Plant', encodeURIComponent('2공장')).send({ title: 'x', category: '공정' }).expect(403);
+  });
+  test('로그인 시 전체 공장 접근', async () => {
+    const me = await team.get('/api/auth/me').expect(200);
+    expect(me.body.plants).toEqual(['1공장', '2공장']);
+  });
+});
+
 describe('권한(삭제=관리자)', () => {
   test('사용자 등록 가능 / 삭제는 관리자', async () => {
     const res = await user.post('/api/raw-materials').send({ itemName: '톨루엔', lotNo: 'U-9', quantity: 3, unit: 'kg', receivedDate: '2026-06-26' }).expect(201);

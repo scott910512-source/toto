@@ -20,7 +20,7 @@ function groupByContent(rows) {
 }
 
 export default function Canisters() {
-  const { isAdmin } = useAuth();
+  const { isAdmin, canWrite } = useAuth();
   const toast = useToast();
   const [meta, setMeta] = useState(null);
   const [items, setItems] = useState(null);
@@ -65,8 +65,8 @@ export default function Canisters() {
         <div className="desc">Canister별 <b>내용물(제품)·무게</b>를 관리하고, 반입/반출 이력을 용기이력카드로 추적합니다.</div>
         <div className="btn-row">
           <button className="btn secondary sm" onClick={exportCsv}>⬇ CSV</button>
-          <button className="btn secondary sm" onClick={() => setMoveOpen(true)}>↔ Canister 이력 등록</button>
-          <button className="btn sm" onClick={() => setCreate(true)}>+ Canister 등록</button>
+          {canWrite && <button className="btn secondary sm" onClick={() => setMoveOpen(true)}>↔ Canister 이력 등록</button>}
+          {canWrite && <button className="btn sm" onClick={() => setCreate(true)}>+ Canister 등록</button>}
         </div>
       </div>
 

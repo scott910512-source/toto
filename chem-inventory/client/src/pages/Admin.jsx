@@ -76,7 +76,7 @@ export default function Admin() {
         ) : (
           <table className="tbl">
             <thead>
-              <tr><th>아이디</th><th>이름</th><th>역할</th><th>상태</th><th>가입일</th><th style={{ width: 1 }}></th></tr>
+              <tr><th>아이디</th><th>이름</th><th>역할</th><th>공장범위</th><th>상태</th><th>가입일</th><th style={{ width: 1 }}></th></tr>
             </thead>
             <tbody>
               {items.map((u) => {
@@ -91,10 +91,23 @@ export default function Admin() {
                         value={u.role}
                         disabled={self}
                         onChange={(e) => action(() => api.patch(`/users/${u.id}`, { role: e.target.value }), '역할을 변경했습니다.')}
+                        style={{ width: 130 }}
+                      >
+                        <option value="user">사용자(등록)</option>
+                        <option value="admin">공장 관리자</option>
+                        <option value="viewer">팀관리자(조회)</option>
+                      </Select>
+                    </td>
+                    <td>
+                      <Select
+                        value={u.plantScope || '2공장'}
+                        disabled={self}
+                        onChange={(e) => action(() => api.patch(`/users/${u.id}`, { plantScope: e.target.value, plant: e.target.value === 'all' ? '2공장' : e.target.value }), '공장 범위를 변경했습니다.')}
                         style={{ width: 110 }}
                       >
-                        <option value="user">등록자</option>
-                        <option value="admin">관리자</option>
+                        <option value="all">전체</option>
+                        <option value="1공장">1공장</option>
+                        <option value="2공장">2공장</option>
                       </Select>
                     </td>
                     <td><Badge color={sb.c} dot>{sb.t}</Badge></td>

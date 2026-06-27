@@ -8,7 +8,7 @@ const prioColor = { 상: 'red', 중: 'orange', 하: '' };
 const statColor = { 완료: 'green', 진행중: 'blue', 대기: '', 지연: 'red' };
 
 export default function Tasks() {
-  const { isAdmin } = useAuth();
+  const { isAdmin, canWrite } = useAuth();
   const toast = useToast();
   const [meta, setMeta] = useState(null);
   const [users, setUsers] = useState([]);
@@ -44,7 +44,7 @@ export default function Tasks() {
         <div className="desc">등록된 할 일(Task)을 전체 사용자가 확인하고 처리합니다.</div>
         <div className="btn-row">
           <button className={`btn sm ${showAll ? '' : 'secondary'}`} onClick={() => setShowAll((v) => !v)}>{showAll ? '✓ 완료 포함' : '완료 포함'}</button>
-          <button className="btn sm" onClick={() => setEdit({ mode: 'create', data: { ...blank } })}>+ Task 등록</button>
+          {canWrite && <button className="btn sm" onClick={() => setEdit({ mode: 'create', data: { ...blank } })}>+ Task 등록</button>}
         </div>
       </div>
 
@@ -72,9 +72,10 @@ export default function Tasks() {
                   <td className="muted">{(t.createdAt || '').slice(0, 10)}</td>
                   <td>
                     <div className="btn-row">
-                      {t.status !== '완료' && <button className="btn ghost sm" onClick={() => complete(t)}>완료</button>}
-                      <button className="btn secondary sm" onClick={() => setEdit({ mode: 'edit', data: { ...t } })}>수정</button>
+                      {canWrite && t.status !== '완료' && <button className="btn ghost sm" onClick={() => complete(t)}>완료</button>}
+                      {canWrite && <button className="btn secondary sm" onClick={() => setEdit({ mode: 'edit', data: { ...t } })}>수정</button>}
                       {isAdmin && <button className="btn danger sm" onClick={() => setDel(t)}>삭제</button>}
+                      {!canWrite && <span className="muted" style={{ fontSize: 12 }}>조회</span>}
                     </div>
                   </td>
                 </tr>

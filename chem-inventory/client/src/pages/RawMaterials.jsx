@@ -26,7 +26,7 @@ function groupByItem(rows, key) {
 }
 
 export default function RawMaterials() {
-  const { isAdmin } = useAuth();
+  const { isAdmin, canWrite } = useAuth();
   const toast = useToast();
   const [summary, setSummary] = useState(null);
   const [items, setItems] = useState(null);
@@ -115,8 +115,8 @@ export default function RawMaterials() {
         <div className="btn-row">
           <button className="btn secondary sm" onClick={() => setTrend(true)}>📈 사용량 분석</button>
           <button className="btn secondary sm" onClick={exportCsv}>⬇ CSV</button>
-          <button className="btn secondary sm" onClick={() => setUseOpen(true)}>− 원재료 사용</button>
-          <button className="btn sm" onClick={() => setEdit({ mode: 'create', data: { ...blank, receivedDate: today() } })}>+ 원재료 입고</button>
+          {canWrite && <button className="btn secondary sm" onClick={() => setUseOpen(true)}>− 원재료 사용</button>}
+          {canWrite && <button className="btn sm" onClick={() => setEdit({ mode: 'create', data: { ...blank, receivedDate: today() } })}>+ 원재료 입고</button>}
         </div>
       </div>
 
@@ -166,9 +166,10 @@ export default function RawMaterials() {
                       <td className="muted">{r.updatedBy}</td>
                       <td>
                         <div className="btn-row">
-                          <button className="btn ghost sm" onClick={() => setTx(r)}>수불</button>
-                          <button className="btn secondary sm" onClick={() => setEdit({ mode: 'edit', data: { ...r } })}>수정</button>
+                          {canWrite && <button className="btn ghost sm" onClick={() => setTx(r)}>수불</button>}
+                          {canWrite && <button className="btn secondary sm" onClick={() => setEdit({ mode: 'edit', data: { ...r } })}>수정</button>}
                           {isAdmin && <button className="btn danger sm" onClick={() => setDel(r)}>삭제</button>}
+                          {!canWrite && <span className="muted" style={{ fontSize: 12 }}>조회</span>}
                         </div>
                       </td>
                     </tr>

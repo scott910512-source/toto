@@ -28,7 +28,7 @@ const NAV = [
 ];
 
 function Sidebar() {
-  const { user, isAdmin, plants, plant, changePlant } = useAuth();
+  const { user, isAdmin, plants, plant, changePlant, roleLabel } = useAuth();
   return (
     <aside className="sidebar">
       <div className="brand">
@@ -72,22 +72,23 @@ function Sidebar() {
         )}
       </nav>
       <div style={{ marginTop: 24, padding: '0 12px', fontSize: 12, color: 'var(--text-3)' }}>
-        {user?.name} 님 · {isAdmin ? '관리자' : '등록자'}
+        {user?.name} 님<br />· {roleLabel}
       </div>
     </aside>
   );
 }
 
 function Shell({ children, title }) {
-  const { user, logout } = useAuth();
+  const { user, logout, isViewer, plant } = useAuth();
   const navigate = useNavigate();
   return (
     <div className="app-shell">
       <Sidebar />
       <div className="main">
         <div className="topbar">
-          <h1>{title}</h1>
+          <h1>{title}{plant && <span className="topbar-plant">{plant}</span>}</h1>
           <div className="user">
+            {isViewer && <span className="badge orange">조회 전용</span>}
             <span>{user?.name} ({user?.id})</span>
             <button className="btn secondary sm" onClick={async () => { await logout(); navigate('/login'); }}>로그아웃</button>
           </div>
