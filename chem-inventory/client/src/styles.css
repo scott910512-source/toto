@@ -302,6 +302,29 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 .state-임박 { background: var(--orange-soft); color: #b25b00; }
 .state-부족 { background: var(--red-soft); color: var(--red); }
 
+/* AI 스마트 검색 */
+.smart { margin-bottom: 16px; }
+.smart-bar { display: flex; align-items: center; gap: 10px; }
+.smart-ico { font-size: 18px; }
+.smart-bar input { flex: 1; border: 1px solid var(--line-2); border-radius: 12px; padding: 11px 14px; font-size: 14.5px; font-family: inherit; outline: none; }
+.smart-bar input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.smart.big .smart-bar input { padding: 14px 16px; font-size: 16px; }
+.smart-ex { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 11px; }
+.chip { border: 1px solid var(--line-2); background: var(--surface-2); color: var(--text-2); border-radius: 980px; padding: 5px 12px; font-size: 12.5px; cursor: pointer; font-family: inherit; }
+.chip:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.smart-res { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 12px; }
+.smart-answer { font-size: 15px; font-weight: 600; color: var(--text); }
+
+/* 사용자 메뉴얼 */
+.manual h2 { font-size: 20px; margin: 26px 0 10px; }
+.manual h2:first-child { margin-top: 0; }
+.manual p { color: var(--text-2); font-size: 14px; line-height: 1.7; margin: 6px 0; }
+.manual .step { display: flex; gap: 18px; align-items: flex-start; margin: 14px 0 26px; flex-wrap: wrap; }
+.manual .step .txt { flex: 1; min-width: 240px; }
+.manual .step img { width: 460px; max-width: 100%; border: 1px solid var(--line-2); border-radius: 12px; box-shadow: var(--shadow-sm); }
+.manual ul { color: var(--text-2); font-size: 14px; line-height: 1.8; padding-left: 18px; }
+.manual .acct { font-size: 13px; }
+
 .kv { display: flex; gap: 8px; font-size: 13px; }
 .kv .k { color: var(--text-3); min-width: 72px; }
 .inline-link { color: var(--accent); cursor: pointer; font-weight: 500; }

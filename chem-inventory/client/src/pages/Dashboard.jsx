@@ -4,6 +4,7 @@ import { api } from '../api';
 import { useAuth } from '../auth/AuthContext';
 import { Loading, Empty, Badge, useToast } from '../components/ui';
 import { Icon } from '../components/icons';
+import { SmartSearch } from '../components/SmartSearch';
 
 const statColor = { 완료: 'green', 진행중: 'blue', 대기: '', 지연: 'red' };
 const prioColor = { 상: 'red', 중: 'orange', 하: '' };
@@ -71,6 +72,9 @@ export default function Dashboard() {
 
   return (
     <>
+      {/* 0) AI 스마트 검색 */}
+      <SmartSearch />
+
       {/* 1) 퀵메뉴 (묶음) — 조회 전용(팀관리자)에는 숨김 */}
       {canWrite && (
         <div className="quickmenu">

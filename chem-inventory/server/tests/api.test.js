@@ -146,6 +146,23 @@ describe('멀티 공장(1·2공장) 격리/권한', () => {
   });
 });
 
+describe('AI 스마트 검색', () => {
+  test('자연어 사용량 질의 해석', async () => {
+    const r = await admin.get('/api/search?q=' + encodeURIComponent('이번달 톨루엔 사용량')).expect(200);
+    expect(r.body.answer).toMatch(/톨루엔/);
+    expect(r.body.answer).toMatch(/사용량/);
+  });
+  test('부족 품목 질의', async () => {
+    const r = await admin.get('/api/search?q=' + encodeURIComponent('부족 품목')).expect(200);
+    expect(r.body.table.headers).toContain('품목');
+    expect(r.body.table.rows.length).toBeGreaterThanOrEqual(1);
+  });
+  test('상태별 Canister 질의', async () => {
+    const r = await admin.get('/api/search?q=' + encodeURIComponent('세정의뢰 Canister')).expect(200);
+    expect(r.body.answer).toMatch(/Canister/);
+  });
+});
+
 describe('팀관리자(viewer) 조회 전용', () => {
   let team;
   beforeAll(async () => {
