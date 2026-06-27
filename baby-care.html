@@ -917,37 +917,41 @@
   };
 
   /* ========================================================================
-     8-b. 최근 활동 피드 (기록 탭 하단에 작게 표시)
+     8-b. 활동로그 (기록 탭의 '활동로그' 서브메뉴 · 관리자 전용)
      ======================================================================== */
-  const ActivityFeed = ({ limit = 8 }) => {
-    const feedings = useRecords("feeding", 30);
-    const sleeps = useRecords("sleep", 30);
-    const diapers = useRecords("diaper", 30);
-    const growths = useRecords("growth", 20);
-    const healths = useRecords("health", 20);
-    const letters = useRecords("letter", 20);
-    const photos = usePhotos(15);
+  const ActivityLog = ({ limit = 60 }) => {
+    const feedings = useRecords("feeding", 60);
+    const sleeps = useRecords("sleep", 60);
+    const diapers = useRecords("diaper", 60);
+    const growths = useRecords("growth", 40);
+    const healths = useRecords("health", 40);
+    const letters = useRecords("letter", 40);
+    const photos = usePhotos(40);
+    const loading = !feedings || !sleeps || !diapers;
     const photoActs = (photos || []).map((p) => ({ ...p, type: "photo", at: p.createdAt, creatorName: p.uploaderName }));
     const feed = [...(feedings || []), ...(sleeps || []), ...(diapers || []), ...(growths || []), ...(healths || []), ...(letters || []), ...photoActs]
       .sort((a, b) => (toDate(b.createdAt || b.at) - toDate(a.createdAt || a.at)))
       .slice(0, limit);
-    const labelOf = (r) => ({ feeding: "수유", sleep: "수면", diaper: "기저귀", growth: "성장", health: "건강", letter: "편지", photo: "사진" })[r.type] || "기록";
+    const labelOf = (r) => ({ feeding: "수유 기록", sleep: "수면 기록", diaper: "기저귀 기록", growth: "성장 기록", health: "건강 기록", letter: "편지", photo: "사진" })[r.type] || "기록";
     const iconOf = (r) => ({ feeding: "🍼", sleep: "😴", diaper: "👶", growth: "📏", health: "🩺", letter: "💌", photo: "🖼️" })[r.type] || "📋";
-    if (feed.length === 0) return null;
     return (
-      <div className="pt-2">
-        <h3 className="text-xs font-semibold text-slate-400 mb-2 px-1">최근 활동</h3>
-        <Card className="p-2">
-          <ul className="divide-y divide-slate-100 dark:divide-slate-700">
-            {feed.map((r) => (
-              <li key={r.type + "_" + r.id} className="flex items-center gap-2 px-2 py-2 text-xs">
-                <span aria-hidden="true">{iconOf(r)}</span>
-                <span className="flex-1 text-slate-600 dark:text-slate-300 truncate"><b>{r.creatorName}</b> · {labelOf(r)}</span>
-                <span className="text-[10px] text-slate-400 whitespace-nowrap">{ago(r.createdAt || r.at)}</span>
-              </li>
-            ))}
-          </ul>
-        </Card>
+      <div className="space-y-3">
+        <p className="text-xs text-slate-400 px-1">누가 무엇을 기록했는지 한눈에 (관리자 전용)</p>
+        {loading ? <Spinner /> : feed.length === 0 ? (
+          <Card className="p-6 text-center text-sm text-slate-400">아직 활동이 없어요.</Card>
+        ) : (
+          <Card className="p-2">
+            <ul className="divide-y divide-slate-100 dark:divide-slate-700">
+              {feed.map((r) => (
+                <li key={r.type + "_" + r.id} className="flex items-center gap-3 px-2 py-2.5 text-sm">
+                  <span className="text-lg" aria-hidden="true">{iconOf(r)}</span>
+                  <span className="flex-1 text-slate-700 dark:text-slate-200 truncate"><b>{r.creatorName}</b>님 · {labelOf(r)}</span>
+                  <span className="text-[11px] text-slate-400 whitespace-nowrap">{ago(r.createdAt || r.at)}</span>
+                </li>
+              ))}
+            </ul>
+          </Card>
+        )}
       </div>
     );
   };
@@ -1044,6 +1048,7 @@
     const { user, profile } = useAuth();
     const toast = useToast();
     const items = useRecords("sleep");
+    const now = useNow(1000); // 실시간 경과 타이머용 (1초)
     const [napKind, setNapKind] = useState("nap");
     const [busy, setBusy] = useState(false);
     // 직접 입력 모드
@@ -1104,8 +1109,13 @@
         <Card className="p-5 text-center">
           {ongoing ? (
             <>
-              <p className="text-sm text-violet-500">수면 중 · {napKindLabel(ongoing.naptype)}</p>
-              <p className="text-2xl font-bold text-slate-800 dark:text-white my-2">{fmtTime(ongoing.start)} 시작</p>
+              <p className="text-sm text-violet-500">😴 수면 중 · {napKindLabel(ongoing.naptype)}</p>
+              <p className="text-xs text-slate-400 mt-1">{fmtTime(ongoing.start)} 시작</p>
+              {(() => {
+                const sec = Math.max(0, Math.floor((now - toDate(ongoing.start)) / 1000));
+                const mm = Math.floor(sec / 60), ss = sec % 60;
+                return <p className="text-4xl font-bold text-violet-500 my-2 tabular-nums" aria-live="polite">{String(mm).padStart(2, "0")}분 {String(ss).padStart(2, "0")}초</p>;
+              })()}
               <Btn variant="lavender" onClick={stop} disabled={busy} className="w-full">😊 기상 (수면 종료)</Btn>
             </>
           ) : (
@@ -1578,6 +1588,10 @@
     const { user, profile, isAdmin } = useAuth();
     const toast = useToast();
     const items = useRecords("prenatal", 100);
+    const photos = usePhotos(200);
+    const usPhotos = (photos || []).filter((p) => p.category === "ultrasound" && canSeePhoto(p, user.uid, isAdmin))
+      .sort((a, b) => toDate(b.takenAt || b.createdAt) - toDate(a.takenAt || a.createdAt));
+    const [detail, setDetail] = useState(null);
     const [open, setOpen] = useState(false);
     const [f, setF] = useState({ week: "", crl: "", bpd: "", hc: "", ac: "", fl: "", efw: "", fhr: "", afi: "", note: "" });
     const [at, setAt] = useState(toLocalInput(new Date()));
@@ -1610,6 +1624,23 @@
           <Btn onClick={() => setOpen(true)}>🔬 초음파 기록</Btn>
           <Btn variant="lavender" onClick={openUpload}>📷 초음파 사진</Btn>
         </div>
+
+        {/* 초음파 사진 (이 페이지에서만 관리, 갤러리·관람전용엔 노출 안 됨) */}
+        {usPhotos.length > 0 && (
+          <Card className="p-3">
+            <h3 className="text-sm font-bold text-slate-700 dark:text-slate-200 mb-2 px-1">🖼️ 초음파 사진 {usPhotos.length}장</h3>
+            <div className="grid grid-cols-3 gap-2">
+              {usPhotos.map((p, i) => (
+                <button key={p.id} onClick={() => setDetail(i)} className="block" aria-label="초음파 사진 열기">
+                  <img src={p.url} alt={p.caption || "초음파"} loading="lazy" className="w-full aspect-square object-cover rounded-lg bg-slate-100 dark:bg-slate-700" />
+                </button>
+              ))}
+            </div>
+          </Card>
+        )}
+        {detail != null && (
+          <PhotoDetail list={usPhotos} index={detail} setIndex={setDetail} uid={user.uid} saved={new Set()} onClose={() => setDetail(null)} />
+        )}
 
         {/* 주수별 타임라인 */}
         {!sorted ? <Spinner /> : sorted.length === 0 ? (
@@ -1798,25 +1829,28 @@
       { id: "feeding", label: "🍼 수유" }, { id: "sleep", label: "😴 수면" },
       { id: "diaper", label: "👶 기저귀" }, { id: "growth", label: "📏 성장" },
       { id: "health", label: "🩺 건강" }, { id: "prenatal", label: "🔬 임신" },
+      ...(isAdmin ? [{ id: "activity", label: "📜 활동로그" }] : []),
     ];
+    // 관리자만 보던 활동로그 탭을 비관리자가 선택 못 하도록 보정
+    const cur = (sub === "activity" && !isAdmin) ? "feeding" : sub;
     return (
       <div className="p-4 space-y-4 pb-safe">
         <div className="flex gap-2 overflow-x-auto no-scrollbar -mx-4 px-4" role="tablist" aria-label="육아 기록 종류">
           {tabs.map((t) => (
-            <button key={t.id} role="tab" aria-selected={sub === t.id} onClick={() => setSub(t.id)}
-              className={`whitespace-nowrap px-4 py-2 rounded-full text-sm font-medium transition ${sub === t.id
+            <button key={t.id} role="tab" aria-selected={cur === t.id} onClick={() => setSub(t.id)}
+              className={`whitespace-nowrap px-4 py-2 rounded-full text-sm font-medium transition ${cur === t.id
                 ? "bg-teal-500 text-white" : "bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-300 border border-slate-200 dark:border-slate-700"}`}>
               {t.label}
             </button>
           ))}
         </div>
-        {sub === "feeding" && <FeedingTracker />}
-        {sub === "sleep" && <SleepTracker />}
-        {sub === "diaper" && <DiaperTracker />}
-        {sub === "growth" && <GrowthTracker />}
-        {sub === "health" && <HealthLog />}
-        {sub === "prenatal" && <PrenatalTracker openUpload={openUpload} />}
-        {isAdmin && <ActivityFeed limit={8} />}
+        {cur === "feeding" && <FeedingTracker />}
+        {cur === "sleep" && <SleepTracker />}
+        {cur === "diaper" && <DiaperTracker />}
+        {cur === "growth" && <GrowthTracker />}
+        {cur === "health" && <HealthLog />}
+        {cur === "prenatal" && <PrenatalTracker openUpload={openUpload} />}
+        {cur === "activity" && isAdmin && <ActivityLog />}
       </div>
     );
   };
@@ -1900,7 +1934,10 @@
   /* ========================================================================
      18. 사진 업로드 모달
      ======================================================================== */
+  const ALL_CATS = [{ value: "ultrasound", label: "초음파" }, { value: "baby", label: "아기사진" }, { value: "milestone", label: "성장기록" }];
   const UploadModal = ({ open, onClose, defaultCategory = "baby" }) => {
+    // 초음파 업로드는 임신 페이지에서만 → 갤러리 업로드는 아기사진/성장기록만
+    const catOptions = defaultCategory === "ultrasound" ? ALL_CATS.filter((c) => c.value === "ultrasound") : ALL_CATS.filter((c) => c.value !== "ultrasound");
     const { user, profile } = useAuth();
     const toast = useToast();
     const [files, setFiles] = useState([]);
@@ -2005,8 +2042,11 @@
             </div>
           )}
 
-          <ChipGroup label="카테고리" value={category} onChange={setCategory}
-            options={[{ value: "ultrasound", label: "초음파" }, { value: "baby", label: "아기사진" }, { value: "milestone", label: "성장기록" }]} />
+          {catOptions.length > 1 ? (
+            <ChipGroup label="카테고리" value={category} onChange={setCategory} options={catOptions} />
+          ) : (
+            <p className="text-sm text-slate-500 dark:text-slate-400">📁 카테고리: <b>초음파</b> (임신 기록 전용)</p>
+          )}
           <Field label="캡션"><input className={inputCls} value={caption} onChange={(e) => setCaption(e.target.value)} placeholder="사진 설명" /></Field>
 
           {/* 공개 범위 */}
@@ -2185,8 +2225,8 @@
 
     const list = useMemo(() => {
       if (!photos) return [];
-      // 공개 범위 필터 (나만보기는 본인·관리자만)
-      let l = photos.filter((p) => canSeePhoto(p, user.uid, isAdmin));
+      // 초음파는 임신 페이지에서 별도 관리 → 갤러리에서 제외 + 공개범위 필터
+      let l = photos.filter((p) => p.category !== "ultrasound" && canSeePhoto(p, user.uid, isAdmin));
       if (cat !== "all") l = l.filter((p) => p.category === cat);
       if (isAdmin && uploader !== "all") l = l.filter((p) => p.uploadedBy === uploader);
       const kw = q.trim().toLowerCase();
@@ -2206,7 +2246,7 @@
       return l;
     }, [photos, cat, sort, q, from, to, uploader, isAdmin, user.uid]);
 
-    const cats = [{ v: "all", l: "전체" }, { v: "ultrasound", l: "초음파" }, { v: "baby", l: "아기사진" }, { v: "milestone", l: "성장기록" }];
+    const cats = [{ v: "all", l: "전체" }, { v: "baby", l: "아기사진" }, { v: "milestone", l: "성장기록" }];
 
     return (
       <div className="p-4 space-y-3 pb-safe">
@@ -2283,7 +2323,7 @@
   const SLIDE_REFRESH_MS = 10 * 60 * 1000; // 10분마다 새 사진 반영
   const buildSlideDeck = (photos) => {
     if (!photos || photos.length === 0) return [];
-    const pub = photos.filter((p) => !isPrivate(p)); // 전체공개 사진만 (나만보기 제외)
+    const pub = photos.filter((p) => !isPrivate(p) && p.category !== "ultrasound"); // 전체공개(나만보기·초음파 제외)
     if (pub.length === 0) return [];
     const byRecent = [...pub].sort((a, b) => toDate(b.takenAt || b.createdAt) - toDate(a.takenAt || a.createdAt)).slice(0, 20);
     const byLikes = [...pub].sort((a, b) => likeCountOf(b) - likeCountOf(a)).slice(0, 15);
@@ -2592,7 +2632,8 @@
       return () => { active = false; };
     }, [docs.map((d) => d.id).join(",")]);
 
-    const list = docs.map((d) => photos[d.photoRef || d.id]).filter(Boolean).filter((p) => canSeePhoto(p, user.uid, isAdmin));
+    const list = docs.map((d) => photos[d.photoRef || d.id]).filter(Boolean)
+      .filter((p) => p.category !== "ultrasound" && canSeePhoto(p, user.uid, isAdmin)); // 초음파는 임신 페이지에서만
     const savedSet = new Set(docs.map((d) => d.id));
 
     return (
