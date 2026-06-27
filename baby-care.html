@@ -334,6 +334,8 @@
     settings: () => db.collection("settings").doc("baby"),
   };
   const TS = () => firebase.firestore.FieldValue.serverTimestamp();
+  // 로그아웃: 자동 로그인 일시 중단(다음에 직접 로그인하면 재활성화)
+  const signOutApp = () => { try { localStorage.setItem("baby-skip-autologin", "1"); } catch (e) {} return auth.signOut(); };
 
   /* ========================================================================
      2. 공용 UI 컴포넌트
@@ -623,8 +625,26 @@
     const [email, setEmail] = useState("");
     const [pw, setPw] = useState("");
     const [name, setName] = useState("");
+    const [remember, setRemember] = useState(localStorage.getItem("baby-remember") !== "0");
     const [err, setErr] = useState("");
     const [busy, setBusy] = useState(false);
+    const autoTried = useRef(false);
+
+    // 저장된 로그인 정보 불러오기 + 자동 로그인
+    useEffect(() => {
+      let saved = null;
+      try { saved = JSON.parse(localStorage.getItem("baby-cred") || "null"); } catch (e) {}
+      if (saved && saved.email) { setEmail(saved.email); setPw(saved.pw || ""); }
+      // 로그아웃 직후엔 자동 로그인 건너뜀(다시 로그인하면 재활성화)
+      const skip = localStorage.getItem("baby-skip-autologin") === "1";
+      if (saved && saved.email && saved.pw && !skip && !autoTried.current) {
+        autoTried.current = true;
+        setBusy(true);
+        auth.signInWithEmailAndPassword(saved.email, saved.pw)
+          .catch(() => { /* 실패 시 입력값 유지 */ })
+          .finally(() => setBusy(false));
+      }
+    }, []);
 
     const submit = async (e) => {
       e.preventDefault();
@@ -640,6 +660,15 @@
           toast("가입 완료! 관리자 승인 후 이용할 수 있어요.", "success");
         } else {
           await auth.signInWithEmailAndPassword(email.trim(), pw);
+        }
+        // 로그인 정보 저장 (체크 시) + 자동로그인 재활성화
+        localStorage.removeItem("baby-skip-autologin");
+        if (remember) {
+          localStorage.setItem("baby-remember", "1");
+          localStorage.setItem("baby-cred", JSON.stringify({ email: email.trim(), pw }));
+        } else {
+          localStorage.setItem("baby-remember", "0");
+          localStorage.removeItem("baby-cred");
         }
       } catch (ex) {
         setErr(errMsg(ex));
@@ -680,6 +709,12 @@
               <input className={inputCls} type="password" autoComplete={mode === "signup" ? "new-password" : "current-password"}
                 value={pw} onChange={(e) => setPw(e.target.value)} placeholder={mode === "signup" ? "6자 이상" : "비밀번호"} aria-label="비밀번호" />
             </Field>
+            {mode === "login" && (
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} className="w-5 h-5 rounded accent-teal-500" />
+                <span className="text-sm text-slate-600 dark:text-slate-300">로그인 정보 저장 · 자동 로그인</span>
+              </label>
+            )}
             {err && <p role="alert" className="text-sm text-rose-500 bg-rose-50 dark:bg-rose-900/30 rounded-lg px-3 py-2">⚠️ {err}</p>}
             <Btn type="submit" disabled={busy} className="w-full">{busy ? "처리 중..." : (mode === "signup" ? "회원가입 신청" : "로그인")}</Btn>
             {mode === "login" && <button type="button" onClick={resetPw} className="w-full text-sm text-slate-400 hover:text-teal-500 pt-1">비밀번호를 잊으셨나요?</button>}
@@ -788,7 +823,7 @@
             <button onClick={() => setDark(!dark)} aria-label={dark ? "라이트 모드로 전환" : "다크 모드로 전환"}
               className="w-10 h-10 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 text-xl">{dark ? "☀️" : "🌙"}</button>
             <span className="text-xs font-medium text-slate-600 dark:text-slate-300 leading-tight mr-1 truncate max-w-[90px]">{profile ? profile.name : "..."}</span>
-            <button onClick={() => { auth.signOut(); toast("로그아웃 되었습니다."); }} aria-label="로그아웃"
+            <button onClick={() => { signOutApp(); toast("로그아웃 되었습니다."); }} aria-label="로그아웃"
               className="text-xs px-2.5 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300">로그아웃</button>
           </div>
         </div>
@@ -3267,7 +3302,7 @@
           <div className="text-5xl mb-3">🚫</div>
           <p className="text-slate-700 dark:text-white font-bold">비활성화된 계정입니다.</p>
           <p className="text-sm text-slate-400 mt-1">관리자에게 문의하세요.</p>
-          <Btn variant="ghost" className="mt-5" onClick={() => auth.signOut()}>로그아웃</Btn>
+          <Btn variant="ghost" className="mt-5" onClick={() => signOutApp()}>로그아웃</Btn>
         </div>
       );
     }
@@ -3280,7 +3315,7 @@
           <p className="text-slate-700 dark:text-white font-bold">승인 대기 중이에요</p>
           <p className="text-sm text-slate-400 mt-2 leading-relaxed">관리자(엄마·아빠)가 승인하면<br />바로 사용할 수 있어요.<br />승인 후 다시 들어오면 됩니다.</p>
           <p className="text-xs text-slate-400 mt-3">{profile.name} · {profile.email}</p>
-          <Btn variant="ghost" className="mt-5" onClick={() => auth.signOut()}>로그아웃</Btn>
+          <Btn variant="ghost" className="mt-5" onClick={() => signOutApp()}>로그아웃</Btn>
         </div>
       );
     }
