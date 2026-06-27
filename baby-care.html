@@ -2595,9 +2595,12 @@
                 <button onClick={() => setViewing(l)} className="block w-full text-left">
                   {l.image && <img src={l.image} alt="" className="w-full max-h-48 object-cover" />}
                   <div className="p-4">
-                    <div className="flex items-center justify-between mb-1">
-                      <h3 className="font-bold text-slate-800 dark:text-white">{isPrivate(l) && "🔒 "}{l.title || "(제목 없음)"}</h3>
-                      {l.image && <span className="text-xs text-slate-300">🖼️</span>}
+                    <div className="flex items-center justify-between mb-1 gap-2">
+                      <h3 className="font-bold text-slate-800 dark:text-white truncate">{isPrivate(l) && "🔒 "}{l.title || "(제목 없음)"}</h3>
+                      <div className="flex items-center gap-1 shrink-0">
+                        {l.reply && (isAdmin || l.createdBy === user.uid) && <span className="text-[10px] bg-violet-100 text-violet-600 dark:bg-violet-900/40 rounded-full px-1.5 py-0.5">💜 답장</span>}
+                        {l.image && <span className="text-xs text-slate-300">🖼️</span>}
+                      </div>
                     </div>
                     <p className="text-sm text-slate-500 dark:text-slate-300 line-clamp-2" style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{l.body}</p>
                     <p className="text-[11px] text-slate-400 mt-2">💛 {l.creatorName} · {fmtDateTime(l.at)}{isPrivate(l) && " · 나만보기"}</p>
@@ -2747,6 +2750,21 @@
       </div>
     );
   };
+  // 새 메달 획득 시 축하 토스트 (모든 역할 공통)
+  const MedalWatcher = () => {
+    const { profile } = useAuth();
+    const toast = useToast();
+    const seen = useRef(null);
+    useEffect(() => {
+      if (!profile) return;
+      const ids = earnedMedals(profile).map((m) => m.id);
+      if (seen.current === null) { seen.current = new Set(ids); return; } // 최초 진입 시엔 알림 안 함
+      earnedMedals(profile).forEach((m) => { if (!seen.current.has(m.id)) toast(`🎉 새 메달 획득! ${m.icon} ${m.name}`, "success"); });
+      seen.current = new Set(ids);
+    }, [profile && (profile.loginDays || []).length, profile && profile.letterCount]);
+    return null;
+  };
+
   const MyMedals = () => {
     const { profile } = useAuth();
     const s = medalStats(profile);
@@ -2989,6 +3007,7 @@
     return (
       <div className="app-shell bg-warm">
         <Header dark={dark} setDark={setDark} />
+        <MedalWatcher />
         <main>
           <div className="px-4 pt-3">
             <p className="text-xs text-slate-400">관람 계정 · 사진 감상 ❤️ · 편지 작성 · 메달 수집이 가능해요</p>
@@ -3058,6 +3077,7 @@
     return (
       <div className="app-shell bg-warm">
         <Header dark={dark} setDark={setDark} />
+        <MedalWatcher />
         <InstallBanner />
         <main>
           {tab === "dashboard" && <Dashboard go={go} />}
