@@ -1,0 +1,3020 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#7dd3c0" />
+  <title>아기수첩 · 우리 가족 육아 공유</title>
+
+  <!-- ============================================================
+       PWA: 홈 화면 설치 · 전체화면(standalone) · 아이콘 · 오프라인
+       ============================================================ -->
+  <link rel="manifest" href="manifest.webmanifest" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="아기수첩" />
+  <meta name="application-name" content="아기수첩" />
+  <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+  <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png" />
+  <script>
+    // 서비스워커 등록 (오프라인 앱 셸 + 빠른 재방문). 실패해도 앱은 정상 동작.
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", function () {
+        navigator.serviceWorker.register("sw.js").catch(function () {});
+      });
+    }
+    // 설치 프롬프트는 React 마운트 전에 발생할 수 있어 미리 보관
+    window.addEventListener("beforeinstallprompt", function (e) {
+      e.preventDefault(); window.__bipEvent = e;
+    });
+  </script>
+
+  <!-- ============================================================
+       CDN: Firebase compat / React 18 / Babel / Recharts / Tailwind
+       ============================================================ -->
+  <!-- 버전 고정 + crossorigin: 'latest' 변경/CORS 가림(Script error.) 방지 -->
+  <script crossorigin="anonymous" src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script crossorigin="anonymous" src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+  <script crossorigin="anonymous" src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+  <script crossorigin="anonymous" src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>
+  <script crossorigin="anonymous" src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
+  <script crossorigin="anonymous" src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
+  <script crossorigin="anonymous" src="https://unpkg.com/@babel/standalone@7.26.4/babel.min.js"></script>
+  <!-- prop-types: Recharts UMD가 window.PropTypes를 요구함 (없으면 차트 로드 실패) -->
+  <script crossorigin="anonymous" src="https://unpkg.com/prop-types@15.8.1/prop-types.min.js"></script>
+  <!-- Recharts: 2.x UMD 고정 ('latest'가 v3로 바뀌면 깨짐) -->
+  <script crossorigin="anonymous" src="https://unpkg.com/recharts@2.12.7/umd/Recharts.js"></script>
+  <!-- exifr는 부팅을 막지 않도록 업로드 시 지연 로드 (아래 loadExifr) -->
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <script>
+    // 다크모드: Tailwind class 전략 (tailwind 로드 실패 대비 가드)
+    if (window.tailwind) tailwind.config = { darkMode: 'class' };
+
+    // 오류를 화면에 보여주는 진단 오버레이
+    window.__showFatal = function (title, detail) {
+      var root = document.getElementById("root");
+      if (!root || root.childElementCount > 0) return; // 이미 앱이 떠 있으면 무시
+      root.innerHTML = '<div style="padding:24px;font-family:sans-serif;color:#b91c1c">'
+        + '<h2>⚠️ ' + title + '</h2><p style="color:#334155">아래 내용을 캡처해서 알려주세요.</p>'
+        + '<pre style="white-space:pre-wrap;background:#fef2f2;padding:12px;border-radius:8px;font-size:12px">' + detail + '</pre>'
+        + '<p style="color:#64748b;font-size:13px">인터넷 연결 또는 CDN 차단(회사/학교 와이파이)일 수 있어요. '
+        + '잠시 후 새로고침하거나 다른 네트워크에서 다시 시도해 주세요.</p>'
+        + '<button onclick="location.reload()" style="margin-top:8px;padding:10px 16px;border:0;border-radius:10px;background:#14b8a6;color:#fff;font-size:15px">새로고침</button></div>';
+    };
+    window.addEventListener("error", function (e) {
+      var d = (e && (e.message || (e.error && (e.error.stack || e.error.message)))) || 'Script error.';
+      window.__showFatal('앱 로딩 중 오류', d + '\n' + ((e && e.filename) || '') + (e && e.lineno ? ':' + e.lineno : ''));
+    });
+    window.addEventListener("unhandledrejection", function (e) {
+      var r = e && e.reason; window.__showFatal('앱 로딩 중 오류(비동기)', (r && (r.stack || r.message)) || String(r));
+    });
+    // 핵심 CDN 로드 확인 (모두 로드된 뒤 점검)
+    window.addEventListener("load", function () {
+      setTimeout(function () {
+        var miss = [];
+        if (!window.React) miss.push('React');
+        if (!window.ReactDOM) miss.push('ReactDOM');
+        if (!window.Babel) miss.push('Babel');
+        if (!window.firebase) miss.push('Firebase');
+        if (miss.length) window.__showFatal('필수 구성요소 로드 실패', '로드되지 않음: ' + miss.join(', ') + '\n(네트워크/CDN 문제)');
+      }, 1500);
+    });
+  </script>
+
+  <style>
+    :root { color-scheme: light dark; }
+    * { font-family: 'Noto Sans KR', system-ui, -apple-system, sans-serif; -webkit-tap-highlight-color: transparent; }
+    body { margin: 0; }
+    /* 파스텔 배경 (라이트/다크) */
+    .bg-warm { background: #fdfbf7; }
+    .dark .bg-warm { background: #0f172a; }
+    /* 한 손 조작용 큰 터치 타깃 */
+    button { touch-action: manipulation; }
+    /* 모바일 퍼스트: 앱 최대 폭 430px */
+    .app-shell { max-width: 430px; margin: 0 auto; min-height: 100vh; min-height: 100dvh; }
+    /* 스크롤바 숨김 (가로 필터 등) */
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    /* 모달 페이드 */
+    @keyframes fadeIn { from { opacity: 0 } to { opacity: 1 } }
+    .fade-in { animation: fadeIn .18s ease-out; }
+    @keyframes slideUp { from { transform: translateY(16px); opacity:0 } to { transform: translateY(0); opacity:1 } }
+    .slide-up { animation: slideUp .22s ease-out; }
+    /* 슬라이드쇼: 부드러운 크로스페이드 + 느린 켄번즈 줌 */
+    @keyframes slideFade { from { opacity: 0 } to { opacity: 1 } }
+    @keyframes kenburns { from { transform: scale(1) } to { transform: scale(1.08) } }
+    .slide-img { animation: slideFade 1.6s ease-in-out, kenburns 60s ease-out forwards; }
+    /* safe-area (아이폰 하단) */
+    .pb-safe { padding-bottom: calc(env(safe-area-inset-bottom) + 4.75rem); }
+    .nav-safe { padding-bottom: env(safe-area-inset-bottom); }
+  </style>
+</head>
+<body class="bg-warm">
+  <div id="root"></div>
+
+  <!-- ============================================================
+       ⚙️ Firebase 설정 - Firebase 콘솔에서 복사해서 붙여넣으세요
+       (아래 YOUR_xxx 값을 본인 프로젝트 값으로 교체하면 바로 동작)
+       ============================================================ -->
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyChOfo17jm5crlib5MZL_gbkYuc7GCXow0",
+      authDomain: "toto-62c85.firebaseapp.com",
+      projectId: "toto-62c85",
+      storageBucket: "toto-62c85.firebasestorage.app",
+      messagingSenderId: "784727295087",
+      appId: "1:784727295087:web:83280ab574a199ffbef99a",
+      measurementId: "G-XCN9E25LZW"
+    };
+
+    // 아기 기본 정보 (출생/출산예정일 기준 나이 계산용) - 앱 설정에서도 변경 가능
+    const BABY_DEFAULTS = {
+      name: "우리 아기",
+      birthDate: "",      // 예: "2026-05-01" (출생 후) — 비우면 임신 모드
+      dueDate: "2026-09-01", // 출산 예정일 (임신 주수 계산용)
+      sex: ""             // "male"(남아) | "female"(여아) — WHO 성장 백분위 곡선용
+    };
+
+    // 👑 항상 관리자로 처리할 이메일 목록 (여기에 이메일을 추가하면 무조건 관리자)
+    //    소문자로 적어주세요. 기존에 구성원으로 저장돼 있어도 자동으로 관리자로 승격됩니다.
+    const ADMIN_EMAILS = ["admin@baby.app", "scott7259@naver.com"];
+  </script>
+
+  <!--
+  ============================================================================
+  🔥 Firestore Security Rules  (Firebase 콘솔 > Firestore > 규칙 에 붙여넣기)
+  ----------------------------------------------------------------------------
+  rules_version = '2';
+  service cloud.firestore {
+    match /databases/{database}/documents {
+      function isSignedIn() { return request.auth != null; }
+      function isAdmin() {
+        return isSignedIn() &&
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+      }
+      // 육아 공유 기록(수유·수면·기저귀·성장·건강·초음파): 로그인 사용자 읽기/쓰기
+      match /records/{document=**} {
+        allow read, write: if isSignedIn();
+      }
+      // 앱 설정(아기 정보 등): 로그인 읽기, 관리자만 쓰기
+      match /settings/{docId} {
+        allow read: if isSignedIn();
+        allow write: if isAdmin();
+      }
+      // 사진: 로그인 읽기/생성, 업로더 본인 또는 관리자만 삭제
+      match /photos/{photoId} {
+        allow read: if isSignedIn();
+        allow create: if isSignedIn();
+        allow update: if isSignedIn(); // likeCount 트랜잭션 갱신
+        allow delete: if isSignedIn() &&
+          (resource.data.uploadedBy == request.auth.uid || isAdmin());
+        // 좋아요: 본인 문서만 쓰기
+        match /likes/{uid} {
+          allow read: if isSignedIn();
+          allow write: if request.auth.uid == uid;
+        }
+      }
+      // 유저 정보: 로그인 읽기, 본인 또는 관리자만 쓰기
+      match /users/{uid} {
+        allow read: if isSignedIn();
+        allow write: if request.auth.uid == uid || isAdmin();
+        // 저장한 사진: 본인만 읽기/쓰기
+        match /savedPhotos/{photoId} {
+          allow read, write: if request.auth.uid == uid;
+        }
+      }
+    }
+  }
+
+  ============================================================================
+  🔥 Storage Security Rules  (Firebase 콘솔 > Storage > 규칙 에 붙여넣기)
+  ----------------------------------------------------------------------------
+  rules_version = '2';
+  service firebase.storage {
+    match /b/{bucket}/o {
+      match /photos/{allPaths=**} {
+        // 인증된 사용자만 읽기/쓰기 (10MB 이하 이미지)
+        allow read: if request.auth != null;
+        allow write: if request.auth != null
+          && request.resource.size < 10 * 1024 * 1024
+          && request.resource.contentType.matches('image/.*');
+      }
+    }
+  }
+  ============================================================================
+  -->
+
+  <script type="text/babel" data-presets="react">
+  /* global React, ReactDOM, firebase, Recharts, firebaseConfig, BABY_DEFAULTS */
+  const { useState, useEffect, useRef, useMemo, useCallback, createContext, useContext } = React;
+  // Recharts가 CDN에서 안 떠도 앱 전체가 멈추지 않도록 대체 컴포넌트 사용
+  const RC = window.Recharts || {};
+  const chartsOK = !!RC.ResponsiveContainer;
+  const NullCmp = () => null; // 차트 미로딩 시 내부 요소는 무시
+  const ChartFallback = () => (
+    <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", color: "#94a3b8", fontSize: 12 }}>
+      차트를 불러오지 못했어요 (인터넷 연결 확인)
+    </div>
+  );
+  const LineChart = RC.LineChart || ChartFallback;
+  const BarChart = RC.BarChart || ChartFallback;
+  const ResponsiveContainer = RC.ResponsiveContainer || (({ children }) => <div style={{ width: "100%", height: "100%" }}>{children}</div>);
+  const Line = RC.Line || NullCmp, Bar = RC.Bar || NullCmp;
+  const XAxis = RC.XAxis || NullCmp, YAxis = RC.YAxis || NullCmp;
+  const CartesianGrid = RC.CartesianGrid || NullCmp, Tooltip = RC.Tooltip || NullCmp;
+  const ReferenceLine = RC.ReferenceLine || NullCmp, ReferenceArea = RC.ReferenceArea || NullCmp, Legend = RC.Legend || NullCmp;
+
+  /* ========================================================================
+     0. 유틸리티 & 상수
+     ======================================================================== */
+
+  // Firebase 설정이 플레이스홀더 그대로인지 확인
+  const isFirebaseConfigured = () =>
+    firebaseConfig.apiKey && !firebaseConfig.apiKey.startsWith("YOUR_") &&
+    firebaseConfig.projectId && !firebaseConfig.projectId.startsWith("YOUR_");
+
+  // Firebase 에러 코드 → 한국어 메시지 (시니어 검토 #6)
+  const AUTH_ERRORS = {
+    "auth/invalid-email": "이메일 형식이 올바르지 않습니다.",
+    "auth/user-disabled": "비활성화된 계정입니다. 관리자에게 문의하세요.",
+    "auth/user-not-found": "등록되지 않은 이메일입니다.",
+    "auth/wrong-password": "비밀번호가 일치하지 않습니다.",
+    "auth/invalid-credential": "이메일 또는 비밀번호가 올바르지 않습니다.",
+    "auth/too-many-requests": "로그인 시도가 너무 많습니다. 잠시 후 다시 시도하세요.",
+    "auth/email-already-in-use": "이미 사용 중인 이메일입니다.",
+    "auth/weak-password": "비밀번호는 6자 이상이어야 합니다.",
+    "auth/network-request-failed": "네트워크 연결을 확인해주세요.",
+    "auth/missing-password": "비밀번호를 입력해주세요.",
+    "storage/unauthorized": "업로드 권한이 없습니다. 로그인 상태를 확인하세요.",
+    "storage/canceled": "업로드가 취소되었습니다.",
+    "permission-denied": "접근 권한이 없습니다. 보안 규칙을 확인하세요.",
+  };
+  const errMsg = (e) => AUTH_ERRORS[e && e.code] || (e && e.message) || "알 수 없는 오류가 발생했습니다.";
+
+  // 계정 등급: 관리자 / 구성원(기록 가능) / 관람전용(사진만 보기, 이모·삼촌용)
+  const ROLE_LABEL = { admin: "관리자", member: "구성원", viewer: "관람전용" };
+  const roleLabel = (r) => ROLE_LABEL[r] || "구성원";
+
+  // Firestore Timestamp ↔ JS Date 일관 변환 (시니어 검토 #9)
+  const toDate = (v) => {
+    if (!v) return null;
+    if (v instanceof Date) return v;
+    if (typeof v.toDate === "function") return v.toDate(); // Firestore Timestamp
+    if (typeof v === "number") return new Date(v);
+    if (typeof v === "string") return new Date(v);
+    if (v.seconds != null) return new Date(v.seconds * 1000);
+    return null;
+  };
+  const fmtTime = (d) => { d = toDate(d); return d ? d.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" }) : "-"; };
+  const fmtDate = (d) => { d = toDate(d); return d ? d.toLocaleDateString("ko-KR", { month: "long", day: "numeric" }) : "-"; };
+  const fmtDateTime = (d) => { d = toDate(d); return d ? `${fmtDate(d)} ${fmtTime(d)}` : "-"; };
+  const ymd = (d) => { d = toDate(d) || new Date(); return d.toLocaleDateString("sv-SE"); }; // YYYY-MM-DD(로컬)
+  const isSameDay = (a, b) => ymd(a) === ymd(b);
+
+  // datetime-local 입력값(로컬 기준) ↔ Date 변환
+  const pad2 = (n) => String(n).padStart(2, "0");
+  const toLocalInput = (d) => {
+    d = toDate(d) || new Date();
+    return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+  };
+  const fromLocalInput = (s) => (s ? new Date(s) : new Date());
+
+  // 경과 시간 사람이 읽기 좋게
+  const ago = (d) => {
+    d = toDate(d); if (!d) return "";
+    const m = Math.floor((Date.now() - d.getTime()) / 60000);
+    if (m < 1) return "방금 전";
+    if (m < 60) return `${m}분 전`;
+    const h = Math.floor(m / 60);
+    if (h < 24) return `${h}시간 ${m % 60}분 전`;
+    return `${Math.floor(h / 24)}일 전`;
+  };
+  const hm = (mins) => `${Math.floor(mins / 60)}시간 ${Math.round(mins % 60)}분`;
+
+  /* ========================================================================
+     1. Firebase 초기화 + 오프라인 캐시 (시니어 검토 #4)
+     ======================================================================== */
+  let auth, db, storage, fbReady = false;
+  if (isFirebaseConfigured()) {
+    try {
+      firebase.initializeApp(firebaseConfig);
+      auth = firebase.auth();
+      db = firebase.firestore();
+      storage = firebase.storage();
+      // Firestore 오프라인 IndexedDB 캐시 (여러 탭 동시 사용 고려)
+      db.enablePersistence({ synchronizeTabs: true }).catch((e) => {
+        // failed-precondition(여러 탭) / unimplemented(미지원 브라우저)은 무시
+        console.warn("오프라인 캐시 비활성:", e.code);
+      });
+      // 로그인 세션 유지 (localStorage)
+      auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
+      fbReady = true;
+    } catch (e) { console.error("Firebase 초기화 실패", e); }
+  }
+
+  const COL = {
+    records: () => db.collection("records"),
+    photos: () => db.collection("photos"),
+    users: () => db.collection("users"),
+    settings: () => db.collection("settings").doc("baby"),
+  };
+  const TS = () => firebase.firestore.FieldValue.serverTimestamp();
+
+  /* ========================================================================
+     2. 공용 UI 컴포넌트
+     ======================================================================== */
+  const Spinner = ({ label }) => (
+    <div className="flex flex-col items-center justify-center gap-3 py-10" role="status" aria-live="polite">
+      <div className="w-9 h-9 border-[3px] border-teal-400 border-t-transparent rounded-full animate-spin" aria-hidden="true"></div>
+      {label && <p className="text-sm text-slate-500 dark:text-slate-400">{label}</p>}
+    </div>
+  );
+
+  const Card = ({ children, className = "" }) => (
+    <div className={`bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 ${className}`}>
+      {children}
+    </div>
+  );
+
+  const Btn = ({ children, onClick, variant = "primary", className = "", type = "button", disabled, ...rest }) => {
+    const styles = {
+      primary: "bg-teal-500 hover:bg-teal-600 text-white",
+      lavender: "bg-violet-400 hover:bg-violet-500 text-white",
+      ghost: "bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-600",
+      danger: "bg-rose-500 hover:bg-rose-600 text-white",
+    };
+    return (
+      <button type={type} onClick={onClick} disabled={disabled}
+        className={`rounded-xl font-medium px-4 py-3 text-base transition active:scale-[.98] disabled:opacity-50 disabled:active:scale-100 ${styles[variant]} ${className}`}
+        {...rest}>
+        {children}
+      </button>
+    );
+  };
+
+  // 토스트 알림
+  const ToastCtx = createContext(null);
+  const useToast = () => useContext(ToastCtx);
+  const ToastProvider = ({ children }) => {
+    const [toasts, setToasts] = useState([]);
+    const push = useCallback((msg, type = "info") => {
+      const id = Date.now() + Math.random();
+      setToasts((t) => [...t, { id, msg, type }]);
+      setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 3200);
+    }, []);
+    return (
+      <ToastCtx.Provider value={push}>
+        {children}
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[100] flex flex-col gap-2 w-[92%] max-w-[400px]" aria-live="assertive">
+          {toasts.map((t) => (
+            <div key={t.id} role="alert"
+              className={`fade-in px-4 py-3 rounded-xl shadow-lg text-sm text-white ${t.type === "error" ? "bg-rose-500" : t.type === "success" ? "bg-teal-500" : "bg-slate-700"}`}>
+              {t.msg}
+            </div>
+          ))}
+        </div>
+      </ToastCtx.Provider>
+    );
+  };
+
+  // 라벨 + 입력 묶음
+  const Field = ({ label, children }) => (
+    <label className="block">
+      <span className="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1.5">{label}</span>
+      {children}
+    </label>
+  );
+  const inputCls = "w-full rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 dark:text-white px-3.5 py-3 text-base focus:outline-none focus:ring-2 focus:ring-teal-400";
+
+  // 기록 시간 입력 (기본=지금, 직접 수정 가능)
+  const DateTimeField = ({ value, onChange, label = "기록 시간" }) => (
+    <Field label={label}>
+      <div className="flex gap-2">
+        <input className={inputCls} type="datetime-local" value={value} onChange={(e) => onChange(e.target.value)} aria-label={label} />
+        <button type="button" onClick={() => onChange(toLocalInput(new Date()))}
+          className="whitespace-nowrap px-3 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-sm">지금</button>
+      </div>
+    </Field>
+  );
+
+  // 선택 칩 그룹 (큰 버튼, 한 손 조작)
+  const ChipGroup = ({ options, value, onChange, label }) => (
+    <div role="radiogroup" aria-label={label}>
+      {label && <span className="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1.5">{label}</span>}
+      <div className="flex flex-wrap gap-2">
+        {options.map((o) => {
+          const active = value === o.value;
+          return (
+            <button key={o.value} type="button" role="radio" aria-checked={active}
+              onClick={() => onChange(o.value)}
+              className={`px-4 py-2.5 rounded-full text-sm font-medium border transition ${active
+                ? "bg-teal-500 border-teal-500 text-white"
+                : "bg-white dark:bg-slate-700 border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300"}`}>
+              {o.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+
+  // 모달 셸
+  const Modal = ({ open, onClose, children, title, full }) => {
+    useEffect(() => {
+      if (!open) return;
+      const onKey = (e) => e.key === "Escape" && onClose();
+      window.addEventListener("keydown", onKey);
+      document.body.style.overflow = "hidden";
+      return () => { window.removeEventListener("keydown", onKey); document.body.style.overflow = ""; };
+    }, [open]);
+    if (!open) return null;
+    return (
+      <div className="fixed inset-0 z-50 bg-black/60 flex items-end sm:items-center justify-center fade-in"
+        onClick={onClose} role="dialog" aria-modal="true" aria-label={title || "대화상자"}>
+        <div onClick={(e) => e.stopPropagation()}
+          className={`slide-up bg-white dark:bg-slate-800 w-full ${full ? "h-full max-w-[430px]" : "max-w-[420px] rounded-t-3xl sm:rounded-3xl max-h-[92vh]"} overflow-y-auto`}>
+          {title && (
+            <div className="sticky top-0 bg-white dark:bg-slate-800 px-5 py-4 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between z-10">
+              <h2 className="text-lg font-bold text-slate-800 dark:text-white">{title}</h2>
+              <button onClick={onClose} aria-label="닫기" className="text-2xl text-slate-400 hover:text-slate-600 w-9 h-9">×</button>
+            </div>
+          )}
+          <div className="p-5">{children}</div>
+        </div>
+      </div>
+    );
+  };
+
+  // 의료 면책 배너 (육아 전문가 검토 #1)
+  const MedicalDisclaimer = () => (
+    <div className="text-[11px] leading-relaxed text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 rounded-xl p-3">
+      ⚠️ 이 앱은 <b>의료 진단 도구가 아닙니다.</b> 기록·참고용이며, 모든 의학적 판단은 반드시 의료진과 상담하세요.
+    </div>
+  );
+
+  /* ========================================================================
+     3. 인증 컨텍스트
+     ======================================================================== */
+  const AuthCtx = createContext(null);
+  const useAuth = () => useContext(AuthCtx);
+
+  const AuthProvider = ({ children }) => {
+    const [user, setUser] = useState(undefined); // undefined=로딩, null=비로그인
+    const [profile, setProfile] = useState(null); // users/{uid} 문서
+
+    // 이메일이 ADMIN_EMAILS 에 있으면 무조건 관리자 (대소문자 무시)
+    const isAdminEmail = (email) =>
+      !!email && ADMIN_EMAILS.map((e) => e.toLowerCase()).includes(email.toLowerCase());
+
+    useEffect(() => {
+      // onAuthStateChanged 로 로그인 상태 관리 (주의사항)
+      const unsub = auth.onAuthStateChanged(async (u) => {
+        setUser(u);
+        if (!u) { setProfile(null); return; }
+        // users/{uid} 프로필 보장 (없으면 생성, 있으면 관리자 이메일 자동 승격)
+        const ref = COL.users().doc(u.uid);
+        const snap = await ref.get();
+        const wantAdmin = isAdminEmail(u.email);
+        try {
+          if (!snap.exists) {
+            // 새 계정(자가 회원가입): 관람전용 + 승인대기. 관리자 이메일은 즉시 관리자.
+            const name = (u.email || "").split("@")[0];
+            await ref.set({
+              email: u.email, name,
+              role: wantAdmin ? "admin" : "viewer",
+              approved: wantAdmin ? true : false,
+              disabled: false, createdAt: TS(),
+            });
+          } else if (wantAdmin && snap.data().role !== "admin") {
+            await ref.update({ role: "admin", approved: true });
+          }
+        } catch (e) { console.warn("프로필 동기화 실패:", e.code); }
+      });
+      return () => unsub();
+    }, []);
+
+    // 프로필 실시간 구독 (역할 변경 즉시 반영)
+    useEffect(() => {
+      if (!user) return;
+      const unsub = COL.users().doc(user.uid).onSnapshot((s) => setProfile(s.data() || null));
+      return () => unsub(); // 언마운트 시 리스너 해제 (시니어 검토 #7)
+    }, [user && user.uid]);
+
+    // 클라이언트 관리자 판정: Firestore role 또는 ADMIN_EMAILS 둘 중 하나면 관리자(=총관리자)
+    const isAdmin = (profile && profile.role === "admin") || (user && isAdminEmail(user.email));
+    // 승인 여부: 관리자거나, approved가 명시적으로 false가 아니면 승인됨(기존 계정 호환)
+    const approved = isAdmin || (profile && profile.approved !== false);
+
+    return <AuthCtx.Provider value={{ user, profile, isAdmin, approved }}>{children}</AuthCtx.Provider>;
+  };
+
+  /* ========================================================================
+     4. 설정(아기 정보) 컨텍스트 — 나이/주수 계산
+     ======================================================================== */
+  const BabyCtx = createContext(null);
+  const useBaby = () => useContext(BabyCtx);
+  const BabyProvider = ({ children }) => {
+    const [baby, setBaby] = useState(BABY_DEFAULTS);
+    useEffect(() => {
+      const unsub = COL.settings().onSnapshot((s) => {
+        if (s.exists) setBaby({ ...BABY_DEFAULTS, ...s.data() });
+      });
+      return () => unsub();
+    }, []);
+    return <BabyCtx.Provider value={baby}>{children}</BabyCtx.Provider>;
+  };
+
+  // 아기 나이/임신주수 계산
+  const useBabyAge = () => {
+    const baby = useBaby();
+    return useMemo(() => {
+      if (baby.birthDate) {
+        const b = new Date(baby.birthDate);
+        const days = Math.floor((Date.now() - b.getTime()) / 86400000);
+        if (days < 0) return { mode: "born", days: 0, weeks: 0, months: 0, label: "출생 예정일이 아직 오지 않았어요 (날짜 확인)" };
+        const weeks = Math.floor(days / 7);
+        const months = Math.floor(days / 30.44);
+        return { mode: "born", days, weeks, months, label: `생후 ${days}일 (${weeks}주 / 약 ${months}개월)` };
+      }
+      if (baby.dueDate) {
+        // 임신 주수 = 40주 - 출산예정일까지 남은 주
+        const due = new Date(baby.dueDate);
+        const daysLeft = Math.ceil((due.getTime() - Date.now()) / 86400000);
+        const gaDays = 280 - daysLeft;
+        const w = Math.floor(gaDays / 7), d = gaDays % 7;
+        return { mode: "pregnant", gaDays, gaWeeks: w, label: gaDays > 0 ? `임신 ${w}주 ${d}일` : "출산 예정 정보를 입력하세요", daysLeft };
+      }
+      return { mode: "unknown", label: "아기 정보를 설정하세요" };
+    }, [baby]);
+  };
+
+  /* ========================================================================
+     5. records 컬렉션 실시간 구독 훅 (타입별)
+     ======================================================================== */
+  // 현재 시각을 주기적으로 갱신 (경과시간 실시간 표시용)
+  const useNow = (intervalMs = 30000) => {
+    const [now, setNow] = useState(Date.now());
+    useEffect(() => {
+      const t = setInterval(() => setNow(Date.now()), intervalMs);
+      return () => clearInterval(t);
+    }, [intervalMs]);
+    return now;
+  };
+
+  const useRecords = (type, max = 200) => {
+    const [items, setItems] = useState(null);
+    useEffect(() => {
+      // 타입별 단일 필드 equality 쿼리(자동 색인, 복합 색인 불필요) → 해당 타입만 가져옴
+      const unsub = COL.records()
+        .where("type", "==", type)
+        .limit(max)
+        .onSnapshot(
+          (snap) => {
+            const arr = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+            arr.sort((a, b) => (toDate(b.at) || 0) - (toDate(a.at) || 0)); // 최신순 클라이언트 정렬
+            setItems(arr);
+          },
+          (err) => { console.error(type, err); setItems([]); }
+        );
+      return () => unsub();
+    }, [type, max]);
+    return items;
+  };
+
+  const addRecord = async (type, data, user, profile) => {
+    return COL.records().add({
+      type, ...data,
+      createdBy: user.uid,
+      creatorName: (profile && profile.name) || (user.email || "").split("@")[0],
+      at: data.at || TS(),       // 기록 대상 시각
+      createdAt: TS(),           // 서버 생성 시각
+    });
+  };
+  const deleteRecord = (id) => COL.records().doc(id).delete();
+  const updateRecordAt = (id, date) => COL.records().doc(id).update({ at: date });
+
+  /* ========================================================================
+     6. 로그인 화면
+     ======================================================================== */
+  const Login = () => {
+    const toast = useToast();
+    const [mode, setMode] = useState("login"); // login | signup
+    const [email, setEmail] = useState("");
+    const [pw, setPw] = useState("");
+    const [name, setName] = useState("");
+    const [err, setErr] = useState("");
+    const [busy, setBusy] = useState(false);
+
+    const submit = async (e) => {
+      e.preventDefault();
+      setErr(""); setBusy(true);
+      try {
+        if (mode === "signup") {
+          if (!name.trim()) { setErr("닉네임을 입력해주세요."); setBusy(false); return; }
+          const cred = await auth.createUserWithEmailAndPassword(email.trim(), pw);
+          // 가입 즉시 관람전용 + 승인대기로 프로필 생성
+          await COL.users().doc(cred.user.uid).set({
+            email: email.trim(), name: name.trim(), role: "viewer", approved: false, disabled: false, createdAt: TS(),
+          }, { merge: true });
+          toast("가입 완료! 관리자 승인 후 이용할 수 있어요.", "success");
+        } else {
+          await auth.signInWithEmailAndPassword(email.trim(), pw);
+        }
+      } catch (ex) {
+        setErr(errMsg(ex));
+      } finally { setBusy(false); }
+    };
+    const resetPw = async () => {
+      if (!email.trim()) { setErr("비밀번호를 재설정할 이메일을 입력하세요."); return; }
+      try { await auth.sendPasswordResetEmail(email.trim()); toast("재설정 메일을 보냈습니다.", "success"); }
+      catch (ex) { setErr(errMsg(ex)); }
+    };
+
+    return (
+      <div className="app-shell flex flex-col justify-center px-6 py-10 bg-warm">
+        <div className="text-center mb-8">
+          <div className="text-6xl mb-3" aria-hidden="true">🍼</div>
+          <h1 className="text-2xl font-bold text-slate-800 dark:text-white">아기수첩</h1>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">우리 가족이 함께 쓰는 육아 기록</p>
+        </div>
+        <Card className="p-6">
+          {/* 로그인 / 회원가입 전환 탭 */}
+          <div className="flex gap-2 mb-5 bg-slate-100 dark:bg-slate-700 rounded-xl p-1">
+            {[{ v: "login", l: "로그인" }, { v: "signup", l: "회원가입" }].map((t) => (
+              <button key={t.v} type="button" onClick={() => { setMode(t.v); setErr(""); }}
+                className={`flex-1 py-2 rounded-lg text-sm font-medium ${mode === t.v ? "bg-white dark:bg-slate-800 text-teal-600 shadow-sm" : "text-slate-500"}`}>{t.l}</button>
+            ))}
+          </div>
+          <form onSubmit={submit} className="space-y-4">
+            {mode === "signup" && (
+              <Field label="닉네임">
+                <input className={inputCls} value={name} onChange={(e) => setName(e.target.value)} placeholder="예: 이모, 삼촌" maxLength={20} />
+              </Field>
+            )}
+            <Field label="이메일">
+              <input className={inputCls} type="email" autoComplete="username" inputMode="email"
+                value={email} onChange={(e) => setEmail(e.target.value)} placeholder="email@example.com" aria-label="이메일" />
+            </Field>
+            <Field label="비밀번호">
+              <input className={inputCls} type="password" autoComplete={mode === "signup" ? "new-password" : "current-password"}
+                value={pw} onChange={(e) => setPw(e.target.value)} placeholder={mode === "signup" ? "6자 이상" : "비밀번호"} aria-label="비밀번호" />
+            </Field>
+            {err && <p role="alert" className="text-sm text-rose-500 bg-rose-50 dark:bg-rose-900/30 rounded-lg px-3 py-2">⚠️ {err}</p>}
+            <Btn type="submit" disabled={busy} className="w-full">{busy ? "처리 중..." : (mode === "signup" ? "회원가입 신청" : "로그인")}</Btn>
+            {mode === "login" && <button type="button" onClick={resetPw} className="w-full text-sm text-slate-400 hover:text-teal-500 pt-1">비밀번호를 잊으셨나요?</button>}
+          </form>
+        </Card>
+        <p className="text-center text-xs text-slate-400 mt-6 leading-relaxed">
+          {mode === "signup"
+            ? "가입하면 관리자 승인 후 사용할 수 있어요.\n처음엔 사진 관람만 가능하며, 관리자가 권한을 올려줄 수 있어요."
+            : "이메일·비밀번호는 이 기기에 저장돼 다음에 자동 로그인됩니다."}
+        </p>
+      </div>
+    );
+  };
+
+  /* ========================================================================
+     7. 헤더 + 다크모드
+     ======================================================================== */
+  const useDarkMode = () => {
+    const [dark, setDark] = useState(() => {
+      const saved = localStorage.getItem("baby-theme");
+      if (saved) return saved === "dark";
+      return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+    });
+    useEffect(() => {
+      document.documentElement.classList.toggle("dark", dark);
+      localStorage.setItem("baby-theme", dark ? "dark" : "light");
+    }, [dark]);
+    return [dark, setDark];
+  };
+
+  // 닉네임 변경 모달 (본인이 직접 설정)
+  const NicknameModal = ({ open, onClose }) => {
+    const { user, profile } = useAuth();
+    const toast = useToast();
+    const [name, setName] = useState("");
+    const [busy, setBusy] = useState(false);
+    useEffect(() => { if (open) setName((profile && profile.name) || ""); }, [open, profile && profile.name]);
+    const save = async () => {
+      const n = name.trim();
+      if (!n) { toast("닉네임을 입력해주세요.", "error"); return; }
+      setBusy(true);
+      try { await COL.users().doc(user.uid).set({ name: n }, { merge: true }); toast("닉네임을 변경했어요.", "success"); onClose(); }
+      catch (e) { toast(errMsg(e), "error"); } finally { setBusy(false); }
+    };
+    return (
+      <Modal open={open} onClose={onClose} title="닉네임 설정">
+        <div className="space-y-4">
+          <p className="text-sm text-slate-500 dark:text-slate-400">기록·사진·편지에 표시될 내 이름이에요. 자유롭게 바꿀 수 있어요.</p>
+          <Field label="닉네임"><input className={inputCls} value={name} onChange={(e) => setName(e.target.value)} placeholder="예: 엄마, 아빠, 외할머니" maxLength={20} /></Field>
+          <Btn onClick={save} disabled={busy} className="w-full">{busy ? "저장 중..." : "저장"}</Btn>
+        </div>
+      </Modal>
+    );
+  };
+
+  // PWA 설치 유도 배너 (이미 설치/standalone이면 숨김)
+  const isStandalone = () =>
+    (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches) || window.navigator.standalone === true;
+  const isIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent || "");
+  const InstallBanner = () => {
+    const [bip, setBip] = useState(window.__bipEvent || null);
+    const [dismissed, setDismissed] = useState(localStorage.getItem("baby-install-dismiss") === "1");
+    useEffect(() => {
+      const onBip = (e) => { e.preventDefault(); window.__bipEvent = e; setBip(e); };
+      const onInstalled = () => { setDismissed(true); window.__bipEvent = null; };
+      window.addEventListener("beforeinstallprompt", onBip);
+      window.addEventListener("appinstalled", onInstalled);
+      return () => { window.removeEventListener("beforeinstallprompt", onBip); window.removeEventListener("appinstalled", onInstalled); };
+    }, []);
+    if (isStandalone() || dismissed) return null;
+    const close = () => { setDismissed(true); localStorage.setItem("baby-install-dismiss", "1"); };
+    const install = async () => {
+      if (!bip) return;
+      bip.prompt();
+      try { await bip.userChoice; } catch (e) {}
+      window.__bipEvent = null; setBip(null);
+    };
+    if (!bip && !isIOS()) return null; // 설치 불가 환경(데스크톱 브라우저 등)
+    return (
+      <div className="bg-teal-50 dark:bg-slate-700/60 border-b border-teal-100 dark:border-slate-700 px-4 py-2.5 flex items-center gap-3">
+        <span className="text-xl" aria-hidden="true">📲</span>
+        <p className="flex-1 text-xs text-slate-600 dark:text-slate-200 leading-snug">
+          {bip ? "홈 화면에 앱처럼 설치할 수 있어요." : "공유 버튼 → ‘홈 화면에 추가’로 앱처럼 쓸 수 있어요."}
+        </p>
+        {bip && <button onClick={install} className="text-xs px-3 py-1.5 rounded-lg bg-teal-500 text-white font-medium whitespace-nowrap">설치</button>}
+        <button onClick={close} aria-label="닫기" className="text-slate-400 text-lg w-7 h-7">×</button>
+      </div>
+    );
+  };
+
+  const Header = ({ dark, setDark }) => {
+    const { profile } = useAuth();
+    const baby = useBaby();
+    const toast = useToast();
+    return (
+      <header className="sticky top-0 z-30 bg-white/90 dark:bg-slate-800/90 backdrop-blur border-b border-slate-100 dark:border-slate-700">
+        <div className="px-4 h-14 flex items-center justify-between">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-2xl" aria-hidden="true">🍼</span>
+            <div className="min-w-0">
+              <p className="font-bold text-slate-800 dark:text-white leading-tight truncate">{baby.name}</p>
+              <p className="text-[11px] text-slate-400 leading-tight">아기수첩</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-1">
+            <button onClick={() => setDark(!dark)} aria-label={dark ? "라이트 모드로 전환" : "다크 모드로 전환"}
+              className="w-10 h-10 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 text-xl">{dark ? "☀️" : "🌙"}</button>
+            <span className="text-xs font-medium text-slate-600 dark:text-slate-300 leading-tight mr-1 truncate max-w-[90px]">{profile ? profile.name : "..."}</span>
+            <button onClick={() => { auth.signOut(); toast("로그아웃 되었습니다."); }} aria-label="로그아웃"
+              className="text-xs px-2.5 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300">로그아웃</button>
+          </div>
+        </div>
+      </header>
+    );
+  };
+
+  /* ========================================================================
+     8. 대시보드
+     ======================================================================== */
+  const Dashboard = ({ go }) => {
+    const feedings = useRecords("feeding");
+    const sleeps = useRecords("sleep");
+    const diapers = useRecords("diaper");
+    const ageInfo = useBabyAge();
+    const baby = useBaby();
+    const now = useNow(30000);
+
+    if (!feedings || !sleeps || !diapers) return <Spinner label="불러오는 중..." />;
+
+    const today = new Date();
+    const tF = feedings.filter((r) => isSameDay(r.at, today));
+    const tD = diapers.filter((r) => isSameDay(r.at, today));
+    // 자정 넘긴 밤잠도 포함: 시작 또는 종료가 오늘인 완료 수면
+    const tS = sleeps.filter((r) => r.end && (isSameDay(r.at, today) || isSameDay(r.end, today)));
+    const sleepMin = tS.reduce((s, r) => s + (r.durationMin || 0), 0);
+
+    // 마지막 수유 & 다음 예상 (최근 간격 평균 기반)
+    const lastFeed = feedings[0];
+    const lastFeedDate = lastFeed ? toDate(lastFeed.at) : null;
+    const intervals = [];
+    for (let i = 0; i < Math.min(feedings.length - 1, 6); i++) {
+      const d = toDate(feedings[i].at) - toDate(feedings[i + 1].at);
+      if (d > 0) intervals.push(d);
+    }
+    const avgMs = intervals.length ? Math.max(5400000, intervals.reduce((a, b) => a + b, 0) / intervals.length) : 3 * 3600000;
+    const nextFeed = lastFeedDate ? new Date(lastFeedDate.getTime() + avgMs) : null;
+    const overdue = lastFeedDate && (now - lastFeedDate.getTime()) > 3 * 3600000; // 3시간 초과(임상 권고)
+
+    // 최근 7일 통계
+    const weekly = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(); d.setDate(d.getDate() - i); const key = ymd(d);
+      const sl = sleeps.filter((r) => r.end && (ymd(r.at) === key || (r.end && ymd(r.end) === key))).reduce((s, r) => s + (r.durationMin || 0), 0) / 60;
+      weekly.push({
+        day: d.toLocaleDateString("ko-KR", { weekday: "short" }),
+        수유: feedings.filter((r) => ymd(r.at) === key).length,
+        기저귀: diapers.filter((r) => ymd(r.at) === key).length,
+        수면: +sl.toFixed(1),
+      });
+    }
+    const avg = (k) => (weekly.reduce((s, d) => s + d[k], 0) / 7);
+
+    return (
+      <div className="p-4 space-y-4 pb-safe">
+        {/* 아기 나이 */}
+        <Card className="p-5 bg-gradient-to-br from-teal-50 to-violet-50 dark:from-slate-800 dark:to-slate-800">
+          <p className="text-sm text-slate-500 dark:text-slate-400">{baby.name}</p>
+          <p className="text-xl font-bold text-slate-800 dark:text-white mt-0.5">{ageInfo.label}</p>
+          {ageInfo.mode === "pregnant" && ageInfo.daysLeft > 0 &&
+            <p className="text-xs text-violet-500 mt-1">출산까지 {ageInfo.daysLeft}일 💜</p>}
+        </Card>
+
+        {/* 다음 수유 / 경고 */}
+        <Card className={`p-4 ${overdue ? "ring-2 ring-amber-400" : ""}`}>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-slate-500 dark:text-slate-400">마지막 수유</p>
+              <p className="font-bold text-slate-800 dark:text-white">{lastFeedDate ? ago(lastFeedDate) : "기록 없음"}</p>
+            </div>
+            <div className="text-right">
+              <p className="text-sm text-slate-500 dark:text-slate-400">다음 예상</p>
+              <p className={`font-bold ${overdue ? "text-amber-500" : "text-teal-500"}`}>{nextFeed ? fmtTime(nextFeed) : "-"}</p>
+            </div>
+          </div>
+          {overdue && <p className="text-xs text-amber-600 dark:text-amber-400 mt-2 bg-amber-50 dark:bg-amber-900/30 rounded-lg px-3 py-2">⚠️ 마지막 수유 후 3시간이 지났어요. 신생아는 보통 2~3시간 간격 수유를 권장합니다.</p>}
+        </Card>
+
+        {/* 오늘 요약 */}
+        <div className="grid grid-cols-3 gap-3">
+          {[
+            { icon: "🍼", n: tF.length, unit: "회", label: "수유", tab: "feeding" },
+            { icon: "😴", n: (sleepMin / 60).toFixed(1), unit: "시간", label: "수면", tab: "sleep" },
+            { icon: "👶", n: tD.length, unit: "회", label: "기저귀", tab: "diaper" },
+          ].map((s) => (
+            <button key={s.label} onClick={() => go("records", s.tab)} aria-label={`${s.label} 오늘 ${s.n}${s.unit}`}>
+              <Card className="p-3 text-center active:scale-95 transition">
+                <div className="text-2xl" aria-hidden="true">{s.icon}</div>
+                <p className="text-lg font-bold text-slate-800 dark:text-white mt-1">{s.n}<span className="text-xs font-normal text-slate-400 ml-0.5">{s.unit}</span></p>
+                <p className="text-[11px] text-slate-400">{s.label}</p>
+              </Card>
+            </button>
+          ))}
+        </div>
+
+        {/* 빠른 입력 */}
+        <div className="grid grid-cols-2 gap-3">
+          <Btn variant="primary" onClick={() => go("records", "feeding")}>🍼 수유 기록</Btn>
+          <Btn variant="lavender" onClick={() => go("records", "sleep")}>😴 수면 기록</Btn>
+        </div>
+
+        {/* 주간 통계 */}
+        <Card className="p-4">
+          <h3 className="font-bold text-slate-800 dark:text-white mb-1">최근 7일 통계</h3>
+          <div className="grid grid-cols-3 gap-2 my-3 text-center">
+            <div><p className="text-lg font-bold text-teal-500">{avg("수유").toFixed(1)}</p><p className="text-[11px] text-slate-400">하루 평균 수유</p></div>
+            <div><p className="text-lg font-bold text-violet-500">{avg("수면").toFixed(1)}h</p><p className="text-[11px] text-slate-400">하루 평균 수면</p></div>
+            <div><p className="text-lg font-bold text-amber-500">{avg("기저귀").toFixed(1)}</p><p className="text-[11px] text-slate-400">하루 평균 기저귀</p></div>
+          </div>
+          <div style={{ width: "100%", height: 160 }}>
+            <ResponsiveContainer>
+              <BarChart data={weekly} margin={{ top: 5, right: 5, left: -22, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                <XAxis dataKey="day" tick={{ fontSize: 11 }} />
+                <YAxis tick={{ fontSize: 11 }} />
+                <Tooltip />
+                <Legend wrapperStyle={{ fontSize: 11 }} />
+                <Bar dataKey="수유" fill="#14b8a6" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="기저귀" fill="#f59e0b" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </Card>
+      </div>
+    );
+  };
+
+  /* ========================================================================
+     8-b. 최근 활동 피드 (기록 탭 하단에 작게 표시)
+     ======================================================================== */
+  const ActivityFeed = ({ limit = 8 }) => {
+    const feedings = useRecords("feeding", 30);
+    const sleeps = useRecords("sleep", 30);
+    const diapers = useRecords("diaper", 30);
+    const growths = useRecords("growth", 20);
+    const healths = useRecords("health", 20);
+    const letters = useRecords("letter", 20);
+    const photos = usePhotos(15);
+    const photoActs = (photos || []).map((p) => ({ ...p, type: "photo", at: p.createdAt, creatorName: p.uploaderName }));
+    const feed = [...(feedings || []), ...(sleeps || []), ...(diapers || []), ...(growths || []), ...(healths || []), ...(letters || []), ...photoActs]
+      .sort((a, b) => (toDate(b.createdAt || b.at) - toDate(a.createdAt || a.at)))
+      .slice(0, limit);
+    const labelOf = (r) => ({ feeding: "수유", sleep: "수면", diaper: "기저귀", growth: "성장", health: "건강", letter: "편지", photo: "사진" })[r.type] || "기록";
+    const iconOf = (r) => ({ feeding: "🍼", sleep: "😴", diaper: "👶", growth: "📏", health: "🩺", letter: "💌", photo: "🖼️" })[r.type] || "📋";
+    if (feed.length === 0) return null;
+    return (
+      <div className="pt-2">
+        <h3 className="text-xs font-semibold text-slate-400 mb-2 px-1">최근 활동</h3>
+        <Card className="p-2">
+          <ul className="divide-y divide-slate-100 dark:divide-slate-700">
+            {feed.map((r) => (
+              <li key={r.type + "_" + r.id} className="flex items-center gap-2 px-2 py-2 text-xs">
+                <span aria-hidden="true">{iconOf(r)}</span>
+                <span className="flex-1 text-slate-600 dark:text-slate-300 truncate"><b>{r.creatorName}</b> · {labelOf(r)}</span>
+                <span className="text-[10px] text-slate-400 whitespace-nowrap">{ago(r.createdAt || r.at)}</span>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      </div>
+    );
+  };
+
+  /* ========================================================================
+     9. 수유 기록
+     ======================================================================== */
+  const FeedingTracker = () => {
+    const { user, profile } = useAuth();
+    const toast = useToast();
+    const items = useRecords("feeding");
+    const [kind, setKind] = useState("breast"); // breast/formula/mixed
+    const [side, setSide] = useState("left");
+    const [amount, setAmount] = useState("");
+    const [dur, setDur] = useState("");
+    const [at, setAt] = useState(toLocalInput(new Date()));
+    const [busy, setBusy] = useState(false);
+
+    const save = async () => {
+      setBusy(true);
+      try {
+        await addRecord("feeding", {
+          kind, side: kind === "breast" ? side : null,
+          amount: amount ? Number(amount) : null,
+          durationMin: dur ? Number(dur) : null,
+          at: fromLocalInput(at),
+        }, user, profile);
+        setAmount(""); setDur(""); setAt(toLocalInput(new Date()));
+        toast("수유 기록을 추가했어요.", "success");
+      } catch (e) { toast(errMsg(e), "error"); } finally { setBusy(false); }
+    };
+
+    const now = useNow(30000); // 30초마다 경과시간 갱신
+    const last = items && items[0];
+    const lastDate = last && toDate(last.at);
+    const elapsedMin = lastDate ? Math.floor((now - lastDate) / 60000) : null;
+    const overdue = elapsedMin != null && elapsedMin > 180;
+    const kindLabel = { breast: "모유", formula: "분유", mixed: "혼합" };
+
+    // 직전 수유와 동일하게 한 번 더 (야간 빠른 입력)
+    const repeatLast = async () => {
+      if (!last) return;
+      setBusy(true);
+      try {
+        await addRecord("feeding", {
+          kind: last.kind, side: last.side || null,
+          amount: last.amount || null, durationMin: last.durationMin || null, at: TS(),
+        }, user, profile);
+        toast("직전 수유와 동일하게 기록했어요.", "success");
+      } catch (e) { toast(errMsg(e), "error"); } finally { setBusy(false); }
+    };
+
+    return (
+      <div className="space-y-4">
+        {/* 경과 시간 */}
+        {lastDate && (
+          <Card className={`p-4 text-center ${overdue ? "ring-2 ring-amber-400" : ""}`}>
+            <p className="text-sm text-slate-500 dark:text-slate-400">마지막 수유 경과</p>
+            <p className={`text-2xl font-bold ${overdue ? "text-amber-500" : "text-teal-500"}`}>{hm(elapsedMin)}</p>
+            <p className="text-[11px] text-slate-400">{kindLabel[last.kind]}{last.amount ? ` ${last.amount}ml` : ""} · {fmtTime(last.at)}</p>
+            {overdue && <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">⚠️ 3시간 초과 — 수유 시간을 확인해주세요</p>}
+            <Btn variant="ghost" onClick={repeatLast} disabled={busy} className="w-full mt-3 text-sm py-2.5">🔁 직전과 동일하게 한 번 더</Btn>
+          </Card>
+        )}
+
+        <Card className="p-4 space-y-4">
+          <ChipGroup label="수유 종류" value={kind} onChange={setKind}
+            options={[{ value: "breast", label: "🤱 모유" }, { value: "formula", label: "🍼 분유" }, { value: "mixed", label: "🥛 혼합" }]} />
+          {kind === "breast" &&
+            <ChipGroup label="수유 위치" value={side} onChange={setSide}
+              options={[{ value: "left", label: "왼쪽" }, { value: "right", label: "오른쪽" }, { value: "both", label: "양쪽" }]} />}
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="수유량 (ml)"><input className={inputCls} type="number" inputMode="numeric" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="120" /></Field>
+            <Field label="시간 (분)"><input className={inputCls} type="number" inputMode="numeric" value={dur} onChange={(e) => setDur(e.target.value)} placeholder="15" /></Field>
+          </div>
+          <DateTimeField value={at} onChange={setAt} />
+          <Btn onClick={save} disabled={busy} className="w-full">{busy ? "저장 중..." : "수유 기록 저장"}</Btn>
+        </Card>
+
+        <RecordList items={items} render={(r) => (
+          <>
+            <span className="font-medium text-slate-800 dark:text-white">{kindLabel[r.kind]}{r.side && ` · ${{ left: "왼쪽", right: "오른쪽", both: "양쪽" }[r.side]}`}</span>
+            {r.amount ? ` · ${r.amount}ml` : ""}{r.durationMin ? ` · ${r.durationMin}분` : ""}
+          </>
+        )} />
+      </div>
+    );
+  };
+
+  /* ========================================================================
+     10. 수면 기록 (원탭 시작/종료 + 7일 그래프)
+     ======================================================================== */
+  const SleepTracker = () => {
+    const { user, profile } = useAuth();
+    const toast = useToast();
+    const items = useRecords("sleep");
+    const [napKind, setNapKind] = useState("nap");
+    const [busy, setBusy] = useState(false);
+
+    const ongoing = items && items.find((r) => !r.end);
+
+    const start = async () => {
+      setBusy(true);
+      try { await addRecord("sleep", { naptype: napKind, start: TS(), end: null, at: TS() }, user, profile); toast("수면을 시작했어요 😴", "success"); }
+      catch (e) { toast(errMsg(e), "error"); } finally { setBusy(false); }
+    };
+    const stop = async () => {
+      if (!ongoing) return;
+      setBusy(true);
+      try {
+        const startD = toDate(ongoing.start);
+        const min = Math.max(1, Math.round((Date.now() - startD) / 60000));
+        await COL.records().doc(ongoing.id).update({ end: TS(), durationMin: min });
+        toast(`수면 종료 · ${hm(min)}`, "success");
+      } catch (e) { toast(errMsg(e), "error"); } finally { setBusy(false); }
+    };
+
+    // 최근 7일 합계
+    const chartData = useMemo(() => {
+      if (!items) return [];
+      const days = [];
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date(); d.setDate(d.getDate() - i);
+        const key = ymd(d);
+        const total = items.filter((r) => r.end && ymd(r.at) === key).reduce((s, r) => s + (r.durationMin || 0), 0);
+        days.push({ day: d.toLocaleDateString("ko-KR", { weekday: "short" }), hours: +(total / 60).toFixed(1) });
+      }
+      return days;
+    }, [items]);
+
+    const todayMin = items ? items.filter((r) => r.end && isSameDay(r.at, new Date())).reduce((s, r) => s + (r.durationMin || 0), 0) : 0;
+    const todayH = todayMin / 60;
+    // 수면 안전: 신생아 14~17시간 권장 (육아 전문가 검토 #3)
+    const sleepWarn = todayH > 0 && (todayH < 11 ? "부족" : todayH > 19 ? "과다" : null);
+
+    return (
+      <div className="space-y-4">
+        <Card className="p-5 text-center">
+          {ongoing ? (
+            <>
+              <p className="text-sm text-violet-500">수면 중 · {napKindLabel(ongoing.naptype)}</p>
+              <p className="text-2xl font-bold text-slate-800 dark:text-white my-2">{fmtTime(ongoing.start)} 시작</p>
+              <Btn variant="lavender" onClick={stop} disabled={busy} className="w-full">😊 기상 (수면 종료)</Btn>
+            </>
+          ) : (
+            <>
+              <ChipGroup value={napKind} onChange={setNapKind}
+                options={[{ value: "nap", label: "🌤️ 낮잠" }, { value: "night", label: "🌙 밤잠" }]} />
+              <Btn variant="primary" onClick={start} disabled={busy} className="w-full mt-3">😴 수면 시작</Btn>
+            </>
+          )}
+        </Card>
+
+        <Card className="p-4">
+          <div className="flex items-center justify-between mb-1">
+            <h3 className="font-bold text-slate-800 dark:text-white">오늘 총 수면</h3>
+            <span className="font-bold text-teal-500">{hm(todayMin)}</span>
+          </div>
+          {sleepWarn && (
+            <p className={`text-xs rounded-lg px-3 py-2 mt-1 ${sleepWarn === "부족" ? "text-amber-600 bg-amber-50 dark:bg-amber-900/30" : "text-sky-600 bg-sky-50 dark:bg-sky-900/30"}`}>
+              {sleepWarn === "부족" ? "⚠️ 수면이 다소 부족할 수 있어요." : "ℹ️ 수면이 평균보다 많아요."} 신생아 권장 수면은 하루 14~17시간입니다.
+            </p>
+          )}
+        </Card>
+
+        <Card className="p-4">
+          <h3 className="font-bold text-slate-800 dark:text-white mb-3">최근 7일 수면 (시간)</h3>
+          <div style={{ width: "100%", height: 180 }}>
+            <ResponsiveContainer>
+              <BarChart data={chartData} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                <XAxis dataKey="day" tick={{ fontSize: 11 }} />
+                <YAxis tick={{ fontSize: 11 }} />
+                <Tooltip formatter={(v) => [`${v}시간`, "수면"]} />
+                <ReferenceLine y={14} stroke="#34d399" strokeDasharray="4 4" label={{ value: "권장 14h", fontSize: 9, fill: "#34d399" }} />
+                <Bar dataKey="hours" fill="#a78bfa" radius={[6, 6, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </Card>
+
+        <RecordList items={items} render={(r) => (
+          <>{napKindLabel(r.naptype)} · {r.end ? hm(r.durationMin || 0) : <span className="text-violet-500">진행 중</span>}</>
+        )} />
+      </div>
+    );
+  };
+  const napKindLabel = (t) => t === "night" ? "🌙 밤잠" : "🌤️ 낮잠";
+
+  /* ========================================================================
+     11. 기저귀 기록
+     ======================================================================== */
+  const DiaperTracker = () => {
+    const { user, profile } = useAuth();
+    const toast = useToast();
+    const items = useRecords("diaper");
+    const [type, setType] = useState("pee");
+    const [color, setColor] = useState("");
+    const [at, setAt] = useState(toLocalInput(new Date()));
+    const [busy, setBusy] = useState(false);
+
+    // 비정상 색상/혈변 경고 키워드 (육아 전문가 검토 #6)
+    const ABNORMAL = ["피", "혈", "빨강", "빨간", "검정", "검은", "흰", "하양", "회색"];
+    const colorWarn = color && ABNORMAL.some((k) => color.includes(k));
+
+    const save = async () => {
+      setBusy(true);
+      try {
+        await addRecord("diaper", { diaperType: type, color: color || null, at: fromLocalInput(at) }, user, profile);
+        setColor(""); setAt(toLocalInput(new Date()));
+        toast("기저귀 기록을 추가했어요.", "success");
+      } catch (e) { toast(errMsg(e), "error"); } finally { setBusy(false); }
+    };
+
+    const today = items ? items.filter((r) => isSameDay(r.at, new Date())) : [];
+    // 24시간 소변 없음 경고 (육아 전문가 검토 #6)
+    const lastPee = items && items.find((r) => r.diaperType === "pee" || r.diaperType === "both");
+    const noPee24 = lastPee && (Date.now() - toDate(lastPee.at)) > 24 * 3600000;
+
+    return (
+      <div className="space-y-4">
+        <div className="grid grid-cols-2 gap-3">
+          <Card className="p-3 text-center"><p className="text-xs text-slate-400">오늘 교체</p><p className="text-xl font-bold text-slate-800 dark:text-white">{today.length}회</p></Card>
+          <Card className="p-3 text-center"><p className="text-xs text-slate-400">대변</p><p className="text-xl font-bold text-slate-800 dark:text-white">{today.filter((r) => r.diaperType !== "pee").length}회</p></Card>
+        </div>
+
+        {noPee24 && <div role="alert" className="text-xs text-rose-600 bg-rose-50 dark:bg-rose-900/30 rounded-xl px-3 py-2.5">🚨 24시간 이상 소변 기록이 없습니다. 탈수 위험이 있으니 소아과 상담을 권장합니다.</div>}
+
+        <Card className="p-4 space-y-4">
+          <ChipGroup label="종류" value={type} onChange={setType}
+            options={[{ value: "pee", label: "💧 소변" }, { value: "poo", label: "💩 대변" }, { value: "both", label: "💧💩 둘 다" }]} />
+          <Field label="색상 메모 (선택)">
+            <input className={inputCls} value={color} onChange={(e) => setColor(e.target.value)} placeholder="노란색, 황금색 등" />
+          </Field>
+          {colorWarn && <p role="alert" className="text-xs text-rose-600 bg-rose-50 dark:bg-rose-900/30 rounded-lg px-3 py-2">🚨 비정상 색상이 의심됩니다(혈변·흰색·검은색 변 등). 사진을 찍어 소아과 상담을 권장합니다.</p>}
+          <DateTimeField value={at} onChange={setAt} />
+          <Btn onClick={save} disabled={busy} className="w-full">{busy ? "저장 중..." : "기저귀 기록"}</Btn>
+        </Card>
+
+        <RecordList items={items} render={(r) => (
+          <>{{ pee: "💧 소변", poo: "💩 대변", both: "💧💩 둘 다" }[r.diaperType]}{r.color && ` · ${r.color}`}</>
+        )} />
+      </div>
+    );
+  };
+
+  /* ========================================================================
+     12. 성장 기록 (WHO 백분위 곡선 포함)
+     ----------------------------------------------------------------------
+     WHO Child Growth Standards 근사값 (월령: P3 / P50 / P97), 0~24개월. 참고용.
+     ======================================================================== */
+  // [month, P3, P50, P97]
+  const WHO = {
+    male: {
+      weight: [[0,2.5,3.3,4.4],[1,3.4,4.5,5.8],[2,4.3,5.6,7.1],[3,5.0,6.4,8.0],[4,5.6,7.0,8.7],[5,6.0,7.5,9.3],[6,6.4,7.9,9.8],[9,7.1,8.9,11.0],[12,7.7,9.6,12.0],[18,8.8,10.9,13.7],[24,9.7,12.2,15.3]],
+      height: [[0,46.3,49.9,53.4],[1,51.1,54.7,58.4],[2,54.7,58.4,62.2],[3,57.6,61.4,65.3],[6,63.3,67.6,71.9],[9,67.5,72.0,76.5],[12,71.0,75.7,80.5],[18,76.9,82.3,87.7],[24,81.7,87.8,93.9]],
+    },
+    female: {
+      weight: [[0,2.4,3.2,4.2],[1,3.2,4.2,5.5],[2,3.9,5.1,6.6],[3,4.5,5.8,7.5],[4,5.0,6.4,8.2],[5,5.4,6.9,8.8],[6,5.7,7.3,9.3],[9,6.5,8.2,10.5],[12,7.0,8.9,11.5],[18,8.1,10.2,13.2],[24,9.0,11.5,14.8]],
+      height: [[0,45.6,49.1,52.7],[1,50.0,53.7,57.4],[2,53.2,57.1,61.1],[3,55.8,59.8,63.9],[6,61.2,65.7,70.3],[9,65.3,70.1,75.0],[12,68.9,74.0,79.2],[18,74.9,80.7,86.5],[24,80.0,86.4,92.9]],
+    },
+  };
+  // 선형보간으로 특정 월령의 [P3,P50,P97] 구하기
+  const whoAt = (rows, m) => {
+    if (m <= rows[0][0]) return rows[0].slice(1);
+    if (m >= rows[rows.length - 1][0]) return rows[rows.length - 1].slice(1);
+    for (let i = 0; i < rows.length - 1; i++) {
+      const a = rows[i], b = rows[i + 1];
+      if (m >= a[0] && m <= b[0]) {
+        const t = (m - a[0]) / (b[0] - a[0]);
+        return [1, 2, 3].map((k) => a[k] + (b[k] - a[k]) * t);
+      }
+    }
+    return rows[rows.length - 1].slice(1);
+  };
+  // 측정값의 대략적 백분위 추정 (P3/P50/P97 구간 선형 근사)
+  const estPercentile = (rows, m, v) => {
+    if (v == null) return null;
+    const [p3, p50, p97] = whoAt(rows, m);
+    let pct;
+    if (v <= p3) pct = 3 * (v / p3);
+    else if (v <= p50) pct = 3 + (50 - 3) * (v - p3) / (p50 - p3);
+    else if (v <= p97) pct = 50 + (97 - 50) * (v - p50) / (p97 - p50);
+    else pct = 97 + (v - p97) / p97 * 100;
+    return Math.max(0, Math.min(100, Math.round(pct)));
+  };
+
+  const GrowthTracker = () => {
+    const { user, profile } = useAuth();
+    const toast = useToast();
+    const baby = useBaby();
+    const items = useRecords("growth", 100);
+    const [height, setHeight] = useState("");
+    const [weight, setWeight] = useState("");
+    const [head, setHead] = useState("");
+    const [at, setAt] = useState(toLocalInput(new Date()));
+    const [busy, setBusy] = useState(false);
+    const [metric, setMetric] = useState("weight"); // weight | height
+
+    const save = async () => {
+      if (!height && !weight && !head) { toast("측정값을 하나 이상 입력하세요.", "error"); return; }
+      setBusy(true);
+      try {
+        await addRecord("growth", {
+          height: height ? Number(height) : null,
+          weight: weight ? Number(weight) : null,
+          head: head ? Number(head) : null, at: fromLocalInput(at),
+        }, user, profile);
+        setHeight(""); setWeight(""); setHead(""); setAt(toLocalInput(new Date()));
+        toast("성장 기록을 추가했어요.", "success");
+      } catch (e) { toast(errMsg(e), "error"); } finally { setBusy(false); }
+    };
+
+    // 월령 계산 (출생일 기준)
+    const ageMonthsAt = (d) => baby.birthDate ? (toDate(d) - new Date(baby.birthDate)) / (86400000 * 30.4375) : null;
+    const whoRows = baby.sex && WHO[baby.sex] ? WHO[baby.sex][metric] : null;
+
+    // 차트 데이터: WHO 곡선 점 + 아기 측정점을 월령(x) 기준으로 병합
+    const chartData = useMemo(() => {
+      if (!whoRows) return null;
+      const rows = whoRows.map((r) => ({ m: r[0], p3: r[1], p50: r[2], p97: r[3] }));
+      const pts = [];
+      (items || []).forEach((r) => {
+        const v = r[metric]; const m = ageMonthsAt(r.at);
+        if (v != null && m != null && m >= 0 && m <= 24) pts.push({ m: +m.toFixed(2), baby: v });
+      });
+      return [...rows, ...pts].sort((a, b) => a.m - b.m);
+    }, [items, metric, whoRows, baby.birthDate]);
+
+    // 최신 측정의 백분위
+    const latest = items && items.find((r) => r[metric] != null);
+    const latestM = latest ? ageMonthsAt(latest.at) : null;
+    const pct = (whoRows && latest && latestM != null && latestM >= 0 && latestM <= 24)
+      ? estPercentile(whoRows, latestM, latest[metric]) : null;
+
+    // 백업: 성별/출생일 없을 때 날짜 기준 단순 그래프
+    const simpleData = useMemo(() => (items ? [...items].reverse().map((r) => ({ date: fmtDate(r.at), weight: r.weight, height: r.height })) : []), [items]);
+    const unit = metric === "weight" ? "kg" : "cm";
+
+    return (
+      <div className="space-y-4">
+        <Card className="p-4 space-y-3">
+          <div className="grid grid-cols-3 gap-2">
+            <Field label="키 (cm)"><input className={inputCls} type="number" inputMode="decimal" value={height} onChange={(e) => setHeight(e.target.value)} placeholder="50" /></Field>
+            <Field label="몸무게 (kg)"><input className={inputCls} type="number" inputMode="decimal" value={weight} onChange={(e) => setWeight(e.target.value)} placeholder="3.4" /></Field>
+            <Field label="머리둘레"><input className={inputCls} type="number" inputMode="decimal" value={head} onChange={(e) => setHead(e.target.value)} placeholder="35" /></Field>
+          </div>
+          <DateTimeField value={at} onChange={setAt} label="측정 시간" />
+          <Btn onClick={save} disabled={busy} className="w-full">{busy ? "저장 중..." : "성장 기록 추가"}</Btn>
+        </Card>
+
+        <Card className="p-4">
+          <div className="flex items-center justify-between mb-1">
+            <h3 className="font-bold text-slate-800 dark:text-white">WHO 성장 백분위</h3>
+            <ChipGroup value={metric} onChange={setMetric}
+              options={[{ value: "weight", label: "몸무게" }, { value: "height", label: "키" }]} />
+          </div>
+
+          {!whoRows ? (
+            <div className="text-sm text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-700/40 rounded-xl p-3 my-2">
+              WHO 백분위 곡선을 보려면 <b>설정 → 아기 정보</b>에서 <b>출생일</b>과 <b>성별</b>을 입력해주세요.
+            </div>
+          ) : (
+            <>
+              {pct != null && (
+                <p className="text-xs text-slate-500 dark:text-slate-400 mb-2">
+                  최근 {metric === "weight" ? "몸무게" : "키"} <b>{latest[metric]}{unit}</b> · 또래 약 <b className="text-teal-600">{pct}백분위</b>
+                  {(pct < 3 || pct > 97) && <span className="text-amber-600"> · 소아과 상담 권장</span>}
+                </p>
+              )}
+              <p className="text-[11px] text-slate-400 mb-2">회색 곡선: WHO 3/50/97 백분위(참고용) · 점선: 우리 아기</p>
+              <div style={{ width: "100%", height: 220 }}>
+                <ResponsiveContainer>
+                  <LineChart data={chartData} margin={{ top: 5, right: 8, left: -20, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                    <XAxis dataKey="m" type="number" domain={[0, 24]} ticks={[0, 3, 6, 9, 12, 18, 24]} tick={{ fontSize: 10 }} label={{ value: "개월", position: "insideBottomRight", fontSize: 9, offset: -2 }} />
+                    <YAxis tick={{ fontSize: 11 }} domain={["auto", "auto"]} />
+                    <Tooltip formatter={(v, n) => [v + unit, ({ p3: "3백분위", p50: "50백분위", p97: "97백분위", baby: "우리아기" })[n] || n]} labelFormatter={(l) => `${l}개월`} />
+                    <Line type="monotone" dataKey="p97" stroke="#cbd5e1" strokeWidth={1} dot={false} connectNulls />
+                    <Line type="monotone" dataKey="p50" stroke="#94a3b8" strokeWidth={1} strokeDasharray="4 3" dot={false} connectNulls />
+                    <Line type="monotone" dataKey="p3" stroke="#cbd5e1" strokeWidth={1} dot={false} connectNulls />
+                    <Line type="monotone" dataKey="baby" stroke="#14b8a6" strokeWidth={2.5} dot={{ r: 4 }} connectNulls />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </>
+          )}
+        </Card>
+
+        {/* 성별/출생일 없을 때 단순 추이 */}
+        {!whoRows && (
+          <Card className="p-4">
+            <h3 className="font-bold text-slate-800 dark:text-white mb-2">{metric === "weight" ? "몸무게" : "키"} 추이 ({unit})</h3>
+            <div style={{ width: "100%", height: 180 }}>
+              <ResponsiveContainer>
+                <LineChart data={simpleData} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                  <XAxis dataKey="date" tick={{ fontSize: 10 }} />
+                  <YAxis tick={{ fontSize: 11 }} domain={["auto", "auto"]} />
+                  <Tooltip />
+                  <Line type="monotone" dataKey={metric} stroke="#14b8a6" strokeWidth={2} dot={{ r: 3 }} connectNulls />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </Card>
+        )}
+
+        <RecordList items={items} render={(r) => (
+          <>{r.height ? `키 ${r.height}cm ` : ""}{r.weight ? `몸무게 ${r.weight}kg ` : ""}{r.head ? `머리 ${r.head}cm` : ""}</>
+        )} />
+      </div>
+    );
+  };
+
+  /* ========================================================================
+     13. 건강 기록 (체온 + 증상 + 예방접종)
+     ======================================================================== */
+  // 체온 단계 (육아 전문가 검토 #4)
+  const tempStage = (t) => {
+    if (t == null) return null;
+    if (t < 36.0) return { label: "저체온", color: "text-sky-600", bg: "bg-sky-50 dark:bg-sky-900/30", msg: "체온이 낮습니다. 보온 후에도 지속되면 소아과 상담을 권장합니다." };
+    if (t <= 37.5) return { label: "정상", color: "text-teal-600", bg: "bg-teal-50 dark:bg-teal-900/30", msg: "정상 범위입니다 (36.5~37.5℃)." };
+    if (t < 38.0) return { label: "미열", color: "text-amber-600", bg: "bg-amber-50 dark:bg-amber-900/30", msg: "미열입니다. 경과를 지켜봐주세요." };
+    return { label: "발열", color: "text-rose-600", bg: "bg-rose-50 dark:bg-rose-900/30", msg: "🚨 발열입니다(38℃ 이상). 생후 3개월 미만이면 즉시 소아과 진료를 권장합니다." };
+  };
+
+  // 예방접종 표준 일정 (질병관리청 표준예방접종일정 기준 요약)
+  const VACCINES = [
+    { age: "출생~4주", items: ["B형간염 1차", "BCG(결핵)"] },
+    { age: "1개월", items: ["B형간염 2차"] },
+    { age: "2개월", items: ["DTaP 1차", "IPV(폴리오) 1차", "Hib 1차", "폐렴구균 1차", "로타바이러스 1차"] },
+    { age: "4개월", items: ["DTaP 2차", "IPV 2차", "Hib 2차", "폐렴구균 2차", "로타바이러스 2차"] },
+    { age: "6개월", items: ["DTaP 3차", "IPV 3차", "Hib 3차", "폐렴구균 3차", "B형간염 3차", "로타바이러스 3차(해당 백신)", "인플루엔자(매년)"] },
+    { age: "12~15개월", items: ["MMR 1차", "수두", "Hib 4차", "폐렴구균 4차", "A형간염 1차", "일본뇌염 1차"] },
+    { age: "15~18개월", items: ["DTaP 4차"] },
+    { age: "24~35개월", items: ["A형간염 2차", "일본뇌염 추가"] },
+    { age: "만 4~6세", items: ["DTaP 5차", "IPV 4차", "MMR 2차"] },
+  ];
+
+  const HealthLog = () => {
+    const { user, profile } = useAuth();
+    const toast = useToast();
+    const items = useRecords("health", 100);
+    const [temp, setTemp] = useState("");
+    const [symptom, setSymptom] = useState("");
+    const [hospital, setHospital] = useState("");
+    const [at, setAt] = useState(toLocalInput(new Date()));
+    const [busy, setBusy] = useState(false);
+    const [vacDone, setVacDone] = useState({});
+
+    // 예방접종 체크 상태 settings/baby 에 저장 (공유)
+    useEffect(() => {
+      const unsub = COL.settings().onSnapshot((s) => setVacDone((s.data() && s.data().vaccines) || {}));
+      return () => unsub();
+    }, []);
+    const toggleVac = async (name) => {
+      const next = { ...vacDone, [name]: !vacDone[name] };
+      try { await COL.settings().set({ vaccines: next }, { merge: true }); }
+      catch (e) { toast(errMsg(e), "error"); }
+    };
+
+    const stage = temp ? tempStage(Number(temp)) : null;
+    const save = async () => {
+      if (!temp && !symptom && !hospital) { toast("기록할 내용을 입력하세요.", "error"); return; }
+      setBusy(true);
+      try {
+        await addRecord("health", {
+          temp: temp ? Number(temp) : null, symptom: symptom || null, hospital: hospital || null, at: fromLocalInput(at),
+        }, user, profile);
+        setTemp(""); setSymptom(""); setHospital(""); setAt(toLocalInput(new Date()));
+        toast("건강 기록을 추가했어요.", "success");
+      } catch (e) { toast(errMsg(e), "error"); } finally { setBusy(false); }
+    };
+
+    return (
+      <div className="space-y-4">
+        <MedicalDisclaimer />
+        <Card className="p-4 space-y-3">
+          <Field label="체온 (℃)">
+            <input className={inputCls} type="number" inputMode="decimal" step="0.1" value={temp} onChange={(e) => setTemp(e.target.value)} placeholder="36.8" />
+          </Field>
+          {stage && <p role="alert" className={`text-sm rounded-lg px-3 py-2 ${stage.bg} ${stage.color}`}><b>{stage.label}</b> · {stage.msg}</p>}
+          <Field label="증상 메모"><input className={inputCls} value={symptom} onChange={(e) => setSymptom(e.target.value)} placeholder="콧물, 기침 등" /></Field>
+          <Field label="병원 방문 기록"><input className={inputCls} value={hospital} onChange={(e) => setHospital(e.target.value)} placeholder="○○소아과 방문, 처방 등" /></Field>
+          <DateTimeField value={at} onChange={setAt} label="기록 시간" />
+          <Btn onClick={save} disabled={busy} className="w-full">{busy ? "저장 중..." : "건강 기록 추가"}</Btn>
+        </Card>
+
+        {/* 체온 차트 */}
+        {items && items.some((r) => r.temp) && (
+          <Card className="p-4">
+            <h3 className="font-bold text-slate-800 dark:text-white mb-2">체온 추이 (℃)</h3>
+            <div style={{ width: "100%", height: 170 }}>
+              <ResponsiveContainer>
+                <LineChart data={[...items].filter((r) => r.temp).reverse().map((r) => ({ date: fmtDate(r.at), temp: r.temp }))} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                  <XAxis dataKey="date" tick={{ fontSize: 10 }} />
+                  <YAxis domain={[35, 40]} tick={{ fontSize: 11 }} />
+                  <Tooltip />
+                  <ReferenceLine y={38} stroke="#f43f5e" strokeDasharray="4 4" label={{ value: "발열 38℃", fontSize: 9, fill: "#f43f5e" }} />
+                  <ReferenceLine y={37.5} stroke="#f59e0b" strokeDasharray="4 4" />
+                  <Line type="monotone" dataKey="temp" stroke="#14b8a6" strokeWidth={2} dot={{ r: 3 }} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </Card>
+        )}
+
+        {/* 예방접종 체크리스트 */}
+        <Card className="p-4">
+          <h3 className="font-bold text-slate-800 dark:text-white mb-1">예방접종 체크리스트</h3>
+          <p className="text-[11px] text-slate-400 mb-3">질병관리청 표준예방접종일정 기준 (참고용)</p>
+          <div className="space-y-3">
+            {VACCINES.map((g) => (
+              <div key={g.age}>
+                <p className="text-xs font-semibold text-teal-600 dark:text-teal-400 mb-1.5">{g.age}</p>
+                <div className="space-y-1.5">
+                  {g.items.map((v) => {
+                    const key = `${g.age}|${v}`;
+                    const done = !!vacDone[key];
+                    return (
+                      <label key={key} className="flex items-center gap-2.5 cursor-pointer">
+                        <input type="checkbox" checked={done} onChange={() => toggleVac(key)}
+                          className="w-5 h-5 rounded accent-teal-500" aria-label={`${v} 접종 완료`} />
+                        <span className={`text-sm ${done ? "line-through text-slate-400" : "text-slate-700 dark:text-slate-200"}`}>{v}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+
+        <RecordList items={items} render={(r) => (
+          <>{r.temp ? `🌡️ ${r.temp}℃ ` : ""}{r.symptom ? `· ${r.symptom} ` : ""}{r.hospital ? `· 🏥 ${r.hospital}` : ""}</>
+        )} />
+      </div>
+    );
+  };
+
+  /* ========================================================================
+     14. 임신 초기 기록 (초음파 + 검사 + 타임라인)
+     ======================================================================== */
+  // CRL 유효 주수 안내 (육아 전문가 검토 #1)
+  const crlGuide = (week) => {
+    if (week == null || week === "") return null;
+    const w = Number(week);
+    if (w >= 6 && w <= 13) return { ok: true, msg: "CRL(머리-엉덩이 길이)은 임신 6~13주 주수 측정에 가장 정확합니다." };
+    return { ok: false, msg: "CRL은 보통 6~13주에만 측정합니다. 13주 이후엔 BPD/HC/AC/FL로 주수·체중을 추정합니다." };
+  };
+  // 태아 심박수 정상 범위 120~160 bpm (육아 전문가 검토 #1)
+  const fhrCheck = (bpm) => {
+    if (!bpm) return null;
+    const v = Number(bpm);
+    if (v >= 120 && v <= 160) return { ok: true, msg: "정상 범위(120~160 bpm)입니다." };
+    return { ok: false, msg: "⚠️ 정상 범위(120~160 bpm)를 벗어났습니다. 산부인과 상담을 권장합니다." };
+  };
+
+  const PrenatalTracker = ({ openUpload }) => {
+    const { user, profile, isAdmin } = useAuth();
+    const toast = useToast();
+    const items = useRecords("prenatal", 100);
+    const [open, setOpen] = useState(false);
+    const [f, setF] = useState({ week: "", crl: "", bpd: "", hc: "", ac: "", fl: "", efw: "", fhr: "", afi: "", note: "" });
+    const [at, setAt] = useState(toLocalInput(new Date()));
+    const [busy, setBusy] = useState(false);
+    const set = (k) => (e) => setF((p) => ({ ...p, [k]: e.target.value }));
+
+    const crl = crlGuide(f.week);
+    const fhr = fhrCheck(f.fhr);
+
+    const save = async () => {
+      if (!f.week) { toast("임신 주수를 입력하세요.", "error"); return; }
+      setBusy(true);
+      try {
+        const data = {};
+        Object.keys(f).forEach((k) => { data[k] = f[k] === "" ? null : (k === "note" ? f[k] : Number(f[k])); });
+        await addRecord("prenatal", { ...data, at: fromLocalInput(at) }, user, profile);
+        setOpen(false);
+        setF({ week: "", crl: "", bpd: "", hc: "", ac: "", fl: "", efw: "", fhr: "", afi: "", note: "" });
+        setAt(toLocalInput(new Date()));
+        toast("초음파 기록을 추가했어요.", "success");
+      } catch (e) { toast(errMsg(e), "error"); } finally { setBusy(false); }
+    };
+
+    const sorted = items ? [...items].sort((a, b) => (a.week || 0) - (b.week || 0)) : null;
+
+    return (
+      <div className="space-y-4">
+        <MedicalDisclaimer />
+        <div className="grid grid-cols-2 gap-3">
+          <Btn onClick={() => setOpen(true)}>🔬 초음파 기록</Btn>
+          <Btn variant="lavender" onClick={openUpload}>📷 초음파 사진</Btn>
+        </div>
+
+        {/* 주수별 타임라인 */}
+        {!sorted ? <Spinner /> : sorted.length === 0 ? (
+          <Card className="p-6 text-center text-sm text-slate-400">아직 초음파 기록이 없어요.</Card>
+        ) : (
+          <div className="space-y-3">
+            {sorted.map((r) => {
+              const fc = fhrCheck(r.fhr);
+              return (
+                <Card key={r.id} className="p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-base font-bold text-violet-500">임신 {r.week}주</span>
+                    <span className="text-xs text-slate-400">{fmtDate(r.at)} · {r.creatorName}</span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-x-2 gap-y-1 text-sm text-slate-600 dark:text-slate-300">
+                    {r.crl != null && <span>CRL {r.crl}mm</span>}
+                    {r.bpd != null && <span>BPD {r.bpd}mm</span>}
+                    {r.hc != null && <span>HC {r.hc}mm</span>}
+                    {r.ac != null && <span>AC {r.ac}mm</span>}
+                    {r.fl != null && <span>FL {r.fl}mm</span>}
+                    {r.fhr != null && <span>심박 {r.fhr}bpm</span>}
+                    {r.afi != null && <span>AFI {r.afi}</span>}
+                    {r.efw != null && <span className="col-span-3">추정체중 {r.efw}g <span className="text-[11px] text-amber-500">(±15~20% 오차)</span></span>}
+                  </div>
+                  {fc && !fc.ok && <p className="text-xs text-rose-500 mt-2">{fc.msg}</p>}
+                  {r.note && <p className="text-sm text-slate-500 dark:text-slate-400 mt-2 border-t border-slate-100 dark:border-slate-700 pt-2">{r.note}</p>}
+                  {(isAdmin || r.createdBy === user.uid) &&
+                    <button onClick={() => { if (confirm("이 기록을 삭제할까요?")) deleteRecord(r.id); }} className="text-xs text-rose-400 mt-2">삭제</button>}
+                </Card>
+              );
+            })}
+          </div>
+        )}
+
+        <Modal open={open} onClose={() => setOpen(false)} title="🔬 초음파 기록 추가">
+          <div className="space-y-3">
+            <DateTimeField value={at} onChange={setAt} label="검사 날짜·시간" />
+            <Field label="임신 주수 *"><input className={inputCls} type="number" inputMode="numeric" value={f.week} onChange={set("week")} placeholder="12" /></Field>
+            {crl && <p className={`text-xs rounded-lg px-3 py-2 ${crl.ok ? "text-teal-600 bg-teal-50 dark:bg-teal-900/30" : "text-amber-600 bg-amber-50 dark:bg-amber-900/30"}`}>{crl.msg}</p>}
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="CRL (mm)"><input className={inputCls} type="number" inputMode="decimal" value={f.crl} onChange={set("crl")} /></Field>
+              <Field label="BPD (mm)"><input className={inputCls} type="number" inputMode="decimal" value={f.bpd} onChange={set("bpd")} /></Field>
+              <Field label="HC (mm)"><input className={inputCls} type="number" inputMode="decimal" value={f.hc} onChange={set("hc")} /></Field>
+              <Field label="AC (mm)"><input className={inputCls} type="number" inputMode="decimal" value={f.ac} onChange={set("ac")} /></Field>
+              <Field label="FL (mm)"><input className={inputCls} type="number" inputMode="decimal" value={f.fl} onChange={set("fl")} /></Field>
+              <Field label="추정체중 (g)"><input className={inputCls} type="number" inputMode="decimal" value={f.efw} onChange={set("efw")} /></Field>
+              <Field label="심박수 (bpm)"><input className={inputCls} type="number" inputMode="numeric" value={f.fhr} onChange={set("fhr")} /></Field>
+              <Field label="AFI (양수)"><input className={inputCls} type="number" inputMode="decimal" value={f.afi} onChange={set("afi")} /></Field>
+            </div>
+            {fhr && <p className={`text-xs rounded-lg px-3 py-2 ${fhr.ok ? "text-teal-600 bg-teal-50 dark:bg-teal-900/30" : "text-rose-600 bg-rose-50 dark:bg-rose-900/30"}`}>{fhr.msg}</p>}
+            <Field label="소견 / 메모"><textarea className={inputCls} rows="3" value={f.note} onChange={set("note")} placeholder="검사 기록(혈액·기형아·임당검사 결과 등)도 함께 남겨보세요" /></Field>
+            <Btn onClick={save} disabled={busy} className="w-full">{busy ? "저장 중..." : "기록 저장"}</Btn>
+          </div>
+        </Modal>
+      </div>
+    );
+  };
+
+  /* ========================================================================
+     15. 공용 기록 리스트 (입력자/시각/삭제)
+     ======================================================================== */
+  // 기록 종류별 수정 가능한 필드 정의
+  const numOrNull = (v) => (v === "" || v == null ? null : Number(v));
+  const renderEditFields = (e, upd) => {
+    const set = (k) => (ev) => upd({ ...e, [k]: ev.target.value });
+    switch (e.type) {
+      case "feeding": return (
+        <>
+          <ChipGroup label="수유 종류" value={e.kind} onChange={(v) => upd({ ...e, kind: v })}
+            options={[{ value: "breast", label: "🤱 모유" }, { value: "formula", label: "🍼 분유" }, { value: "mixed", label: "🥛 혼합" }]} />
+          {e.kind === "breast" && <ChipGroup label="위치" value={e.side || "left"} onChange={(v) => upd({ ...e, side: v })}
+            options={[{ value: "left", label: "왼쪽" }, { value: "right", label: "오른쪽" }, { value: "both", label: "양쪽" }]} />}
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="수유량 (ml)"><input className={inputCls} type="number" value={e.amount ?? ""} onChange={set("amount")} /></Field>
+            <Field label="시간 (분)"><input className={inputCls} type="number" value={e.durationMin ?? ""} onChange={set("durationMin")} /></Field>
+          </div>
+        </>
+      );
+      case "diaper": return (
+        <>
+          <ChipGroup label="종류" value={e.diaperType} onChange={(v) => upd({ ...e, diaperType: v })}
+            options={[{ value: "pee", label: "💧 소변" }, { value: "poo", label: "💩 대변" }, { value: "both", label: "💧💩 둘 다" }]} />
+          <Field label="색상 메모"><input className={inputCls} value={e.color ?? ""} onChange={set("color")} /></Field>
+        </>
+      );
+      case "growth": return (
+        <div className="grid grid-cols-3 gap-2">
+          <Field label="키 (cm)"><input className={inputCls} type="number" value={e.height ?? ""} onChange={set("height")} /></Field>
+          <Field label="몸무게 (kg)"><input className={inputCls} type="number" value={e.weight ?? ""} onChange={set("weight")} /></Field>
+          <Field label="머리둘레"><input className={inputCls} type="number" value={e.head ?? ""} onChange={set("head")} /></Field>
+        </div>
+      );
+      case "health": return (
+        <>
+          <Field label="체온 (℃)"><input className={inputCls} type="number" step="0.1" value={e.temp ?? ""} onChange={set("temp")} /></Field>
+          <Field label="증상 메모"><input className={inputCls} value={e.symptom ?? ""} onChange={set("symptom")} /></Field>
+          <Field label="병원 방문"><input className={inputCls} value={e.hospital ?? ""} onChange={set("hospital")} /></Field>
+        </>
+      );
+      case "sleep": return (
+        <ChipGroup label="구분" value={e.naptype || "nap"} onChange={(v) => upd({ ...e, naptype: v })}
+          options={[{ value: "nap", label: "🌤️ 낮잠" }, { value: "night", label: "🌙 밤잠" }]} />
+      );
+      default: return null;
+    }
+  };
+  const buildEditUpdate = (e) => {
+    const at = fromLocalInput(e.at);
+    switch (e.type) {
+      case "feeding": return { at, kind: e.kind, side: e.kind === "breast" ? (e.side || "left") : null, amount: numOrNull(e.amount), durationMin: numOrNull(e.durationMin) };
+      case "diaper": return { at, diaperType: e.diaperType, color: e.color || null };
+      case "growth": return { at, height: numOrNull(e.height), weight: numOrNull(e.weight), head: numOrNull(e.head) };
+      case "health": return { at, temp: numOrNull(e.temp), symptom: e.symptom || null, hospital: e.hospital || null };
+      case "sleep": return { at, naptype: e.naptype || "nap" };
+      default: return { at };
+    }
+  };
+
+  const RecordList = ({ items, render }) => {
+    const { user, isAdmin } = useAuth();
+    const toast = useToast();
+    const [editing, setEditing] = useState(null); // 수정 중인 기록(복사본)
+    if (!items) return <Spinner />;
+    if (items.length === 0) return <Card className="p-6 text-center text-sm text-slate-400">아직 기록이 없어요.</Card>;
+
+    const saveEdit = async () => {
+      try { await COL.records().doc(editing.id).update(buildEditUpdate(editing)); toast("기록을 수정했어요.", "success"); setEditing(null); }
+      catch (e) { toast(errMsg(e), "error"); }
+    };
+
+    return (
+      <Card className="p-2">
+        <ul className="divide-y divide-slate-100 dark:divide-slate-700">
+          {items.slice(0, 50).map((r) => {
+            const mine = isAdmin || r.createdBy === user.uid;
+            return (
+              <li key={r.id} className="flex items-center gap-2 px-2 py-3">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm text-slate-700 dark:text-slate-200 truncate">{render(r)}</p>
+                  <p className="text-[11px] text-slate-400">{fmtDateTime(r.at)} · {r.creatorName}</p>
+                </div>
+                {mine && (
+                  <button onClick={() => setEditing({ ...r, at: toLocalInput(r.at) })}
+                    aria-label="기록 수정" className="text-slate-300 hover:text-teal-500 text-base px-1">✏️</button>
+                )}
+                {mine && (
+                  <button onClick={() => { if (confirm("삭제할까요?")) deleteRecord(r.id); }}
+                    aria-label="기록 삭제" className="text-slate-300 hover:text-rose-500 text-base px-1">🗑️</button>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+
+        <Modal open={!!editing} onClose={() => setEditing(null)} title="기록 수정">
+          {editing && (
+            <div className="space-y-4">
+              {renderEditFields(editing, setEditing)}
+              <DateTimeField value={editing.at} onChange={(v) => setEditing({ ...editing, at: v })} />
+              <Btn onClick={saveEdit} className="w-full">저장</Btn>
+            </div>
+          )}
+        </Modal>
+      </Card>
+    );
+  };
+
+  /* ========================================================================
+     16. 육아 기록 탭 (서브탭 라우팅)
+     ======================================================================== */
+  const Records = ({ sub, setSub, openUpload }) => {
+    const { isAdmin } = useAuth();
+    const tabs = [
+      { id: "feeding", label: "🍼 수유" }, { id: "sleep", label: "😴 수면" },
+      { id: "diaper", label: "👶 기저귀" }, { id: "growth", label: "📏 성장" },
+      { id: "health", label: "🩺 건강" }, { id: "prenatal", label: "🔬 임신" },
+    ];
+    return (
+      <div className="p-4 space-y-4 pb-safe">
+        <div className="flex gap-2 overflow-x-auto no-scrollbar -mx-4 px-4" role="tablist" aria-label="육아 기록 종류">
+          {tabs.map((t) => (
+            <button key={t.id} role="tab" aria-selected={sub === t.id} onClick={() => setSub(t.id)}
+              className={`whitespace-nowrap px-4 py-2 rounded-full text-sm font-medium transition ${sub === t.id
+                ? "bg-teal-500 text-white" : "bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-300 border border-slate-200 dark:border-slate-700"}`}>
+              {t.label}
+            </button>
+          ))}
+        </div>
+        {sub === "feeding" && <FeedingTracker />}
+        {sub === "sleep" && <SleepTracker />}
+        {sub === "diaper" && <DiaperTracker />}
+        {sub === "growth" && <GrowthTracker />}
+        {sub === "health" && <HealthLog />}
+        {sub === "prenatal" && <PrenatalTracker openUpload={openUpload} />}
+        {isAdmin && <ActivityFeed limit={8} />}
+      </div>
+    );
+  };
+
+  /* ========================================================================
+     17. 이미지 압축 → base64 데이터URL (Firestore 무료 저장용) — 시니어 검토 #5
+        Firestore 문서 1MB 한도 안에 들어가도록 화질/크기를 점진 축소
+     ======================================================================== */
+  const MAX_PHOTO_BYTES = 900 * 1024; // base64 길이 상한 (1MB 한도 대비 여유)
+  const compressToDataURL = (file) =>
+    new Promise((resolve, reject) => {
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        const render = (maxDim, q) => {
+          let { width, height } = img;
+          if (width > maxDim || height > maxDim) {
+            if (width > height) { height = Math.round(height * maxDim / width); width = maxDim; }
+            else { width = Math.round(width * maxDim / height); height = maxDim; }
+          }
+          const canvas = document.createElement("canvas");
+          canvas.width = width; canvas.height = height;
+          const ctx = canvas.getContext("2d");
+          ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, width, height); // 투명 PNG 대비 흰 배경
+          ctx.drawImage(img, 0, 0, width, height);
+          return canvas.toDataURL("image/jpeg", q);
+        };
+        let maxDim = 1000, quality = 0.72;
+        let dataUrl = render(maxDim, quality);
+        // 1MB 안에 들어갈 때까지 점진적으로 줄이기
+        let guard = 0;
+        while (dataUrl.length > MAX_PHOTO_BYTES && guard < 10) {
+          guard++;
+          if (quality > 0.4) quality -= 0.1;
+          else { maxDim = Math.round(maxDim * 0.85); quality = 0.6; }
+          dataUrl = render(maxDim, quality);
+        }
+        if (dataUrl.length > MAX_PHOTO_BYTES) { reject(new Error("사진 용량이 너무 커요. 더 작은 사진을 사용해주세요.")); return; }
+        resolve(dataUrl);
+      };
+      // HEIC 등 브라우저가 못 읽는 형식
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("이 사진 형식을 읽을 수 없어요. (HEIC라면 설정에서 '호환성 우선'으로 촬영하거나 JPG로 변환해주세요)")); };
+      img.src = url;
+    });
+
+  /* ========================================================================
+     17-b. 사진 EXIF에서 촬영일·GPS 추출 (없으면 null)
+     ======================================================================== */
+  // exifr 지연 로드 (부팅 차단 방지). 실패하면 null 반환 → EXIF만 생략, 앱은 정상.
+  let _exifrPromise = null;
+  const loadExifr = () => {
+    if (window.exifr) return Promise.resolve(window.exifr);
+    if (_exifrPromise) return _exifrPromise;
+    _exifrPromise = new Promise((resolve) => {
+      const s = document.createElement("script");
+      s.src = "https://cdn.jsdelivr.net/npm/exifr@7.1.3/dist/full.umd.js";
+      s.crossOrigin = "anonymous";
+      s.onload = () => resolve(window.exifr || null);
+      s.onerror = () => resolve(null);
+      document.head.appendChild(s);
+    });
+    return _exifrPromise;
+  };
+  const readPhotoMeta = async (file) => {
+    const meta = { takenAt: null, gps: null };
+    try {
+      const exifr = await loadExifr();
+      if (exifr) {
+        const tags = await exifr.parse(file, { pick: ["DateTimeOriginal", "CreateDate"] }).catch(() => null);
+        if (tags) meta.takenAt = tags.DateTimeOriginal || tags.CreateDate || null;
+        const g = await exifr.gps(file).catch(() => null);
+        if (g && g.latitude != null && g.longitude != null) {
+          meta.gps = { lat: +g.latitude.toFixed(6), lng: +g.longitude.toFixed(6) };
+        }
+      }
+    } catch (e) { /* EXIF 없거나 읽기 실패 시 무시 */ }
+    return meta;
+  };
+
+  /* ========================================================================
+     18. 사진 업로드 모달
+     ======================================================================== */
+  const UploadModal = ({ open, onClose, defaultCategory = "baby" }) => {
+    const { user, profile } = useAuth();
+    const toast = useToast();
+    const [files, setFiles] = useState([]);
+    const [category, setCategory] = useState(defaultCategory);
+    const [caption, setCaption] = useState("");
+    const [people, setPeople] = useState([]);     // 함께한 사람 이름들
+    const [personInput, setPersonInput] = useState("");
+    const [place, setPlace] = useState("");       // 장소/지역 (검색용)
+    const [takenAt, setTakenAt] = useState("");   // 촬영 시각 (EXIF 우선)
+    const [gps, setGps] = useState(null);         // {lat,lng}
+    const [vis, setVis] = useState("public");     // public(전체공개) | private(나만보기)
+    const [familyNames, setFamilyNames] = useState([]);
+    const [progress, setProgress] = useState(null); // {done,total,pct}
+    const inputRef = useRef();
+    const camRef = useRef();
+
+    useEffect(() => {
+      if (!open) return;
+      setFiles([]); setCaption(""); setCategory(defaultCategory); setProgress(null);
+      setPeople([]); setPersonInput(""); setPlace(""); setTakenAt(toLocalInput(new Date())); setGps(null); setVis("public");
+      // 가족 이름 후보 불러오기 (인물 태그용)
+      COL.users().get().then((s) => setFamilyNames(s.docs.map((d) => d.data().name).filter(Boolean)))
+        .catch(() => setFamilyNames([]));
+    }, [open]);
+
+    const pick = async (e) => {
+      const list = Array.from(e.target.files || []).slice(0, 5); // 최대 5장
+      setFiles(list);
+      if (list[0]) {
+        // 첫 사진 EXIF에서 촬영일·GPS 자동 채우기
+        const m = await readPhotoMeta(list[0]);
+        if (m.takenAt) setTakenAt(toLocalInput(m.takenAt));
+        if (m.gps) setGps(m.gps);
+      }
+    };
+
+    const togglePerson = (name) => setPeople((p) => p.includes(name) ? p.filter((x) => x !== name) : [...p, name]);
+    const addPerson = () => {
+      const n = personInput.trim();
+      if (n && !people.includes(n)) setPeople((p) => [...p, n]);
+      setPersonInput("");
+    };
+
+    const upload = async () => {
+      if (files.length === 0) { toast("사진을 선택하세요.", "error"); return; }
+      setProgress({ done: 0, total: files.length, pct: 0 });
+      const takenDate = fromLocalInput(takenAt);
+      try {
+        for (let i = 0; i < files.length; i++) {
+          // 무료 방식: Storage 대신 Firestore에 압축 이미지(base64) 저장
+          setProgress({ done: i, total: files.length, pct: 20 });
+          const dataUrl = await compressToDataURL(files[i]);
+          // 여러 장이면 각 사진별 EXIF 촬영일/GPS 우선 사용
+          let perMeta = { takenAt: takenDate, gps };
+          if (files.length > 1) {
+            const m = await readPhotoMeta(files[i]);
+            if (m.takenAt) perMeta.takenAt = m.takenAt;
+            if (m.gps) perMeta.gps = m.gps;
+          }
+          setProgress({ done: i, total: files.length, pct: 70 });
+          await COL.photos().add({
+            uploadedBy: user.uid,
+            uploaderName: (profile && profile.name) || (user.email || "").split("@")[0],
+            url: dataUrl, caption: caption || "", category,
+            people, place: place || "",
+            placeLower: (place || "").toLowerCase(),
+            gps: perMeta.gps || null,
+            takenAt: perMeta.takenAt || takenDate,
+            vis, likeCount: 0, createdAt: TS(),
+          });
+          setProgress({ done: i, total: files.length, pct: 100 });
+        }
+        toast(`${files.length}장 업로드 완료!`, "success");
+        onClose();
+      } catch (e) { toast(errMsg(e), "error"); setProgress(null); }
+    };
+
+    return (
+      <Modal open={open} onClose={onClose} title="📷 사진 업로드">
+        <div className="space-y-4">
+          {/* 앨범: capture 없음 → iOS에서 사진 보관함/파일 선택 가능 */}
+          <input ref={inputRef} type="file" accept="image/*" multiple onChange={pick} className="hidden" />
+          {/* 촬영: capture 지정 → 카메라 바로 열기 */}
+          <input ref={camRef} type="file" accept="image/*" capture="environment" onChange={pick} className="hidden" />
+          <div className="grid grid-cols-2 gap-3">
+            <button onClick={() => inputRef.current.click()}
+              className="border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-2xl py-6 text-center text-slate-400 hover:border-teal-400 hover:text-teal-500 transition">
+              <div className="text-3xl mb-1" aria-hidden="true">🖼️</div>
+              <p className="text-sm">앨범에서 선택</p>
+            </button>
+            <button onClick={() => camRef.current.click()}
+              className="border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-2xl py-6 text-center text-slate-400 hover:border-teal-400 hover:text-teal-500 transition">
+              <div className="text-3xl mb-1" aria-hidden="true">📷</div>
+              <p className="text-sm">사진 촬영</p>
+            </button>
+          </div>
+          <p className="text-[11px] text-slate-400 text-center">최대 5장까지 업로드할 수 있어요</p>
+
+          {files.length > 0 && (
+            <div className="grid grid-cols-3 gap-2">
+              {files.map((f, i) => <img key={i} src={URL.createObjectURL(f)} alt={`선택한 사진 ${i + 1}`} className="w-full aspect-square object-cover rounded-lg" />)}
+            </div>
+          )}
+
+          <ChipGroup label="카테고리" value={category} onChange={setCategory}
+            options={[{ value: "ultrasound", label: "초음파" }, { value: "baby", label: "아기사진" }, { value: "milestone", label: "성장기록" }]} />
+          <Field label="캡션"><input className={inputCls} value={caption} onChange={(e) => setCaption(e.target.value)} placeholder="사진 설명" /></Field>
+
+          {/* 공개 범위 */}
+          <ChipGroup label="공개 범위" value={vis} onChange={setVis}
+            options={[{ value: "public", label: "🌐 전체공개" }, { value: "private", label: "🔒 나만보기" }]} />
+          <p className="text-[11px] text-slate-400 -mt-1">나만보기는 본인과 관리자(엄마·아빠)만 볼 수 있어요.</p>
+
+          {/* 함께한 사람 (인물 태그) */}
+          <div>
+            <span className="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1.5">함께한 사람</span>
+            <div className="flex flex-wrap gap-2 mb-2">
+              {familyNames.map((n) => (
+                <button key={n} type="button" onClick={() => togglePerson(n)}
+                  className={`px-3 py-1.5 rounded-full text-sm border ${people.includes(n)
+                    ? "bg-violet-400 border-violet-400 text-white" : "bg-white dark:bg-slate-700 border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300"}`}>
+                  {people.includes(n) ? "✓ " : ""}{n}
+                </button>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <input className={inputCls} value={personInput} onChange={(e) => setPersonInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addPerson())}
+                placeholder="직접 추가 (예: 이모, 삼촌)" aria-label="사람 직접 추가" />
+              <button type="button" onClick={addPerson} className="whitespace-nowrap px-3 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-sm">추가</button>
+            </div>
+            {people.filter((n) => !familyNames.includes(n)).length > 0 && (
+              <div className="flex flex-wrap gap-2 mt-2">
+                {people.filter((n) => !familyNames.includes(n)).map((n) => (
+                  <span key={n} className="px-3 py-1.5 rounded-full text-sm bg-violet-400 text-white flex items-center gap-1">
+                    {n}<button type="button" onClick={() => togglePerson(n)} aria-label={`${n} 제거`}>×</button>
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* 장소/지역 (날짜·지역 검색용) */}
+          <Field label="장소 / 지역">
+            <input className={inputCls} value={place} onChange={(e) => setPlace(e.target.value)} placeholder="예: 서울 할머니댁, 제주 여행" />
+          </Field>
+          {gps && <p className="text-[11px] text-teal-500">📍 사진에서 위치 좌표를 찾았어요 ({gps.lat}, {gps.lng}) — 지도 검색에 활용됩니다</p>}
+
+          {/* 촬영 시각 (EXIF 우선, 수정 가능) */}
+          <DateTimeField value={takenAt} onChange={setTakenAt} label="촬영 시각" />
+          <p className="text-[11px] text-slate-400">여러 장은 각 사진의 촬영정보(EXIF)가 있으면 자동 적용돼요.</p>
+
+          {progress && (
+            <div>
+              <div className="flex justify-between text-xs text-slate-500 mb-1">
+                <span>업로드 중 {progress.done + 1}/{progress.total}</span><span>{progress.pct}%</span>
+              </div>
+              <div className="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+                <div className="h-full bg-teal-500 transition-all" style={{ width: `${progress.pct}%` }} role="progressbar" aria-valuenow={progress.pct} aria-valuemin="0" aria-valuemax="100"></div>
+              </div>
+            </div>
+          )}
+          <Btn onClick={upload} disabled={!!progress} className="w-full">{progress ? "업로드 중..." : "업로드"}</Btn>
+        </div>
+      </Modal>
+    );
+  };
+
+  /* ========================================================================
+     19. 좋아요 / 저장 훅 (트랜잭션, 계정별) — 시니어 검토 #2
+     ======================================================================== */
+  // 좋아요는 사진 문서의 likedBy 배열로 관리 (색인/추가 규칙 불필요, 동시성 안전)
+  const isLikedBy = (photo, uid) => !!photo && (photo.likedBy || []).includes(uid);
+  const likeCountOf = (photo) => (photo && photo.likedBy ? photo.likedBy.length : (photo && photo.likeCount) || 0);
+  // 공개 범위: 관리자/작성자/본인 또는 전체공개(기본)면 볼 수 있음 (이전 데이터는 vis 없음 → 공개 취급)
+  const canSeePhoto = (p, uid, isAdmin) => !!p && (isAdmin || p.uploadedBy === uid || (p.vis || "public") !== "private");
+  const canSeeLetter = (l, uid, isAdmin) => !!l && (isAdmin || l.createdBy === uid || (l.vis || "public") !== "private");
+  const isPrivate = (x) => x && x.vis === "private";
+
+  const useMySaved = (uid) => {
+    const [saved, setSaved] = useState(new Set());
+    const [docs, setDocs] = useState([]);
+    useEffect(() => {
+      if (!uid) return;
+      const unsub = COL.users().doc(uid).collection("savedPhotos")
+        .orderBy("savedAt", "desc")
+        .onSnapshot((snap) => {
+          setSaved(new Set(snap.docs.map((d) => d.id)));
+          setDocs(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+        });
+      return () => unsub();
+    }, [uid]);
+    return { saved, docs };
+  };
+
+  // 좋아요 토글 — likedBy 배열에 arrayUnion/arrayRemove (원자적, 동시성 안전)
+  const toggleLike = async (photo, uid) => {
+    const FV = firebase.firestore.FieldValue;
+    const liked = isLikedBy(photo, uid);
+    await COL.photos().doc(photo.id).update({
+      likedBy: liked ? FV.arrayRemove(uid) : FV.arrayUnion(uid),
+      likeCount: FV.increment(liked ? -1 : 1), // 호환용 카운트도 함께 유지
+    });
+  };
+
+  const toggleSave = async (photo, uid) => {
+    const ref = COL.users().doc(uid).collection("savedPhotos").doc(photo.id);
+    const snap = await ref.get();
+    if (snap.exists) await ref.delete();
+    else await ref.set({ savedAt: TS(), photoRef: photo.id, url: photo.url, caption: photo.caption || "", category: photo.category });
+  };
+
+  /* ========================================================================
+     20. 사진 카드 + 갤러리
+     ======================================================================== */
+  const PhotoCard = ({ photo, saved, uid, onOpen }) => {
+    const liked = isLikedBy(photo, uid);
+    return (
+      <div className="relative group">
+        {isPrivate(photo) && <span className="absolute top-1 left-1 z-10 text-[10px] bg-black/55 text-white rounded-full px-1.5 py-0.5" title="나만보기">🔒</span>}
+        <button onClick={onOpen} className="block w-full" aria-label={`${photo.uploaderName}님의 사진 열기`}>
+          <img src={photo.url} alt={photo.caption || `${photo.uploaderName}님이 올린 사진`} loading="lazy"
+            className="w-full aspect-square object-cover rounded-xl bg-slate-100 dark:bg-slate-700" />
+        </button>
+        <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/60 to-transparent rounded-b-xl p-2 flex items-end justify-between">
+          <span className="text-[10px] text-white/90 truncate">{photo.uploaderName}</span>
+          <div className="flex items-center gap-2">
+            <button onClick={() => toggleLike(photo, uid)} aria-label={liked ? "좋아요 취소" : "좋아요"} className="text-sm flex items-center gap-0.5 text-white">
+              <span aria-hidden="true">{liked ? "❤️" : "🤍"}</span><span className="text-[10px]">{likeCountOf(photo)}</span>
+            </button>
+            <button onClick={() => toggleSave(photo, uid)} aria-label={saved ? "저장 취소" : "저장"} className="text-base text-white">{saved ? "🔖" : "🏷️"}</button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // 사진 컬렉션 실시간 구독 (갤러리/슬라이드쇼 공용)
+  const usePhotos = (max = 300) => {
+    const [photos, setPhotos] = useState(null);
+    useEffect(() => {
+      const unsub = COL.photos().orderBy("createdAt", "desc").limit(max)
+        .onSnapshot((snap) => setPhotos(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+          (e) => { console.error(e); setPhotos([]); });
+      return () => unsub();
+    }, [max]);
+    return photos;
+  };
+
+  const Gallery = ({ openUpload, canUpload = true }) => {
+    const { user, isAdmin } = useAuth();
+    const [lim, setLim] = useState(60);          // 무한스크롤: 60장씩 늘려가며 로딩
+    const photos = usePhotos(lim);
+    const [cat, setCat] = useState("all");
+    const [sort, setSort] = useState("recent");
+    const [q, setQ] = useState("");
+    const [from, setFrom] = useState("");
+    const [to, setTo] = useState("");
+    const [uploader, setUploader] = useState("all"); // 관리자 업로더별 필터
+    const [detail, setDetail] = useState(null); // index
+    const [showSlide, setShowSlide] = useState(false);
+    const { saved } = useMySaved(user.uid);
+    const sentinel = useRef(null);
+    const canMore = photos && photos.length >= lim; // 더 있을 가능성
+
+    // 관리자용: 업로더 목록
+    const uploaders = useMemo(() => {
+      const m = new Map();
+      (photos || []).forEach((p) => { if (p.uploadedBy) m.set(p.uploadedBy, p.uploaderName || "이름없음"); });
+      return [...m.entries()];
+    }, [photos]);
+
+    // 바닥 근처에 닿으면 더 로딩
+    useEffect(() => {
+      if (!sentinel.current) return;
+      const io = new IntersectionObserver((es) => {
+        if (es[0].isIntersecting && canMore) setLim((n) => n + 60);
+      }, { rootMargin: "300px" });
+      io.observe(sentinel.current);
+      return () => io.disconnect();
+    }, [canMore]);
+
+    const list = useMemo(() => {
+      if (!photos) return [];
+      // 공개 범위 필터 (나만보기는 본인·관리자만)
+      let l = photos.filter((p) => canSeePhoto(p, user.uid, isAdmin));
+      if (cat !== "all") l = l.filter((p) => p.category === cat);
+      if (isAdmin && uploader !== "all") l = l.filter((p) => p.uploadedBy === uploader);
+      const kw = q.trim().toLowerCase();
+      if (kw) {
+        l = l.filter((p) =>
+          (p.caption || "").toLowerCase().includes(kw) ||
+          (p.place || "").toLowerCase().includes(kw) ||
+          (p.uploaderName || "").toLowerCase().includes(kw) ||
+          (p.people || []).some((n) => (n || "").toLowerCase().includes(kw))
+        );
+      }
+      const dayOf = (p) => toDate(p.takenAt || p.createdAt);
+      if (from) l = l.filter((p) => { const d = dayOf(p); return d && ymd(d) >= from; });
+      if (to) l = l.filter((p) => { const d = dayOf(p); return d && ymd(d) <= to; });
+      if (sort === "likes") l = [...l].sort((a, b) => likeCountOf(b) - likeCountOf(a));
+      else l = [...l].sort((a, b) => (toDate(b.takenAt || b.createdAt) - toDate(a.takenAt || a.createdAt)));
+      return l;
+    }, [photos, cat, sort, q, from, to, uploader, isAdmin, user.uid]);
+
+    const cats = [{ v: "all", l: "전체" }, { v: "ultrasound", l: "초음파" }, { v: "baby", l: "아기사진" }, { v: "milestone", l: "성장기록" }];
+
+    return (
+      <div className="p-4 space-y-3 pb-safe">
+        {/* 검색 */}
+        <div className="flex gap-2">
+          <input className={inputCls + " flex-1"} value={q} onChange={(e) => setQ(e.target.value)}
+            placeholder="🔍 사람·장소·설명 검색" aria-label="사진 검색" />
+          <button onClick={() => setShowSlide(true)} aria-label="슬라이드쇼 시작"
+            className="whitespace-nowrap px-3 rounded-xl bg-violet-400 text-white text-sm font-medium">▶ 슬라이드쇼</button>
+        </div>
+        {/* 날짜 범위 */}
+        <div className="flex items-center gap-2 text-xs text-slate-500">
+          <input type="date" className={inputCls + " py-2 text-sm"} value={from} onChange={(e) => setFrom(e.target.value)} aria-label="시작 날짜" />
+          <span>~</span>
+          <input type="date" className={inputCls + " py-2 text-sm"} value={to} onChange={(e) => setTo(e.target.value)} aria-label="끝 날짜" />
+          {(from || to || q) && <button onClick={() => { setFrom(""); setTo(""); setQ(""); }} className="whitespace-nowrap text-slate-400">초기화</button>}
+        </div>
+
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex gap-1.5 overflow-x-auto no-scrollbar" role="tablist" aria-label="카테고리 필터">
+            {cats.map((c) => (
+              <button key={c.v} role="tab" aria-selected={cat === c.v} onClick={() => setCat(c.v)}
+                className={`whitespace-nowrap px-3 py-1.5 rounded-full text-xs font-medium ${cat === c.v ? "bg-teal-500 text-white" : "bg-white dark:bg-slate-800 text-slate-500 border border-slate-200 dark:border-slate-700"}`}>{c.l}</button>
+            ))}
+          </div>
+          <button onClick={() => setSort(sort === "recent" ? "likes" : "recent")}
+            className="whitespace-nowrap text-xs text-slate-500 dark:text-slate-300 px-2 py-1.5">
+            {sort === "recent" ? "최신순 ↓" : "좋아요순 ❤️"}
+          </button>
+        </div>
+
+        {/* 관리자: 업로더별 보기 */}
+        {isAdmin && uploaders.length > 0 && (
+          <select value={uploader} onChange={(e) => setUploader(e.target.value)} aria-label="업로더별 보기"
+            className={inputCls + " py-2 text-sm"}>
+            <option value="all">👥 전체 업로더</option>
+            {uploaders.map(([uid, nm]) => <option key={uid} value={uid}>{nm}</option>)}
+          </select>
+        )}
+
+        {!photos ? <Spinner /> : list.length === 0 ? (
+          <Card className="p-8 text-center text-sm text-slate-400">{q || from || to ? "검색 결과가 없어요." : <>아직 사진이 없어요.<br />아래 + 버튼으로 추가해보세요.</>}</Card>
+        ) : (
+          <>
+            <div className="grid grid-cols-3 gap-2">
+              {list.map((p, i) => (
+                <PhotoCard key={p.id} photo={p} uid={user.uid} saved={saved.has(p.id)} onOpen={() => setDetail(i)} />
+              ))}
+            </div>
+            <div ref={sentinel} className="h-8 flex items-center justify-center">
+              {canMore && <span className="text-xs text-slate-400">더 불러오는 중…</span>}
+            </div>
+          </>
+        )}
+
+        {/* 업로드 FAB */}
+        {canUpload && (
+          <button onClick={openUpload} aria-label="사진 업로드"
+            className="fixed bottom-24 right-1/2 translate-x-[195px] sm:right-[calc(50%-215px)] w-14 h-14 rounded-full bg-teal-500 text-white text-3xl shadow-lg flex items-center justify-center active:scale-95 z-20">+</button>
+        )}
+
+        {detail != null && (
+          <PhotoDetail list={list} index={detail} setIndex={setDetail} uid={user.uid} saved={saved} onClose={() => setDetail(null)} />
+        )}
+        {showSlide && <Slideshow photos={photos} onClose={() => setShowSlide(false)} />}
+      </div>
+    );
+  };
+
+  /* ========================================================================
+     20-b. 슬라이드쇼 (최신 + 좋아요 많은 사진 30장, 각 1분, 크로스페이드)
+     ======================================================================== */
+  const SLIDE_OPTIONS = [{ ms: 10000, label: "10초" }, { ms: 30000, label: "30초" }, { ms: 60000, label: "1분" }];
+  const SLIDE_REFRESH_MS = 10 * 60 * 1000; // 10분마다 새 사진 반영
+  const buildSlideDeck = (photos) => {
+    if (!photos || photos.length === 0) return [];
+    const pub = photos.filter((p) => !isPrivate(p)); // 전체공개 사진만 (나만보기 제외)
+    if (pub.length === 0) return [];
+    const byRecent = [...pub].sort((a, b) => toDate(b.takenAt || b.createdAt) - toDate(a.takenAt || a.createdAt)).slice(0, 20);
+    const byLikes = [...pub].sort((a, b) => likeCountOf(b) - likeCountOf(a)).slice(0, 15);
+    const map = new Map();
+    [...byRecent, ...byLikes].forEach((p) => map.set(p.id, p)); // 중복 제거(최신 우선)
+    return [...map.values()].slice(0, 30);
+  };
+
+  const Slideshow = ({ photos, onClose }) => {
+    // 덱은 10분마다만 갱신 (재생 중 사진 추가돼도 끊김 없이, 10분 뒤 반영)
+    const [deck, setDeck] = useState([]);
+    const photosRef = useRef(photos);
+    useEffect(() => { photosRef.current = photos; }, [photos]);
+    useEffect(() => { // 최초 사진 도착 시 1회 빌드
+      if (photos && photos.length && deck.length === 0) setDeck(buildSlideDeck(photos));
+    }, [photos, deck.length]);
+    useEffect(() => { // 10분 주기 갱신
+      const id = setInterval(() => { const d = buildSlideDeck(photosRef.current); if (d.length) setDeck(d); }, SLIDE_REFRESH_MS);
+      return () => clearInterval(id);
+    }, []);
+
+    const [idx, setIdx] = useState(0);
+    const [prevIdx, setPrevIdx] = useState(null);
+    const [paused, setPaused] = useState(false);
+    const [progress, setProgress] = useState(0);
+    const [dur, setDur] = useState(() => Number(localStorage.getItem("baby-slide-ms")) || 30000);
+    const rootRef = useRef(null);
+    // 덱 갱신으로 인덱스가 범위를 벗어나면 보정
+    useEffect(() => { if (idx >= deck.length && deck.length > 0) setIdx(0); }, [deck.length, idx]);
+
+    const setDuration = (ms) => { setDur(ms); localStorage.setItem("baby-slide-ms", String(ms)); setProgress(0); };
+
+    const go = useCallback((dir) => {
+      setIdx((i) => {
+        setPrevIdx(i);
+        const n = (i + dir + deck.length) % deck.length;
+        return n;
+      });
+      setProgress(0);
+    }, [deck.length]);
+
+    // 자동 전환 + 진행 막대 (선택한 속도)
+    useEffect(() => {
+      if (paused || deck.length <= 1) return;
+      const tick = setInterval(() => setProgress((p) => Math.min(100, p + 100 / (dur / 200))), 200);
+      const next = setTimeout(() => go(1), dur);
+      return () => { clearInterval(tick); clearTimeout(next); };
+    }, [idx, paused, deck.length, go, dur]);
+
+    // 전체화면 + 화면 꺼짐 방지(Wake Lock) — 재획득 포함
+    useEffect(() => {
+      let lock = null, released = false;
+      const acquire = () => {
+        if (navigator.wakeLock && document.visibilityState === "visible") {
+          navigator.wakeLock.request("screen").then((l) => { if (released) l.release().catch(() => {}); else { lock = l; lock.addEventListener && lock.addEventListener("release", () => { lock = null; }); } }).catch(() => {});
+        }
+      };
+      acquire();
+      // 탭이 다시 보이면 Wake Lock 재획득 (브라우저가 자동 해제하므로)
+      const onVis = () => { if (document.visibilityState === "visible") acquire(); };
+      document.addEventListener("visibilitychange", onVis);
+      // 전체화면 진입 (지원 브라우저; iPhone Safari는 미지원이라 무시)
+      const el = rootRef.current;
+      if (el && el.requestFullscreen) el.requestFullscreen().catch(() => {});
+      else if (el && el.webkitRequestFullscreen) try { el.webkitRequestFullscreen(); } catch (e) {}
+
+      const onKey = (e) => { if (e.key === "Escape") onClose(); if (e.key === "ArrowRight") go(1); if (e.key === "ArrowLeft") go(-1); if (e.key === " ") setPaused((p) => !p); };
+      window.addEventListener("keydown", onKey);
+      document.body.style.overflow = "hidden";
+      return () => {
+        released = true;
+        window.removeEventListener("keydown", onKey);
+        document.removeEventListener("visibilitychange", onVis);
+        document.body.style.overflow = "";
+        if (lock) lock.release().catch(() => {});
+        if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+        else if (document.webkitFullscreenElement && document.webkitExitFullscreen) try { document.webkitExitFullscreen(); } catch (e) {}
+      };
+    }, [go, onClose]);
+
+    if (deck.length === 0) {
+      return (
+        <div className="fixed inset-0 z-[60] bg-black flex flex-col items-center justify-center text-white gap-4">
+          <p>{photos == null ? "불러오는 중..." : "표시할 전체공개 사진이 없어요."}</p>
+          <Btn variant="ghost" onClick={onClose}>닫기</Btn>
+        </div>
+      );
+    }
+
+    const cur = deck[idx] || deck[0];
+    const prev = prevIdx != null ? deck[prevIdx] : null;
+    if (!cur) return null;
+    const meta = [cur.uploaderName, (cur.people || []).join(", "), cur.place, fmtDate(cur.takenAt || cur.createdAt)].filter(Boolean).join(" · ");
+
+    return (
+      <div ref={rootRef} className="fixed inset-0 z-[60] bg-black overflow-hidden" role="dialog" aria-modal="true" aria-label="슬라이드쇼">
+        {/* 진행 막대 */}
+        <div className="absolute top-0 inset-x-0 h-1 bg-white/20 z-20">
+          <div className="h-full bg-violet-400 transition-all duration-200 ease-linear" style={{ width: `${progress}%` }}></div>
+        </div>
+
+        {/* 크로스페이드: 이전 사진(뒤) + 현재 사진(앞, 페이드인 + 느린 줌) */}
+        {prev && <img key={"p" + prevIdx} src={prev.url} alt="" className="absolute inset-0 w-full h-full object-contain" />}
+        <img key={"c" + idx} src={cur.url} alt={cur.caption || "사진"} className="absolute inset-0 w-full h-full object-contain slide-img" />
+
+        {/* 정보 오버레이 */}
+        <div className="absolute bottom-0 inset-x-0 z-20 bg-gradient-to-t from-black/80 to-transparent p-6 pb-10 text-white">
+          {cur.caption && <p className="text-xl font-bold mb-1 drop-shadow">{cur.caption}</p>}
+          <p className="text-sm text-white/80">{meta}</p>
+          <p className="text-xs text-white/50 mt-1">❤️ {likeCountOf(cur)} · {idx + 1} / {deck.length}</p>
+        </div>
+
+        {/* 컨트롤 */}
+        <button onClick={onClose} aria-label="슬라이드쇼 닫기" className="absolute top-4 right-4 z-30 text-white text-3xl w-11 h-11 bg-black/30 rounded-full">×</button>
+        <div className="absolute top-1/2 -translate-y-1/2 left-3 z-30">
+          <button onClick={() => go(-1)} aria-label="이전" className="text-white/70 text-4xl w-12 h-12 bg-black/20 rounded-full">‹</button>
+        </div>
+        <div className="absolute top-1/2 -translate-y-1/2 right-3 z-30">
+          <button onClick={() => go(1)} aria-label="다음" className="text-white/70 text-4xl w-12 h-12 bg-black/20 rounded-full">›</button>
+        </div>
+        {/* 하단 컨트롤: 재생/일시정지 + 속도 선택 */}
+        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 flex items-center gap-3">
+          <button onClick={() => setPaused((p) => !p)} aria-label={paused ? "재생" : "일시정지"}
+            className="text-white text-2xl w-12 h-12 bg-black/30 rounded-full">{paused ? "▶" : "⏸"}</button>
+          <div className="flex items-center bg-black/30 rounded-full p-1" role="group" aria-label="전환 속도">
+            {SLIDE_OPTIONS.map((o) => (
+              <button key={o.ms} onClick={() => setDuration(o.ms)} aria-pressed={dur === o.ms}
+                className={`px-3 py-1.5 rounded-full text-xs font-medium ${dur === o.ms ? "bg-violet-400 text-white" : "text-white/70"}`}>{o.label}</button>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  /* ========================================================================
+     21. 사진 상세 모달 (스와이프/이전·다음/다운로드/삭제)
+     ======================================================================== */
+  const PhotoDetail = ({ list, index, setIndex, uid, saved, onClose }) => {
+    const { user, isAdmin } = useAuth();
+    const toast = useToast();
+    const [editOpen, setEditOpen] = useState(false);
+    const p = list[index];
+    const touch = useRef(null);
+    if (!p) return null;
+    const canEdit = isAdmin || p.uploadedBy === user.uid; // 등록자 또는 관리자
+
+    const prev = () => setIndex((i) => (i > 0 ? i - 1 : i));
+    const next = () => setIndex((i) => (i < list.length - 1 ? i + 1 : i));
+    const onTouchStart = (e) => touch.current = e.touches[0].clientX;
+    const onTouchEnd = (e) => {
+      if (touch.current == null) return;
+      const dx = e.changedTouches[0].clientX - touch.current;
+      if (dx > 50) prev(); else if (dx < -50) next();
+      touch.current = null;
+    };
+    const catLabel = { ultrasound: "초음파", baby: "아기사진", milestone: "성장기록" }[p.category] || p.category;
+
+    const download = async () => {
+      try {
+        const res = await fetch(p.url); const blob = await res.blob();
+        const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
+        a.download = `baby_${p.id}.jpg`; a.click(); URL.revokeObjectURL(a.href);
+      } catch { window.open(p.url, "_blank"); }
+    };
+    const remove = async () => {
+      if (!confirm("이 사진을 삭제할까요?")) return;
+      try {
+        if (p.storagePath) await storage.ref(p.storagePath).delete().catch(() => {});
+        await COL.photos().doc(p.id).delete();
+        toast("삭제되었습니다.", "success"); onClose();
+      } catch (e) { toast(errMsg(e), "error"); }
+    };
+
+    return (
+      <div className="fixed inset-0 z-50 bg-black flex flex-col fade-in" role="dialog" aria-modal="true" aria-label="사진 상세">
+        <div className="flex justify-between items-center p-3 text-white">
+          <span className="text-sm">{index + 1} / {list.length}</span>
+          <button onClick={onClose} aria-label="닫기" className="text-3xl w-10 h-10">×</button>
+        </div>
+        <div className="flex-1 flex items-center justify-center relative" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
+          <button onClick={prev} aria-label="이전 사진" disabled={index === 0} className="absolute left-2 text-white text-4xl w-12 h-12 disabled:opacity-20 z-10">‹</button>
+          <img src={p.url} alt={p.caption || "사진"} className="max-h-full max-w-full object-contain" />
+          <button onClick={next} aria-label="다음 사진" disabled={index === list.length - 1} className="absolute right-2 text-white text-4xl w-12 h-12 disabled:opacity-20 z-10">›</button>
+        </div>
+        <div className="bg-white dark:bg-slate-800 p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="font-medium text-slate-800 dark:text-white">{p.uploaderName} · {catLabel}</p>
+              <p className="text-xs text-slate-400">{fmtDateTime(p.createdAt)}</p>
+            </div>
+            <div className="flex items-center gap-3">
+              <button onClick={() => toggleLike(p, uid)} aria-label={isLikedBy(p, uid) ? "좋아요 취소" : "좋아요"} className="flex items-center gap-1 text-lg">
+                <span aria-hidden="true">{isLikedBy(p, uid) ? "❤️" : "🤍"}</span><span className="text-sm text-slate-500">{likeCountOf(p)}</span>
+              </button>
+              <button onClick={() => toggleSave(p, uid)} aria-label="저장" className="text-lg" aria-hidden="true">{saved.has(p.id) ? "🔖" : "🏷️"}</button>
+            </div>
+          </div>
+          {p.caption && <p className="text-sm text-slate-600 dark:text-slate-300">{p.caption}</p>}
+          {(p.people && p.people.length > 0) && (
+            <p className="text-sm text-slate-500 dark:text-slate-400">👨‍👩‍👧 함께: {p.people.join(", ")}</p>
+          )}
+          {p.place && <p className="text-sm text-slate-500 dark:text-slate-400">📍 {p.place}
+            {p.gps && <a href={`https://maps.google.com/?q=${p.gps.lat},${p.gps.lng}`} target="_blank" rel="noopener" className="text-teal-500 ml-1 underline">지도</a>}
+          </p>}
+          {p.takenAt && <p className="text-xs text-slate-400">📅 촬영: {fmtDateTime(p.takenAt)}</p>}
+          <div className="flex gap-2">
+            <Btn variant="ghost" onClick={download} className="flex-1 text-sm py-2.5">⬇️ 다운로드</Btn>
+            {canEdit && <Btn variant="lavender" onClick={() => setEditOpen(true)} className="flex-1 text-sm py-2.5">✏️ 수정</Btn>}
+            {canEdit && <Btn variant="danger" onClick={remove} className="flex-1 text-sm py-2.5">🗑️ 삭제</Btn>}
+          </div>
+          {!canEdit && <p className="text-[11px] text-slate-400 text-center">수정·삭제는 사진을 올린 사람 또는 관리자만 할 수 있어요.</p>}
+        </div>
+        <EditPhotoModal open={editOpen} onClose={() => setEditOpen(false)} photo={p} />
+      </div>
+    );
+  };
+
+  /* ========================================================================
+     21-b. 사진 정보 수정 모달 (등록자 또는 관리자)
+     ======================================================================== */
+  const EditPhotoModal = ({ open, onClose, photo }) => {
+    const toast = useToast();
+    const [caption, setCaption] = useState("");
+    const [category, setCategory] = useState("baby");
+    const [people, setPeople] = useState([]);
+    const [personInput, setPersonInput] = useState("");
+    const [place, setPlace] = useState("");
+    const [vis, setVis] = useState("public");
+    const [busy, setBusy] = useState(false);
+
+    useEffect(() => {
+      if (!open || !photo) return;
+      setCaption(photo.caption || ""); setCategory(photo.category || "baby");
+      setPeople(photo.people || []); setPersonInput(""); setPlace(photo.place || "");
+      setVis(photo.vis === "private" ? "private" : "public");
+    }, [open, photo && photo.id]);
+
+    const addPerson = () => {
+      const n = personInput.trim();
+      if (n && !people.includes(n)) setPeople((p) => [...p, n]);
+      setPersonInput("");
+    };
+    const save = async () => {
+      setBusy(true);
+      try {
+        await COL.photos().doc(photo.id).update({
+          caption, category, people, place, placeLower: (place || "").toLowerCase(), vis,
+        });
+        toast("사진 정보를 수정했어요.", "success");
+        onClose();
+      } catch (e) { toast(errMsg(e), "error"); } finally { setBusy(false); }
+    };
+
+    return (
+      <Modal open={open} onClose={onClose} title="✏️ 사진 정보 수정">
+        <div className="space-y-4">
+          <ChipGroup label="공개 범위" value={vis} onChange={setVis}
+            options={[{ value: "public", label: "🌐 전체공개" }, { value: "private", label: "🔒 나만보기" }]} />
+          <ChipGroup label="카테고리" value={category} onChange={setCategory}
+            options={[{ value: "ultrasound", label: "초음파" }, { value: "baby", label: "아기사진" }, { value: "milestone", label: "성장기록" }]} />
+          <Field label="캡션"><input className={inputCls} value={caption} onChange={(e) => setCaption(e.target.value)} placeholder="사진 설명" /></Field>
+          <div>
+            <span className="block text-sm font-medium text-slate-600 dark:text-slate-300 mb-1.5">함께한 사람</span>
+            {people.length > 0 && (
+              <div className="flex flex-wrap gap-2 mb-2">
+                {people.map((n) => (
+                  <span key={n} className="px-3 py-1.5 rounded-full text-sm bg-violet-400 text-white flex items-center gap-1">
+                    {n}<button type="button" onClick={() => setPeople((p) => p.filter((x) => x !== n))} aria-label={`${n} 제거`}>×</button>
+                  </span>
+                ))}
+              </div>
+            )}
+            <div className="flex gap-2">
+              <input className={inputCls} value={personInput} onChange={(e) => setPersonInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addPerson())} placeholder="이름 추가" />
+              <button type="button" onClick={addPerson} className="whitespace-nowrap px-3 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-sm">추가</button>
+            </div>
+          </div>
+          <Field label="장소 / 지역"><input className={inputCls} value={place} onChange={(e) => setPlace(e.target.value)} placeholder="예: 서울 할머니댁" /></Field>
+          <Btn onClick={save} disabled={busy} className="w-full">{busy ? "저장 중..." : "저장"}</Btn>
+        </div>
+      </Modal>
+    );
+  };
+
+  /* ========================================================================
+     22. 내 저장 탭
+     ======================================================================== */
+  const Saved = () => {
+    const { user, isAdmin } = useAuth();
+    const { docs } = useMySaved(user.uid);
+    const [photos, setPhotos] = useState({}); // id -> 최신 photo
+    const [detail, setDetail] = useState(null);
+
+    // 저장한 사진의 최신 메타(좋아요 수 등)를 photos에서 가져옴
+    useEffect(() => {
+      let active = true;
+      Promise.all(docs.map((d) => COL.photos().doc(d.photoRef || d.id).get()))
+        .then((snaps) => {
+          if (!active) return;
+          const m = {};
+          snaps.forEach((s) => { if (s.exists) m[s.id] = { id: s.id, ...s.data() }; });
+          setPhotos(m);
+        });
+      return () => { active = false; };
+    }, [docs.map((d) => d.id).join(",")]);
+
+    const list = docs.map((d) => photos[d.photoRef || d.id]).filter(Boolean).filter((p) => canSeePhoto(p, user.uid, isAdmin));
+    const savedSet = new Set(docs.map((d) => d.id));
+
+    return (
+      <div className="p-4 space-y-3 pb-safe">
+        <h2 className="font-bold text-lg text-slate-800 dark:text-white">🔖 내 저장</h2>
+        {docs.length === 0 ? (
+          <Card className="p-8 text-center text-sm text-slate-400">저장한 사진이 없어요.<br />갤러리에서 🔖 버튼으로 저장해보세요.</Card>
+        ) : list.length === 0 ? <Spinner /> : (
+          <div className="grid grid-cols-3 gap-2">
+            {list.map((p, i) => (
+              <PhotoCard key={p.id} photo={p} uid={user.uid} saved={savedSet.has(p.id)} onOpen={() => setDetail(i)} />
+            ))}
+          </div>
+        )}
+        {detail != null && (
+          <PhotoDetail list={list} index={detail} setIndex={setDetail} uid={user.uid} saved={savedSet} onClose={() => setDetail(null)} />
+        )}
+      </div>
+    );
+  };
+
+  /* ========================================================================
+     22-b. 💌 편지 (아기에게 보내는 편지 + 이미지 첨부)
+        records 컬렉션에 type:"letter" 로 저장 (보안규칙/리스너 재사용)
+     ======================================================================== */
+  const Letters = () => {
+    const { user, profile, isAdmin } = useAuth();
+    const all = useRecords("letter", 100);
+    const items = all && all.filter((l) => canSeeLetter(l, user.uid, isAdmin)); // 공개 범위 필터
+    const [editorOpen, setEditorOpen] = useState(false);
+    const [editing, setEditing] = useState(null); // 수정할 편지
+    const [viewing, setViewing] = useState(null); // 열람할 편지
+
+    const openNew = () => { setEditing(null); setEditorOpen(true); };
+    const openEdit = (l) => { setEditing(l); setEditorOpen(true); };
+
+    return (
+      <div className="p-4 space-y-4 pb-safe">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="font-bold text-lg text-slate-800 dark:text-white">💌 편지</h2>
+            <p className="text-xs text-slate-400">우리 아기에게 마음을 남겨보세요</p>
+          </div>
+          <Btn onClick={openNew} className="text-sm py-2 px-3">+ 편지 쓰기</Btn>
+        </div>
+
+        {!items ? <Spinner /> : items.length === 0 ? (
+          <Card className="p-8 text-center text-sm text-slate-400">아직 편지가 없어요.<br />첫 편지를 남겨보세요 💛</Card>
+        ) : (
+          <div className="space-y-3">
+            {items.map((l) => (
+              <Card key={l.id} className="overflow-hidden active:scale-[.99] transition">
+                <button onClick={() => setViewing(l)} className="block w-full text-left">
+                  {l.image && <img src={l.image} alt="" className="w-full max-h-48 object-cover" />}
+                  <div className="p-4">
+                    <div className="flex items-center justify-between mb-1">
+                      <h3 className="font-bold text-slate-800 dark:text-white">{isPrivate(l) && "🔒 "}{l.title || "(제목 없음)"}</h3>
+                      {l.image && <span className="text-xs text-slate-300">🖼️</span>}
+                    </div>
+                    <p className="text-sm text-slate-500 dark:text-slate-300 line-clamp-2" style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{l.body}</p>
+                    <p className="text-[11px] text-slate-400 mt-2">💛 {l.creatorName} · {fmtDateTime(l.at)}{isPrivate(l) && " · 나만보기"}</p>
+                  </div>
+                </button>
+              </Card>
+            ))}
+          </div>
+        )}
+
+        {/* 편지 열람 모달 */}
+        <Modal open={!!viewing} onClose={() => setViewing(null)} title="💌 편지">
+          {viewing && (
+            <div className="space-y-3">
+              {viewing.image && <img src={viewing.image} alt="첨부 이미지" className="w-full rounded-xl" />}
+              <h3 className="text-lg font-bold text-slate-800 dark:text-white">{viewing.title || "(제목 없음)"}</h3>
+              <p className="text-[11px] text-slate-400">💛 {viewing.creatorName} · {fmtDateTime(viewing.at)}</p>
+              <p className="text-sm text-slate-700 dark:text-slate-200 whitespace-pre-wrap leading-relaxed">{viewing.body}</p>
+              {(isAdmin || viewing.createdBy === user.uid) && (
+                <div className="flex gap-2 pt-2">
+                  <Btn variant="lavender" className="flex-1 text-sm py-2.5" onClick={() => { const l = viewing; setViewing(null); openEdit(l); }}>✏️ 수정</Btn>
+                  <Btn variant="danger" className="flex-1 text-sm py-2.5" onClick={() => { if (confirm("이 편지를 삭제할까요?")) { deleteRecord(viewing.id); setViewing(null); } }}>🗑️ 삭제</Btn>
+                </div>
+              )}
+            </div>
+          )}
+        </Modal>
+
+        <LetterEditor open={editorOpen} onClose={() => setEditorOpen(false)} letter={editing} />
+      </div>
+    );
+  };
+
+  // 편지 작성/수정 모달
+  const LetterEditor = ({ open, onClose, letter }) => {
+    const { user, profile } = useAuth();
+    const toast = useToast();
+    const [title, setTitle] = useState("");
+    const [body, setBody] = useState("");
+    const [image, setImage] = useState(null); // dataURL
+    const [vis, setVis] = useState("private"); // 편지는 기본 나만보기
+    const [busy, setBusy] = useState(false);
+    const fileRef = useRef();
+    const camRef = useRef();
+
+    useEffect(() => {
+      if (!open) return;
+      setTitle((letter && letter.title) || "");
+      setBody((letter && letter.body) || "");
+      setImage((letter && letter.image) || null);
+      setVis(letter ? (letter.vis === "public" ? "public" : "private") : "private");
+      setBusy(false);
+    }, [open, letter && letter.id]);
+
+    const pickImage = async (e) => {
+      const f = (e.target.files || [])[0];
+      if (!f) return;
+      try { setBusy(true); setImage(await compressToDataURL(f)); }
+      catch (ex) { toast(errMsg(ex), "error"); }
+      finally { setBusy(false); }
+    };
+
+    const save = async () => {
+      if (!body.trim() && !title.trim()) { toast("내용을 입력해주세요.", "error"); return; }
+      setBusy(true);
+      try {
+        if (letter) {
+          await COL.records().doc(letter.id).update({ title, body, image: image || null, vis });
+          toast("편지를 수정했어요.", "success");
+        } else {
+          await addRecord("letter", { title, body, image: image || null, vis, at: TS() }, user, profile);
+          toast("편지를 남겼어요 💛", "success");
+        }
+        onClose();
+      } catch (e) { toast(errMsg(e), "error"); } finally { setBusy(false); }
+    };
+
+    return (
+      <Modal open={open} onClose={onClose} title={letter ? "✏️ 편지 수정" : "💌 편지 쓰기"}>
+        <div className="space-y-4">
+          <ChipGroup label="공개 범위" value={vis} onChange={setVis}
+            options={[{ value: "private", label: "🔒 나만보기" }, { value: "public", label: "🌐 전체공개" }]} />
+          <p className="text-[11px] text-slate-400 -mt-1">나만보기는 본인과 관리자(엄마·아빠)만 볼 수 있어요.</p>
+          <Field label="제목"><input className={inputCls} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="사랑하는 우리 아기에게" /></Field>
+          <Field label="내용">
+            <textarea className={inputCls} rows="7" value={body} onChange={(e) => setBody(e.target.value)} placeholder="오늘 너에게 하고 싶은 이야기를 적어보세요..." />
+          </Field>
+
+          {/* 이미지 첨부 */}
+          <input ref={fileRef} type="file" accept="image/*" onChange={pickImage} className="hidden" />
+          <input ref={camRef} type="file" accept="image/*" capture="environment" onChange={pickImage} className="hidden" />
+          {image ? (
+            <div className="relative">
+              <img src={image} alt="첨부 미리보기" className="w-full rounded-xl" />
+              <button onClick={() => setImage(null)} aria-label="이미지 제거"
+                className="absolute top-2 right-2 w-8 h-8 rounded-full bg-black/50 text-white text-lg">×</button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-3">
+              <button onClick={() => fileRef.current.click()} className="border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-2xl py-5 text-center text-slate-400 hover:border-teal-400 hover:text-teal-500 transition">
+                <div className="text-2xl mb-1" aria-hidden="true">🖼️</div><p className="text-sm">사진 첨부</p>
+              </button>
+              <button onClick={() => camRef.current.click()} className="border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-2xl py-5 text-center text-slate-400 hover:border-teal-400 hover:text-teal-500 transition">
+                <div className="text-2xl mb-1" aria-hidden="true">📷</div><p className="text-sm">사진 촬영</p>
+              </button>
+            </div>
+          )}
+
+          <Btn onClick={save} disabled={busy} className="w-full">{busy ? "저장 중..." : (letter ? "수정 저장" : "편지 남기기")}</Btn>
+        </div>
+      </Modal>
+    );
+  };
+
+  /* ========================================================================
+     23. 설정 탭 (관리자 계정 관리 + 아기 정보)
+     ======================================================================== */
+  const Settings = () => {
+    const { user, profile, isAdmin } = useAuth();
+    const toast = useToast();
+    const baby = useBaby();
+    const [users, setUsers] = useState(null);
+    const [babyForm, setBabyForm] = useState({ name: baby.name, birthDate: baby.birthDate || "", dueDate: baby.dueDate || "", sex: baby.sex || "" });
+    const [addOpen, setAddOpen] = useState(false);
+    const [nickOpen, setNickOpen] = useState(false);
+
+    useEffect(() => setBabyForm({ name: baby.name, birthDate: baby.birthDate || "", dueDate: baby.dueDate || "", sex: baby.sex || "" }), [baby]);
+
+    useEffect(() => {
+      if (!isAdmin) return;
+      const unsub = COL.users().onSnapshot((snap) => setUsers(snap.docs.map((d) => ({ uid: d.id, ...d.data() }))));
+      return () => unsub();
+    }, [isAdmin]);
+
+    const saveBaby = async () => {
+      try { await COL.settings().set(babyForm, { merge: true }); toast("아기 정보를 저장했어요.", "success"); }
+      catch (e) { toast(errMsg(e), "error"); }
+    };
+
+    const setRole = async (u, role) => {
+      try { await COL.users().doc(u.uid).update({ role }); toast(`${u.name}님을 ${roleLabel(role)}(으)로 변경했어요.`, "success"); }
+      catch (e) { toast(errMsg(e), "error"); }
+    };
+    const toggleDisabled = async (u) => {
+      // 클라이언트 SDK로는 Auth disabled 직접 변경 불가 → Firestore 플래그로 표시(앱 차단용)
+      try { await COL.users().doc(u.uid).update({ disabled: !u.disabled }); toast(u.disabled ? "활성화했어요." : "비활성화 표시했어요.", "success"); }
+      catch (e) { toast(errMsg(e), "error"); }
+    };
+    const resetPw = async (u) => {
+      try { await auth.sendPasswordResetEmail(u.email); toast(`${u.name}님께 재설정 메일 발송`, "success"); }
+      catch (e) { toast(errMsg(e), "error"); }
+    };
+    const approveUser = async (u, role) => {
+      try { await COL.users().doc(u.uid).update({ approved: true, disabled: false, role: role || u.role || "viewer" }); toast(`${u.name}님을 승인했어요.`, "success"); }
+      catch (e) { toast(errMsg(e), "error"); }
+    };
+
+    return (
+      <div className="p-4 space-y-4 pb-safe">
+        {/* 내 정보 */}
+        <Card className="p-4">
+          <div className="flex items-start justify-between">
+            <h3 className="font-bold text-slate-800 dark:text-white mb-2">내 계정</h3>
+            <button onClick={() => setNickOpen(true)} className="text-xs px-2.5 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300">✏️ 닉네임 변경</button>
+          </div>
+          <p className="text-sm text-slate-700 dark:text-slate-200"><b>{profile && profile.name}</b> <span className="text-slate-400">(닉네임)</span></p>
+          <p className="text-xs text-slate-400 mt-0.5">{user.email}</p>
+          <span className={`inline-block mt-1.5 text-xs px-2 py-0.5 rounded-full ${isAdmin ? "bg-violet-100 text-violet-600 dark:bg-violet-900/40" : "bg-slate-100 text-slate-500 dark:bg-slate-700"}`}>
+            {isAdmin ? "관리자" : roleLabel(profile && profile.role)}
+          </span>
+        </Card>
+        <NicknameModal open={nickOpen} onClose={() => setNickOpen(false)} />
+
+        {/* 아기 정보 */}
+        <Card className="p-4 space-y-3">
+          <h3 className="font-bold text-slate-800 dark:text-white">아기 정보 {isAdmin ? "" : "(관리자만 수정)"}</h3>
+          <Field label="이름"><input className={inputCls} value={babyForm.name} disabled={!isAdmin} onChange={(e) => setBabyForm({ ...babyForm, name: e.target.value })} /></Field>
+          <Field label="출산 예정일"><input className={inputCls + " w-full"} type="date" value={babyForm.dueDate} disabled={!isAdmin} onChange={(e) => setBabyForm({ ...babyForm, dueDate: e.target.value })} /></Field>
+          <Field label="출생일 (태어난 뒤 입력)"><input className={inputCls + " w-full"} type="date" value={babyForm.birthDate} disabled={!isAdmin} onChange={(e) => setBabyForm({ ...babyForm, birthDate: e.target.value })} /></Field>
+          {isAdmin ? (
+            <ChipGroup label="성별 (WHO 성장곡선용)" value={babyForm.sex} onChange={(v) => setBabyForm({ ...babyForm, sex: v })}
+              options={[{ value: "male", label: "👦 남아" }, { value: "female", label: "👧 여아" }]} />
+          ) : (
+            <p className="text-sm text-slate-500 dark:text-slate-400">성별: {babyForm.sex === "male" ? "남아" : babyForm.sex === "female" ? "여아" : "미설정"}</p>
+          )}
+          {isAdmin && <Btn onClick={saveBaby} className="w-full">저장</Btn>}
+        </Card>
+
+        {/* 관리자: 계정 관리 */}
+        {isAdmin && (
+          <Card className="p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="font-bold text-slate-800 dark:text-white">계정 관리 <span className="text-[11px] font-normal text-slate-400">(총관리자=엄마·아빠)</span></h3>
+              <Btn onClick={() => setAddOpen(true)} className="text-sm py-2 px-3">+ 계정 추가</Btn>
+            </div>
+            {!users ? <Spinner /> : (
+              <ul className="space-y-2">
+                {[...users].sort((a, b) => (a.approved === false ? -1 : 1) - (b.approved === false ? -1 : 1)).map((u) => {
+                  const pending = u.approved === false && u.role !== "admin";
+                  return (
+                  <li key={u.uid} className={`border rounded-xl p-3 ${pending ? "border-amber-300 bg-amber-50/50 dark:bg-amber-900/20" : "border-slate-100 dark:border-slate-700"}`}>
+                    <div className="flex items-center justify-between">
+                      <div className="min-w-0">
+                        <p className="font-medium text-slate-800 dark:text-white truncate">{u.name} {u.disabled && <span className="text-xs text-rose-400">(차단됨)</span>}</p>
+                        <p className="text-xs text-slate-400 truncate">{u.email}</p>
+                      </div>
+                      <span className={`text-xs px-2 py-0.5 rounded-full whitespace-nowrap ${pending ? "bg-amber-200 text-amber-700" : u.role === "admin" ? "bg-violet-100 text-violet-600 dark:bg-violet-900/40" : u.role === "viewer" ? "bg-amber-100 text-amber-600 dark:bg-amber-900/40" : "bg-slate-100 text-slate-500 dark:bg-slate-700"}`}>{pending ? "승인대기" : roleLabel(u.role)}</span>
+                    </div>
+
+                    {pending ? (
+                      <div className="flex flex-wrap gap-1.5 mt-2">
+                        <button onClick={() => approveUser(u, "viewer")} className="text-xs px-3 py-1.5 rounded-lg bg-teal-500 text-white font-medium">✓ 관람전용 승인</button>
+                        <button onClick={() => approveUser(u, "member")} className="text-xs px-3 py-1.5 rounded-lg bg-violet-400 text-white font-medium">✓ 구성원 승인</button>
+                        <button onClick={() => toggleDisabled(u)} className="text-xs px-3 py-1.5 rounded-lg bg-rose-100 text-rose-500">거절(차단)</button>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="mt-2">
+                          <span className="block text-[11px] text-slate-400 mb-1">등급</span>
+                          <div className="flex gap-1.5">
+                            {["viewer", "member", "admin"].map((r) => (
+                              <button key={r} onClick={() => setRole(u, r)}
+                                className={`text-xs px-2.5 py-1.5 rounded-lg border ${u.role === r ? "bg-teal-500 border-teal-500 text-white" : "bg-white dark:bg-slate-700 border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300"}`}>
+                                {roleLabel(r)}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="flex flex-wrap gap-1.5 mt-2">
+                          <button onClick={() => resetPw(u)} className="text-xs px-2.5 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300">비번 재설정</button>
+                          <button onClick={() => toggleDisabled(u)} className="text-xs px-2.5 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300">{u.disabled ? "차단 해제" : "차단"}</button>
+                        </div>
+                      </>
+                    )}
+                  </li>
+                  );
+                })}
+              </ul>
+            )}
+            <p className="text-[11px] text-slate-400 leading-relaxed">
+              ※ 계정 <b>완전 삭제</b>와 Auth <b>disabled</b> 처리는 보안상 클라이언트 SDK에서 불가합니다.
+              실제 비활성화/삭제는 Firebase 콘솔 또는 Admin SDK(서버)에서 수행하세요. 여기서는 앱 접근 차단용 플래그만 설정됩니다.
+            </p>
+          </Card>
+        )}
+
+        <AddAccountModal open={addOpen} onClose={() => setAddOpen(false)} />
+      </div>
+    );
+  };
+
+  // 계정 추가 모달 — createUserWithEmailAndPassword
+  const AddAccountModal = ({ open, onClose }) => {
+    const toast = useToast();
+    const [f, setF] = useState({ email: "", pw: "", name: "", role: "member" });
+    const [busy, setBusy] = useState(false);
+    const set = (k) => (e) => setF((p) => ({ ...p, [k]: e.target.value }));
+
+    const create = async () => {
+      if (!f.email || !f.pw || !f.name) { toast("모든 항목을 입력하세요.", "error"); return; }
+      setBusy(true);
+      // 주의: createUserWithEmailAndPassword 는 현재 로그인 세션을 새 계정으로 바꿔버림.
+      // 이를 막기 위해 보조(secondary) 앱 인스턴스로 생성 → 관리자 세션 유지
+      let secondary;
+      try {
+        secondary = firebase.initializeApp(firebaseConfig, "secondary_" + Date.now());
+        const cred = await secondary.auth().createUserWithEmailAndPassword(f.email.trim(), f.pw);
+        await COL.users().doc(cred.user.uid).set({
+          email: f.email.trim(), name: f.name, role: f.role, approved: true, disabled: false, createdAt: TS(),
+        });
+        await secondary.auth().signOut();
+        toast(`${f.name} 계정을 생성했어요.`, "success");
+        setF({ email: "", pw: "", name: "", role: "member" });
+        onClose();
+      } catch (e) { toast(errMsg(e), "error"); }
+      finally { if (secondary) await secondary.delete().catch(() => {}); setBusy(false); }
+    };
+
+    return (
+      <Modal open={open} onClose={onClose} title="계정 추가">
+        <div className="space-y-3">
+          <Field label="이메일"><input className={inputCls} type="email" value={f.email} onChange={set("email")} placeholder="grandma1@baby.app" /></Field>
+          <Field label="비밀번호 (6자 이상)"><input className={inputCls} type="text" value={f.pw} onChange={set("pw")} placeholder="초기 비밀번호" /></Field>
+          <Field label="닉네임"><input className={inputCls} value={f.name} onChange={set("name")} placeholder="외할머니" /></Field>
+          <p className="text-[11px] text-slate-400 -mt-1">닉네임은 본인이 로그인 후 직접 바꿀 수도 있어요.</p>
+          <ChipGroup label="등급" value={f.role} onChange={(v) => setF((p) => ({ ...p, role: v }))}
+            options={[{ value: "member", label: "구성원" }, { value: "admin", label: "관리자" }, { value: "viewer", label: "관람전용" }]} />
+          <p className="text-[11px] text-slate-400">관람전용: 기록 입력 없이 사진 갤러리·슬라이드쇼만 볼 수 있어요 (이모·삼촌용).</p>
+          <Btn onClick={create} disabled={busy} className="w-full">{busy ? "생성 중..." : "계정 생성"}</Btn>
+        </div>
+      </Modal>
+    );
+  };
+
+  /* ========================================================================
+     24. 하단 네비게이션
+     ======================================================================== */
+  const BottomNav = ({ tab, setTab }) => {
+    const navs = [
+      { id: "dashboard", icon: "🏠", label: "홈" },
+      { id: "records", icon: "📋", label: "기록" },
+      { id: "gallery", icon: "🖼️", label: "갤러리" },
+      { id: "letters", icon: "💌", label: "편지" },
+      { id: "saved", icon: "🔖", label: "저장" },
+      { id: "settings", icon: "⚙️", label: "설정" },
+    ];
+    return (
+      <nav className="fixed bottom-0 inset-x-0 z-30 bg-white/95 dark:bg-slate-800/95 backdrop-blur border-t border-slate-100 dark:border-slate-700 nav-safe" aria-label="주요 메뉴">
+        <div className="max-w-[430px] mx-auto flex">
+          {navs.map((n) => {
+            const active = tab === n.id;
+            return (
+              <button key={n.id} onClick={() => setTab(n.id)} aria-current={active ? "page" : undefined}
+                className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 ${active ? "text-teal-500" : "text-slate-400"}`}>
+                <span className="text-xl" aria-hidden="true">{n.icon}</span>
+                <span className="text-[10px] font-medium">{n.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </nav>
+    );
+  };
+
+  /* ========================================================================
+     25. 메인 앱 셸
+     ======================================================================== */
+  const MainApp = () => {
+    const { profile, isAdmin, approved } = useAuth();
+    const [dark, setDark] = useDarkMode();
+    const [tab, setTab] = useState("dashboard");
+    const [recSub, setRecSub] = useState("feeding");
+    const [uploadOpen, setUploadOpen] = useState(false);
+    const [uploadCat, setUploadCat] = useState("baby");
+
+    const go = (t, sub) => { setTab(t); if (sub) setRecSub(sub); };
+    const openUpload = (cat = "baby") => { setUploadCat(cat); setUploadOpen(true); };
+
+    // 비활성화된 계정 차단
+    if (profile && profile.disabled) {
+      return (
+        <div className="app-shell flex flex-col items-center justify-center text-center p-8 bg-warm">
+          <div className="text-5xl mb-3">🚫</div>
+          <p className="text-slate-700 dark:text-white font-bold">비활성화된 계정입니다.</p>
+          <p className="text-sm text-slate-400 mt-1">관리자에게 문의하세요.</p>
+          <Btn variant="ghost" className="mt-5" onClick={() => auth.signOut()}>로그아웃</Btn>
+        </div>
+      );
+    }
+
+    // 승인 대기 (자가 회원가입 후 관리자 승인 전)
+    if (profile && !approved) {
+      return (
+        <div className="app-shell flex flex-col items-center justify-center text-center p-8 bg-warm">
+          <div className="text-5xl mb-3">⏳</div>
+          <p className="text-slate-700 dark:text-white font-bold">승인 대기 중이에요</p>
+          <p className="text-sm text-slate-400 mt-2 leading-relaxed">관리자(엄마·아빠)가 승인하면<br />바로 사용할 수 있어요.<br />승인 후 다시 들어오면 됩니다.</p>
+          <p className="text-xs text-slate-400 mt-3">{profile.name} · {profile.email}</p>
+          <Btn variant="ghost" className="mt-5" onClick={() => auth.signOut()}>로그아웃</Btn>
+        </div>
+      );
+    }
+
+    // 관람전용(이모·삼촌): 사진 갤러리 + 슬라이드쇼만 (기록/설정 숨김)
+    const isViewer = profile && profile.role === "viewer" && !isAdmin;
+    if (isViewer) {
+      return (
+        <div className="app-shell bg-warm min-h-screen">
+          <Header dark={dark} setDark={setDark} />
+          <main>
+            <div className="px-4 pt-3">
+              <p className="text-xs text-slate-400">관람 전용 계정 · 사진을 감상하고 좋아요를 남길 수 있어요 ❤️</p>
+            </div>
+            <Gallery canUpload={false} openUpload={() => {}} />
+          </main>
+        </div>
+      );
+    }
+
+    return (
+      <div className="app-shell bg-warm">
+        <Header dark={dark} setDark={setDark} />
+        <InstallBanner />
+        <main>
+          {tab === "dashboard" && <Dashboard go={go} />}
+          {tab === "records" && <Records sub={recSub} setSub={setRecSub} openUpload={() => openUpload("ultrasound")} />}
+          {tab === "gallery" && <Gallery openUpload={() => openUpload("baby")} />}
+          {tab === "letters" && <Letters />}
+          {tab === "saved" && <Saved />}
+          {tab === "settings" && <Settings />}
+        </main>
+        <BottomNav tab={tab} setTab={setTab} />
+        <UploadModal open={uploadOpen} onClose={() => setUploadOpen(false)} defaultCategory={uploadCat} />
+      </div>
+    );
+  };
+
+  /* ========================================================================
+     26. 루트 게이트 (설정 미입력 / 로그인 분기)
+     ======================================================================== */
+  const ConfigNeeded = () => (
+    <div className="app-shell flex flex-col items-center justify-center text-center p-8 bg-warm">
+      <div className="text-6xl mb-4">⚙️</div>
+      <h1 className="text-xl font-bold text-slate-800 dark:text-white">Firebase 설정을 먼저 입력해주세요</h1>
+      <p className="text-sm text-slate-500 dark:text-slate-400 mt-3 leading-relaxed">
+        이 HTML 파일 상단의 <code className="bg-slate-100 dark:bg-slate-700 px-1 rounded">firebaseConfig</code> 에<br />
+        Firebase 콘솔의 프로젝트 설정값을 붙여넣으면<br />바로 동작합니다.
+      </p>
+      <p className="text-xs text-slate-400 mt-4">콘솔 → 프로젝트 설정 → 일반 → 내 앱 → SDK 설정 및 구성</p>
+    </div>
+  );
+
+  const Root = () => {
+    const { user } = useAuth();
+    if (user === undefined) return <div className="app-shell flex items-center justify-center bg-warm"><Spinner label="불러오는 중..." /></div>;
+    if (!user) return <Login />;
+    return (
+      <BabyProvider>
+        <MainApp />
+      </BabyProvider>
+    );
+  };
+
+  /* ========================================================================
+     27. 렌더
+     ======================================================================== */
+  // 한 화면의 오류가 앱 전체를 끄지 않도록 보호
+  class ErrorBoundary extends React.Component {
+    constructor(p) { super(p); this.state = { err: null }; }
+    static getDerivedStateFromError(err) { return { err }; }
+    componentDidCatch(err, info) { console.error("ErrorBoundary:", err, info); }
+    render() {
+      if (this.state.err) {
+        return (
+          <div className="app-shell flex flex-col items-center justify-center text-center p-8 bg-warm" style={{ minHeight: "100vh" }}>
+            <div className="text-5xl mb-3">🙏</div>
+            <p className="font-bold text-slate-800 dark:text-white">일시적인 오류가 발생했어요</p>
+            <pre className="text-[11px] text-slate-400 mt-2 whitespace-pre-wrap max-w-full overflow-auto">{(this.state.err && (this.state.err.message || String(this.state.err)))}</pre>
+            <button onClick={() => this.setState({ err: null })} className="mt-4 px-5 py-3 rounded-xl bg-teal-500 text-white">다시 시도</button>
+            <button onClick={() => location.reload()} className="mt-2 px-5 py-2 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-sm">새로고침</button>
+          </div>
+        );
+      }
+      return this.props.children;
+    }
+  }
+
+  const App = () => {
+    if (!fbReady) return <ToastProvider><ConfigNeeded /></ToastProvider>;
+    return (
+      <ErrorBoundary>
+        <ToastProvider>
+          <AuthProvider>
+            <Root />
+          </AuthProvider>
+        </ToastProvider>
+      </ErrorBoundary>
+    );
+  };
+
+  ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+  </script>
+</body>
+</html>
