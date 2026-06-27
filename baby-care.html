@@ -480,11 +480,16 @@
         const wantAdmin = isAdminEmail(u.email);
         try {
           if (!snap.exists) {
+            // 새 계정(자가 회원가입): 관람전용 + 승인대기. 관리자 이메일은 즉시 관리자.
             const name = (u.email || "").split("@")[0];
-            await ref.set({ email: u.email, name, role: wantAdmin ? "admin" : "member", disabled: false, createdAt: TS() });
+            await ref.set({
+              email: u.email, name,
+              role: wantAdmin ? "admin" : "viewer",
+              approved: wantAdmin ? true : false,
+              disabled: false, createdAt: TS(),
+            });
           } else if (wantAdmin && snap.data().role !== "admin") {
-            // 기존에 구성원으로 저장돼 있어도 자동 복구
-            await ref.update({ role: "admin" });
+            await ref.update({ role: "admin", approved: true });
           }
         } catch (e) { console.warn("프로필 동기화 실패:", e.code); }
       });
@@ -498,10 +503,12 @@
       return () => unsub(); // 언마운트 시 리스너 해제 (시니어 검토 #7)
     }, [user && user.uid]);
 
-    // 클라이언트 관리자 판정: Firestore role 또는 ADMIN_EMAILS 둘 중 하나면 관리자
+    // 클라이언트 관리자 판정: Firestore role 또는 ADMIN_EMAILS 둘 중 하나면 관리자(=총관리자)
     const isAdmin = (profile && profile.role === "admin") || (user && isAdminEmail(user.email));
+    // 승인 여부: 관리자거나, approved가 명시적으로 false가 아니면 승인됨(기존 계정 호환)
+    const approved = isAdmin || (profile && profile.approved !== false);
 
-    return <AuthCtx.Provider value={{ user, profile, isAdmin }}>{children}</AuthCtx.Provider>;
+    return <AuthCtx.Provider value={{ user, profile, isAdmin, approved }}>{children}</AuthCtx.Provider>;
   };
 
   /* ========================================================================
@@ -594,8 +601,10 @@
      ======================================================================== */
   const Login = () => {
     const toast = useToast();
+    const [mode, setMode] = useState("login"); // login | signup
     const [email, setEmail] = useState("");
     const [pw, setPw] = useState("");
+    const [name, setName] = useState("");
     const [err, setErr] = useState("");
     const [busy, setBusy] = useState(false);
 
@@ -603,7 +612,17 @@
       e.preventDefault();
       setErr(""); setBusy(true);
       try {
-        await auth.signInWithEmailAndPassword(email.trim(), pw);
+        if (mode === "signup") {
+          if (!name.trim()) { setErr("닉네임을 입력해주세요."); setBusy(false); return; }
+          const cred = await auth.createUserWithEmailAndPassword(email.trim(), pw);
+          // 가입 즉시 관람전용 + 승인대기로 프로필 생성
+          await COL.users().doc(cred.user.uid).set({
+            email: email.trim(), name: name.trim(), role: "viewer", approved: false, disabled: false, createdAt: TS(),
+          }, { merge: true });
+          toast("가입 완료! 관리자 승인 후 이용할 수 있어요.", "success");
+        } else {
+          await auth.signInWithEmailAndPassword(email.trim(), pw);
+        }
       } catch (ex) {
         setErr(errMsg(ex));
       } finally { setBusy(false); }
@@ -622,22 +641,36 @@
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">우리 가족이 함께 쓰는 육아 기록</p>
         </div>
         <Card className="p-6">
+          {/* 로그인 / 회원가입 전환 탭 */}
+          <div className="flex gap-2 mb-5 bg-slate-100 dark:bg-slate-700 rounded-xl p-1">
+            {[{ v: "login", l: "로그인" }, { v: "signup", l: "회원가입" }].map((t) => (
+              <button key={t.v} type="button" onClick={() => { setMode(t.v); setErr(""); }}
+                className={`flex-1 py-2 rounded-lg text-sm font-medium ${mode === t.v ? "bg-white dark:bg-slate-800 text-teal-600 shadow-sm" : "text-slate-500"}`}>{t.l}</button>
+            ))}
+          </div>
           <form onSubmit={submit} className="space-y-4">
+            {mode === "signup" && (
+              <Field label="닉네임">
+                <input className={inputCls} value={name} onChange={(e) => setName(e.target.value)} placeholder="예: 이모, 삼촌" maxLength={20} />
+              </Field>
+            )}
             <Field label="이메일">
               <input className={inputCls} type="email" autoComplete="username" inputMode="email"
-                value={email} onChange={(e) => setEmail(e.target.value)} placeholder="mom@baby.app" aria-label="이메일" />
+                value={email} onChange={(e) => setEmail(e.target.value)} placeholder="email@example.com" aria-label="이메일" />
             </Field>
             <Field label="비밀번호">
-              <input className={inputCls} type="password" autoComplete="current-password"
-                value={pw} onChange={(e) => setPw(e.target.value)} placeholder="비밀번호" aria-label="비밀번호" />
+              <input className={inputCls} type="password" autoComplete={mode === "signup" ? "new-password" : "current-password"}
+                value={pw} onChange={(e) => setPw(e.target.value)} placeholder={mode === "signup" ? "6자 이상" : "비밀번호"} aria-label="비밀번호" />
             </Field>
             {err && <p role="alert" className="text-sm text-rose-500 bg-rose-50 dark:bg-rose-900/30 rounded-lg px-3 py-2">⚠️ {err}</p>}
-            <Btn type="submit" disabled={busy} className="w-full">{busy ? "로그인 중..." : "로그인"}</Btn>
-            <button type="button" onClick={resetPw} className="w-full text-sm text-slate-400 hover:text-teal-500 pt-1">비밀번호를 잊으셨나요?</button>
+            <Btn type="submit" disabled={busy} className="w-full">{busy ? "처리 중..." : (mode === "signup" ? "회원가입 신청" : "로그인")}</Btn>
+            {mode === "login" && <button type="button" onClick={resetPw} className="w-full text-sm text-slate-400 hover:text-teal-500 pt-1">비밀번호를 잊으셨나요?</button>}
           </form>
         </Card>
         <p className="text-center text-xs text-slate-400 mt-6 leading-relaxed">
-          가족 계정으로 로그인하세요.<br/>계정은 관리자(admin@baby.app)가 설정 탭에서 추가합니다.
+          {mode === "signup"
+            ? "가입하면 관리자 승인 후 사용할 수 있어요.\n처음엔 사진 관람만 가능하며, 관리자가 권한을 올려줄 수 있어요."
+            : "이메일·비밀번호는 이 기기에 저장돼 다음에 자동 로그인됩니다."}
         </p>
       </div>
     );
@@ -723,7 +756,6 @@
     const { profile } = useAuth();
     const baby = useBaby();
     const toast = useToast();
-    const [nickOpen, setNickOpen] = useState(false);
     return (
       <header className="sticky top-0 z-30 bg-white/90 dark:bg-slate-800/90 backdrop-blur border-b border-slate-100 dark:border-slate-700">
         <div className="px-4 h-14 flex items-center justify-between">
@@ -737,14 +769,11 @@
           <div className="flex items-center gap-1">
             <button onClick={() => setDark(!dark)} aria-label={dark ? "라이트 모드로 전환" : "다크 모드로 전환"}
               className="w-10 h-10 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 text-xl">{dark ? "☀️" : "🌙"}</button>
-            <button onClick={() => setNickOpen(true)} aria-label="닉네임 설정" className="text-right mr-1">
-              <p className="text-xs font-medium text-slate-600 dark:text-slate-300 leading-tight">{profile ? profile.name : "..."} ✏️</p>
-            </button>
+            <span className="text-xs font-medium text-slate-600 dark:text-slate-300 leading-tight mr-1 truncate max-w-[90px]">{profile ? profile.name : "..."}</span>
             <button onClick={() => { auth.signOut(); toast("로그아웃 되었습니다."); }} aria-label="로그아웃"
               className="text-xs px-2.5 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300">로그아웃</button>
           </div>
         </div>
-        <NicknameModal open={nickOpen} onClose={() => setNickOpen(false)} />
       </header>
     );
   };
@@ -1667,6 +1696,7 @@
      16. 육아 기록 탭 (서브탭 라우팅)
      ======================================================================== */
   const Records = ({ sub, setSub, openUpload }) => {
+    const { isAdmin } = useAuth();
     const tabs = [
       { id: "feeding", label: "🍼 수유" }, { id: "sleep", label: "😴 수면" },
       { id: "diaper", label: "👶 기저귀" }, { id: "growth", label: "📏 성장" },
@@ -1689,7 +1719,7 @@
         {sub === "growth" && <GrowthTracker />}
         {sub === "health" && <HealthLog />}
         {sub === "prenatal" && <PrenatalTracker openUpload={openUpload} />}
-        <ActivityFeed limit={8} />
+        {isAdmin && <ActivityFeed limit={8} />}
       </div>
     );
   };
@@ -1784,6 +1814,7 @@
     const [place, setPlace] = useState("");       // 장소/지역 (검색용)
     const [takenAt, setTakenAt] = useState("");   // 촬영 시각 (EXIF 우선)
     const [gps, setGps] = useState(null);         // {lat,lng}
+    const [vis, setVis] = useState("public");     // public(전체공개) | private(나만보기)
     const [familyNames, setFamilyNames] = useState([]);
     const [progress, setProgress] = useState(null); // {done,total,pct}
     const inputRef = useRef();
@@ -1792,7 +1823,7 @@
     useEffect(() => {
       if (!open) return;
       setFiles([]); setCaption(""); setCategory(defaultCategory); setProgress(null);
-      setPeople([]); setPersonInput(""); setPlace(""); setTakenAt(toLocalInput(new Date())); setGps(null);
+      setPeople([]); setPersonInput(""); setPlace(""); setTakenAt(toLocalInput(new Date())); setGps(null); setVis("public");
       // 가족 이름 후보 불러오기 (인물 태그용)
       COL.users().get().then((s) => setFamilyNames(s.docs.map((d) => d.data().name).filter(Boolean)))
         .catch(() => setFamilyNames([]));
@@ -1841,7 +1872,7 @@
             placeLower: (place || "").toLowerCase(),
             gps: perMeta.gps || null,
             takenAt: perMeta.takenAt || takenDate,
-            likeCount: 0, createdAt: TS(),
+            vis, likeCount: 0, createdAt: TS(),
           });
           setProgress({ done: i, total: files.length, pct: 100 });
         }
@@ -1880,6 +1911,11 @@
           <ChipGroup label="카테고리" value={category} onChange={setCategory}
             options={[{ value: "ultrasound", label: "초음파" }, { value: "baby", label: "아기사진" }, { value: "milestone", label: "성장기록" }]} />
           <Field label="캡션"><input className={inputCls} value={caption} onChange={(e) => setCaption(e.target.value)} placeholder="사진 설명" /></Field>
+
+          {/* 공개 범위 */}
+          <ChipGroup label="공개 범위" value={vis} onChange={setVis}
+            options={[{ value: "public", label: "🌐 전체공개" }, { value: "private", label: "🔒 나만보기" }]} />
+          <p className="text-[11px] text-slate-400 -mt-1">나만보기는 본인과 관리자(엄마·아빠)만 볼 수 있어요.</p>
 
           {/* 함께한 사람 (인물 태그) */}
           <div>
@@ -1942,6 +1978,10 @@
   // 좋아요는 사진 문서의 likedBy 배열로 관리 (색인/추가 규칙 불필요, 동시성 안전)
   const isLikedBy = (photo, uid) => !!photo && (photo.likedBy || []).includes(uid);
   const likeCountOf = (photo) => (photo && photo.likedBy ? photo.likedBy.length : (photo && photo.likeCount) || 0);
+  // 공개 범위: 관리자/작성자/본인 또는 전체공개(기본)면 볼 수 있음 (이전 데이터는 vis 없음 → 공개 취급)
+  const canSeePhoto = (p, uid, isAdmin) => !!p && (isAdmin || p.uploadedBy === uid || (p.vis || "public") !== "private");
+  const canSeeLetter = (l, uid, isAdmin) => !!l && (isAdmin || l.createdBy === uid || (l.vis || "public") !== "private");
+  const isPrivate = (x) => x && x.vis === "private";
 
   const useMySaved = (uid) => {
     const [saved, setSaved] = useState(new Set());
@@ -1983,6 +2023,7 @@
     const liked = isLikedBy(photo, uid);
     return (
       <div className="relative group">
+        {isPrivate(photo) && <span className="absolute top-1 left-1 z-10 text-[10px] bg-black/55 text-white rounded-full px-1.5 py-0.5" title="나만보기">🔒</span>}
         <button onClick={onOpen} className="block w-full" aria-label={`${photo.uploaderName}님의 사진 열기`}>
           <img src={photo.url} alt={photo.caption || `${photo.uploaderName}님이 올린 사진`} loading="lazy"
             className="w-full aspect-square object-cover rounded-xl bg-slate-100 dark:bg-slate-700" />
@@ -2013,7 +2054,7 @@
   };
 
   const Gallery = ({ openUpload, canUpload = true }) => {
-    const { user } = useAuth();
+    const { user, isAdmin } = useAuth();
     const [lim, setLim] = useState(60);          // 무한스크롤: 60장씩 늘려가며 로딩
     const photos = usePhotos(lim);
     const [cat, setCat] = useState("all");
@@ -2021,11 +2062,19 @@
     const [q, setQ] = useState("");
     const [from, setFrom] = useState("");
     const [to, setTo] = useState("");
+    const [uploader, setUploader] = useState("all"); // 관리자 업로더별 필터
     const [detail, setDetail] = useState(null); // index
     const [showSlide, setShowSlide] = useState(false);
     const { saved } = useMySaved(user.uid);
     const sentinel = useRef(null);
     const canMore = photos && photos.length >= lim; // 더 있을 가능성
+
+    // 관리자용: 업로더 목록
+    const uploaders = useMemo(() => {
+      const m = new Map();
+      (photos || []).forEach((p) => { if (p.uploadedBy) m.set(p.uploadedBy, p.uploaderName || "이름없음"); });
+      return [...m.entries()];
+    }, [photos]);
 
     // 바닥 근처에 닿으면 더 로딩
     useEffect(() => {
@@ -2039,7 +2088,10 @@
 
     const list = useMemo(() => {
       if (!photos) return [];
-      let l = cat === "all" ? photos : photos.filter((p) => p.category === cat);
+      // 공개 범위 필터 (나만보기는 본인·관리자만)
+      let l = photos.filter((p) => canSeePhoto(p, user.uid, isAdmin));
+      if (cat !== "all") l = l.filter((p) => p.category === cat);
+      if (isAdmin && uploader !== "all") l = l.filter((p) => p.uploadedBy === uploader);
       const kw = q.trim().toLowerCase();
       if (kw) {
         l = l.filter((p) =>
@@ -2055,7 +2107,7 @@
       if (sort === "likes") l = [...l].sort((a, b) => likeCountOf(b) - likeCountOf(a));
       else l = [...l].sort((a, b) => (toDate(b.takenAt || b.createdAt) - toDate(a.takenAt || a.createdAt)));
       return l;
-    }, [photos, cat, sort, q, from, to]);
+    }, [photos, cat, sort, q, from, to, uploader, isAdmin, user.uid]);
 
     const cats = [{ v: "all", l: "전체" }, { v: "ultrasound", l: "초음파" }, { v: "baby", l: "아기사진" }, { v: "milestone", l: "성장기록" }];
 
@@ -2088,6 +2140,15 @@
             {sort === "recent" ? "최신순 ↓" : "좋아요순 ❤️"}
           </button>
         </div>
+
+        {/* 관리자: 업로더별 보기 */}
+        {isAdmin && uploaders.length > 0 && (
+          <select value={uploader} onChange={(e) => setUploader(e.target.value)} aria-label="업로더별 보기"
+            className={inputCls + " py-2 text-sm"}>
+            <option value="all">👥 전체 업로더</option>
+            {uploaders.map(([uid, nm]) => <option key={uid} value={uid}>{nm}</option>)}
+          </select>
+        )}
 
         {!photos ? <Spinner /> : list.length === 0 ? (
           <Card className="p-8 text-center text-sm text-slate-400">{q || from || to ? "검색 결과가 없어요." : <>아직 사진이 없어요.<br />아래 + 버튼으로 추가해보세요.</>}</Card>
@@ -2122,23 +2183,39 @@
      20-b. 슬라이드쇼 (최신 + 좋아요 많은 사진 30장, 각 1분, 크로스페이드)
      ======================================================================== */
   const SLIDE_OPTIONS = [{ ms: 10000, label: "10초" }, { ms: 30000, label: "30초" }, { ms: 60000, label: "1분" }];
+  const SLIDE_REFRESH_MS = 10 * 60 * 1000; // 10분마다 새 사진 반영
   const buildSlideDeck = (photos) => {
     if (!photos || photos.length === 0) return [];
-    const byRecent = [...photos].sort((a, b) => toDate(b.takenAt || b.createdAt) - toDate(a.takenAt || a.createdAt)).slice(0, 20);
-    const byLikes = [...photos].sort((a, b) => likeCountOf(b) - likeCountOf(a)).slice(0, 15);
+    const pub = photos.filter((p) => !isPrivate(p)); // 전체공개 사진만 (나만보기 제외)
+    if (pub.length === 0) return [];
+    const byRecent = [...pub].sort((a, b) => toDate(b.takenAt || b.createdAt) - toDate(a.takenAt || a.createdAt)).slice(0, 20);
+    const byLikes = [...pub].sort((a, b) => likeCountOf(b) - likeCountOf(a)).slice(0, 15);
     const map = new Map();
     [...byRecent, ...byLikes].forEach((p) => map.set(p.id, p)); // 중복 제거(최신 우선)
     return [...map.values()].slice(0, 30);
   };
 
   const Slideshow = ({ photos, onClose }) => {
-    const deck = useMemo(() => buildSlideDeck(photos), [photos]);
+    // 덱은 10분마다만 갱신 (재생 중 사진 추가돼도 끊김 없이, 10분 뒤 반영)
+    const [deck, setDeck] = useState([]);
+    const photosRef = useRef(photos);
+    useEffect(() => { photosRef.current = photos; }, [photos]);
+    useEffect(() => { // 최초 사진 도착 시 1회 빌드
+      if (photos && photos.length && deck.length === 0) setDeck(buildSlideDeck(photos));
+    }, [photos, deck.length]);
+    useEffect(() => { // 10분 주기 갱신
+      const id = setInterval(() => { const d = buildSlideDeck(photosRef.current); if (d.length) setDeck(d); }, SLIDE_REFRESH_MS);
+      return () => clearInterval(id);
+    }, []);
+
     const [idx, setIdx] = useState(0);
     const [prevIdx, setPrevIdx] = useState(null);
     const [paused, setPaused] = useState(false);
     const [progress, setProgress] = useState(0);
     const [dur, setDur] = useState(() => Number(localStorage.getItem("baby-slide-ms")) || 30000);
     const rootRef = useRef(null);
+    // 덱 갱신으로 인덱스가 범위를 벗어나면 보정
+    useEffect(() => { if (idx >= deck.length && deck.length > 0) setIdx(0); }, [deck.length, idx]);
 
     const setDuration = (ms) => { setDur(ms); localStorage.setItem("baby-slide-ms", String(ms)); setProgress(0); };
 
@@ -2193,14 +2270,15 @@
     if (deck.length === 0) {
       return (
         <div className="fixed inset-0 z-[60] bg-black flex flex-col items-center justify-center text-white gap-4">
-          <p>표시할 사진이 없어요.</p>
+          <p>{photos == null ? "불러오는 중..." : "표시할 전체공개 사진이 없어요."}</p>
           <Btn variant="ghost" onClick={onClose}>닫기</Btn>
         </div>
       );
     }
 
-    const cur = deck[idx];
+    const cur = deck[idx] || deck[0];
     const prev = prevIdx != null ? deck[prevIdx] : null;
+    if (!cur) return null;
     const meta = [cur.uploaderName, (cur.people || []).join(", "), cur.place, fmtDate(cur.takenAt || cur.createdAt)].filter(Boolean).join(" · ");
 
     return (
@@ -2337,12 +2415,14 @@
     const [people, setPeople] = useState([]);
     const [personInput, setPersonInput] = useState("");
     const [place, setPlace] = useState("");
+    const [vis, setVis] = useState("public");
     const [busy, setBusy] = useState(false);
 
     useEffect(() => {
       if (!open || !photo) return;
       setCaption(photo.caption || ""); setCategory(photo.category || "baby");
       setPeople(photo.people || []); setPersonInput(""); setPlace(photo.place || "");
+      setVis(photo.vis === "private" ? "private" : "public");
     }, [open, photo && photo.id]);
 
     const addPerson = () => {
@@ -2354,7 +2434,7 @@
       setBusy(true);
       try {
         await COL.photos().doc(photo.id).update({
-          caption, category, people, place, placeLower: (place || "").toLowerCase(),
+          caption, category, people, place, placeLower: (place || "").toLowerCase(), vis,
         });
         toast("사진 정보를 수정했어요.", "success");
         onClose();
@@ -2364,6 +2444,8 @@
     return (
       <Modal open={open} onClose={onClose} title="✏️ 사진 정보 수정">
         <div className="space-y-4">
+          <ChipGroup label="공개 범위" value={vis} onChange={setVis}
+            options={[{ value: "public", label: "🌐 전체공개" }, { value: "private", label: "🔒 나만보기" }]} />
           <ChipGroup label="카테고리" value={category} onChange={setCategory}
             options={[{ value: "ultrasound", label: "초음파" }, { value: "baby", label: "아기사진" }, { value: "milestone", label: "성장기록" }]} />
           <Field label="캡션"><input className={inputCls} value={caption} onChange={(e) => setCaption(e.target.value)} placeholder="사진 설명" /></Field>
@@ -2395,7 +2477,7 @@
      22. 내 저장 탭
      ======================================================================== */
   const Saved = () => {
-    const { user } = useAuth();
+    const { user, isAdmin } = useAuth();
     const { docs } = useMySaved(user.uid);
     const [photos, setPhotos] = useState({}); // id -> 최신 photo
     const [detail, setDetail] = useState(null);
@@ -2413,7 +2495,7 @@
       return () => { active = false; };
     }, [docs.map((d) => d.id).join(",")]);
 
-    const list = docs.map((d) => photos[d.photoRef || d.id]).filter(Boolean);
+    const list = docs.map((d) => photos[d.photoRef || d.id]).filter(Boolean).filter((p) => canSeePhoto(p, user.uid, isAdmin));
     const savedSet = new Set(docs.map((d) => d.id));
 
     return (
@@ -2441,7 +2523,8 @@
      ======================================================================== */
   const Letters = () => {
     const { user, profile, isAdmin } = useAuth();
-    const items = useRecords("letter", 100);
+    const all = useRecords("letter", 100);
+    const items = all && all.filter((l) => canSeeLetter(l, user.uid, isAdmin)); // 공개 범위 필터
     const [editorOpen, setEditorOpen] = useState(false);
     const [editing, setEditing] = useState(null); // 수정할 편지
     const [viewing, setViewing] = useState(null); // 열람할 편지
@@ -2469,11 +2552,11 @@
                   {l.image && <img src={l.image} alt="" className="w-full max-h-48 object-cover" />}
                   <div className="p-4">
                     <div className="flex items-center justify-between mb-1">
-                      <h3 className="font-bold text-slate-800 dark:text-white">{l.title || "(제목 없음)"}</h3>
+                      <h3 className="font-bold text-slate-800 dark:text-white">{isPrivate(l) && "🔒 "}{l.title || "(제목 없음)"}</h3>
                       {l.image && <span className="text-xs text-slate-300">🖼️</span>}
                     </div>
                     <p className="text-sm text-slate-500 dark:text-slate-300 line-clamp-2" style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{l.body}</p>
-                    <p className="text-[11px] text-slate-400 mt-2">💛 {l.creatorName} · {fmtDateTime(l.at)}</p>
+                    <p className="text-[11px] text-slate-400 mt-2">💛 {l.creatorName} · {fmtDateTime(l.at)}{isPrivate(l) && " · 나만보기"}</p>
                   </div>
                 </button>
               </Card>
@@ -2511,6 +2594,7 @@
     const [title, setTitle] = useState("");
     const [body, setBody] = useState("");
     const [image, setImage] = useState(null); // dataURL
+    const [vis, setVis] = useState("private"); // 편지는 기본 나만보기
     const [busy, setBusy] = useState(false);
     const fileRef = useRef();
     const camRef = useRef();
@@ -2520,6 +2604,7 @@
       setTitle((letter && letter.title) || "");
       setBody((letter && letter.body) || "");
       setImage((letter && letter.image) || null);
+      setVis(letter ? (letter.vis === "public" ? "public" : "private") : "private");
       setBusy(false);
     }, [open, letter && letter.id]);
 
@@ -2536,10 +2621,10 @@
       setBusy(true);
       try {
         if (letter) {
-          await COL.records().doc(letter.id).update({ title, body, image: image || null });
+          await COL.records().doc(letter.id).update({ title, body, image: image || null, vis });
           toast("편지를 수정했어요.", "success");
         } else {
-          await addRecord("letter", { title, body, image: image || null, at: TS() }, user, profile);
+          await addRecord("letter", { title, body, image: image || null, vis, at: TS() }, user, profile);
           toast("편지를 남겼어요 💛", "success");
         }
         onClose();
@@ -2549,6 +2634,9 @@
     return (
       <Modal open={open} onClose={onClose} title={letter ? "✏️ 편지 수정" : "💌 편지 쓰기"}>
         <div className="space-y-4">
+          <ChipGroup label="공개 범위" value={vis} onChange={setVis}
+            options={[{ value: "private", label: "🔒 나만보기" }, { value: "public", label: "🌐 전체공개" }]} />
+          <p className="text-[11px] text-slate-400 -mt-1">나만보기는 본인과 관리자(엄마·아빠)만 볼 수 있어요.</p>
           <Field label="제목"><input className={inputCls} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="사랑하는 우리 아기에게" /></Field>
           <Field label="내용">
             <textarea className={inputCls} rows="7" value={body} onChange={(e) => setBody(e.target.value)} placeholder="오늘 너에게 하고 싶은 이야기를 적어보세요..." />
@@ -2618,6 +2706,10 @@
       try { await auth.sendPasswordResetEmail(u.email); toast(`${u.name}님께 재설정 메일 발송`, "success"); }
       catch (e) { toast(errMsg(e), "error"); }
     };
+    const approveUser = async (u, role) => {
+      try { await COL.users().doc(u.uid).update({ approved: true, disabled: false, role: role || u.role || "viewer" }); toast(`${u.name}님을 승인했어요.`, "success"); }
+      catch (e) { toast(errMsg(e), "error"); }
+    };
 
     return (
       <div className="p-4 space-y-4 pb-safe">
@@ -2639,10 +2731,8 @@
         <Card className="p-4 space-y-3">
           <h3 className="font-bold text-slate-800 dark:text-white">아기 정보 {isAdmin ? "" : "(관리자만 수정)"}</h3>
           <Field label="이름"><input className={inputCls} value={babyForm.name} disabled={!isAdmin} onChange={(e) => setBabyForm({ ...babyForm, name: e.target.value })} /></Field>
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="출생일"><input className={inputCls} type="date" value={babyForm.birthDate} disabled={!isAdmin} onChange={(e) => setBabyForm({ ...babyForm, birthDate: e.target.value })} /></Field>
-            <Field label="출산 예정일"><input className={inputCls} type="date" value={babyForm.dueDate} disabled={!isAdmin} onChange={(e) => setBabyForm({ ...babyForm, dueDate: e.target.value })} /></Field>
-          </div>
+          <Field label="출산 예정일"><input className={inputCls + " w-full"} type="date" value={babyForm.dueDate} disabled={!isAdmin} onChange={(e) => setBabyForm({ ...babyForm, dueDate: e.target.value })} /></Field>
+          <Field label="출생일 (태어난 뒤 입력)"><input className={inputCls + " w-full"} type="date" value={babyForm.birthDate} disabled={!isAdmin} onChange={(e) => setBabyForm({ ...babyForm, birthDate: e.target.value })} /></Field>
           {isAdmin ? (
             <ChipGroup label="성별 (WHO 성장곡선용)" value={babyForm.sex} onChange={(v) => setBabyForm({ ...babyForm, sex: v })}
               options={[{ value: "male", label: "👦 남아" }, { value: "female", label: "👧 여아" }]} />
@@ -2656,37 +2746,51 @@
         {isAdmin && (
           <Card className="p-4 space-y-3">
             <div className="flex items-center justify-between">
-              <h3 className="font-bold text-slate-800 dark:text-white">계정 관리</h3>
+              <h3 className="font-bold text-slate-800 dark:text-white">계정 관리 <span className="text-[11px] font-normal text-slate-400">(총관리자=엄마·아빠)</span></h3>
               <Btn onClick={() => setAddOpen(true)} className="text-sm py-2 px-3">+ 계정 추가</Btn>
             </div>
             {!users ? <Spinner /> : (
               <ul className="space-y-2">
-                {users.map((u) => (
-                  <li key={u.uid} className="border border-slate-100 dark:border-slate-700 rounded-xl p-3">
+                {[...users].sort((a, b) => (a.approved === false ? -1 : 1) - (b.approved === false ? -1 : 1)).map((u) => {
+                  const pending = u.approved === false && u.role !== "admin";
+                  return (
+                  <li key={u.uid} className={`border rounded-xl p-3 ${pending ? "border-amber-300 bg-amber-50/50 dark:bg-amber-900/20" : "border-slate-100 dark:border-slate-700"}`}>
                     <div className="flex items-center justify-between">
                       <div className="min-w-0">
-                        <p className="font-medium text-slate-800 dark:text-white truncate">{u.name} {u.disabled && <span className="text-xs text-rose-400">(비활성)</span>}</p>
+                        <p className="font-medium text-slate-800 dark:text-white truncate">{u.name} {u.disabled && <span className="text-xs text-rose-400">(차단됨)</span>}</p>
                         <p className="text-xs text-slate-400 truncate">{u.email}</p>
                       </div>
-                      <span className={`text-xs px-2 py-0.5 rounded-full ${u.role === "admin" ? "bg-violet-100 text-violet-600 dark:bg-violet-900/40" : u.role === "viewer" ? "bg-amber-100 text-amber-600 dark:bg-amber-900/40" : "bg-slate-100 text-slate-500 dark:bg-slate-700"}`}>{roleLabel(u.role)}</span>
+                      <span className={`text-xs px-2 py-0.5 rounded-full whitespace-nowrap ${pending ? "bg-amber-200 text-amber-700" : u.role === "admin" ? "bg-violet-100 text-violet-600 dark:bg-violet-900/40" : u.role === "viewer" ? "bg-amber-100 text-amber-600 dark:bg-amber-900/40" : "bg-slate-100 text-slate-500 dark:bg-slate-700"}`}>{pending ? "승인대기" : roleLabel(u.role)}</span>
                     </div>
-                    <div className="mt-2">
-                      <span className="block text-[11px] text-slate-400 mb-1">등급</span>
-                      <div className="flex gap-1.5">
-                        {["member", "admin", "viewer"].map((r) => (
-                          <button key={r} onClick={() => setRole(u, r)}
-                            className={`text-xs px-2.5 py-1.5 rounded-lg border ${u.role === r ? "bg-teal-500 border-teal-500 text-white" : "bg-white dark:bg-slate-700 border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300"}`}>
-                            {roleLabel(r)}
-                          </button>
-                        ))}
+
+                    {pending ? (
+                      <div className="flex flex-wrap gap-1.5 mt-2">
+                        <button onClick={() => approveUser(u, "viewer")} className="text-xs px-3 py-1.5 rounded-lg bg-teal-500 text-white font-medium">✓ 관람전용 승인</button>
+                        <button onClick={() => approveUser(u, "member")} className="text-xs px-3 py-1.5 rounded-lg bg-violet-400 text-white font-medium">✓ 구성원 승인</button>
+                        <button onClick={() => toggleDisabled(u)} className="text-xs px-3 py-1.5 rounded-lg bg-rose-100 text-rose-500">거절(차단)</button>
                       </div>
-                    </div>
-                    <div className="flex flex-wrap gap-1.5 mt-2">
-                      <button onClick={() => resetPw(u)} className="text-xs px-2.5 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300">비번 재설정</button>
-                      <button onClick={() => toggleDisabled(u)} className="text-xs px-2.5 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300">{u.disabled ? "활성화" : "비활성화"}</button>
-                    </div>
+                    ) : (
+                      <>
+                        <div className="mt-2">
+                          <span className="block text-[11px] text-slate-400 mb-1">등급</span>
+                          <div className="flex gap-1.5">
+                            {["viewer", "member", "admin"].map((r) => (
+                              <button key={r} onClick={() => setRole(u, r)}
+                                className={`text-xs px-2.5 py-1.5 rounded-lg border ${u.role === r ? "bg-teal-500 border-teal-500 text-white" : "bg-white dark:bg-slate-700 border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300"}`}>
+                                {roleLabel(r)}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="flex flex-wrap gap-1.5 mt-2">
+                          <button onClick={() => resetPw(u)} className="text-xs px-2.5 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300">비번 재설정</button>
+                          <button onClick={() => toggleDisabled(u)} className="text-xs px-2.5 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300">{u.disabled ? "차단 해제" : "차단"}</button>
+                        </div>
+                      </>
+                    )}
                   </li>
-                ))}
+                  );
+                })}
               </ul>
             )}
             <p className="text-[11px] text-slate-400 leading-relaxed">
@@ -2718,7 +2822,7 @@
         secondary = firebase.initializeApp(firebaseConfig, "secondary_" + Date.now());
         const cred = await secondary.auth().createUserWithEmailAndPassword(f.email.trim(), f.pw);
         await COL.users().doc(cred.user.uid).set({
-          email: f.email.trim(), name: f.name, role: f.role, disabled: false, createdAt: TS(),
+          email: f.email.trim(), name: f.name, role: f.role, approved: true, disabled: false, createdAt: TS(),
         });
         await secondary.auth().signOut();
         toast(`${f.name} 계정을 생성했어요.`, "success");
@@ -2778,7 +2882,7 @@
      25. 메인 앱 셸
      ======================================================================== */
   const MainApp = () => {
-    const { profile, isAdmin } = useAuth();
+    const { profile, isAdmin, approved } = useAuth();
     const [dark, setDark] = useDarkMode();
     const [tab, setTab] = useState("dashboard");
     const [recSub, setRecSub] = useState("feeding");
@@ -2795,6 +2899,19 @@
           <div className="text-5xl mb-3">🚫</div>
           <p className="text-slate-700 dark:text-white font-bold">비활성화된 계정입니다.</p>
           <p className="text-sm text-slate-400 mt-1">관리자에게 문의하세요.</p>
+          <Btn variant="ghost" className="mt-5" onClick={() => auth.signOut()}>로그아웃</Btn>
+        </div>
+      );
+    }
+
+    // 승인 대기 (자가 회원가입 후 관리자 승인 전)
+    if (profile && !approved) {
+      return (
+        <div className="app-shell flex flex-col items-center justify-center text-center p-8 bg-warm">
+          <div className="text-5xl mb-3">⏳</div>
+          <p className="text-slate-700 dark:text-white font-bold">승인 대기 중이에요</p>
+          <p className="text-sm text-slate-400 mt-2 leading-relaxed">관리자(엄마·아빠)가 승인하면<br />바로 사용할 수 있어요.<br />승인 후 다시 들어오면 됩니다.</p>
+          <p className="text-xs text-slate-400 mt-3">{profile.name} · {profile.email}</p>
           <Btn variant="ghost" className="mt-5" onClick={() => auth.signOut()}>로그아웃</Btn>
         </div>
       );
