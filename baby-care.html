@@ -258,6 +258,18 @@
   const ROLE_LABEL = { admin: "관리자", member: "구성원", viewer: "관람전용" };
   const roleLabel = (r) => ROLE_LABEL[r] || "구성원";
 
+  // 🏅 메달(성과): 접속 일수 / 편지 횟수 기준
+  const MEDALS = [
+    { id: "login3", icon: "🌱", name: "첫 발걸음", type: "login", goal: 3, desc: "3일 접속" },
+    { id: "login10", icon: "🔥", name: "꾸준한 사랑", type: "login", goal: 10, desc: "10일 접속" },
+    { id: "login30", icon: "👑", name: "한결같은 마음", type: "login", goal: 30, desc: "30일 접속" },
+    { id: "letter1", icon: "💌", name: "첫 편지", type: "letter", goal: 1, desc: "편지 1회" },
+    { id: "letter10", icon: "✍️", name: "편지왕", type: "letter", goal: 10, desc: "편지 10회" },
+    { id: "letter30", icon: "🏆", name: "마음 부자", type: "letter", goal: 30, desc: "편지 30회" },
+  ];
+  const medalStats = (u) => ({ login: (u && u.loginDays ? u.loginDays.length : 0), letter: (u && u.letterCount) || 0 });
+  const earnedMedals = (u) => { const s = medalStats(u); return MEDALS.filter((m) => s[m.type] >= m.goal); };
+
   // Firestore Timestamp ↔ JS Date 일관 변환 (시니어 검토 #9)
   const toDate = (v) => {
     if (!v) return null;
@@ -478,6 +490,7 @@
         const ref = COL.users().doc(u.uid);
         const snap = await ref.get();
         const wantAdmin = isAdminEmail(u.email);
+        const today = ymd(new Date());
         try {
           if (!snap.exists) {
             // 새 계정(자가 회원가입): 관람전용 + 승인대기. 관리자 이메일은 즉시 관리자.
@@ -486,10 +499,15 @@
               email: u.email, name,
               role: wantAdmin ? "admin" : "viewer",
               approved: wantAdmin ? true : false,
-              disabled: false, createdAt: TS(),
+              disabled: false, loginDays: [today], letterCount: 0, createdAt: TS(),
             });
-          } else if (wantAdmin && snap.data().role !== "admin") {
-            await ref.update({ role: "admin", approved: true });
+          } else {
+            // 접속일 기록(중복 없이) + 관리자 자동 승격
+            const data = snap.data();
+            const upd = {};
+            if (wantAdmin && data.role !== "admin") { upd.role = "admin"; upd.approved = true; }
+            if (!(data.loginDays || []).includes(today)) upd.loginDays = firebase.firestore.FieldValue.arrayUnion(today);
+            if (Object.keys(upd).length) await ref.update(upd);
           }
         } catch (e) { console.warn("프로필 동기화 실패:", e.code); }
       });
@@ -2517,6 +2535,32 @@
     );
   };
 
+  // 관리자 답장 입력 (편지 작성자와 관리자만 답장을 봄)
+  const ReplyBox = ({ letter, onSaved }) => {
+    const { profile } = useAuth();
+    const toast = useToast();
+    const [text, setText] = useState(letter.reply || "");
+    const [busy, setBusy] = useState(false);
+    useEffect(() => { setText(letter.reply || ""); }, [letter.id]);
+    const save = async () => {
+      if (!text.trim()) { toast("답장을 입력해주세요.", "error"); return; }
+      setBusy(true);
+      try {
+        const r = { reply: text.trim(), replyBy: (profile && profile.name) || "관리자", replyAt: TS() };
+        await COL.records().doc(letter.id).update(r);
+        toast("답장을 남겼어요 💜", "success");
+        onSaved && onSaved({ ...r, replyAt: new Date() });
+      } catch (e) { toast(errMsg(e), "error"); } finally { setBusy(false); }
+    };
+    return (
+      <div className="border-t border-slate-100 dark:border-slate-700 pt-3">
+        <p className="text-xs font-medium text-violet-500 mb-1.5">💜 답장 쓰기 (작성자만 볼 수 있어요)</p>
+        <textarea className={inputCls} rows="3" value={text} onChange={(e) => setText(e.target.value)} placeholder="따뜻한 답장을 남겨보세요..." />
+        <Btn variant="lavender" onClick={save} disabled={busy} className="w-full mt-2 text-sm py-2.5">{busy ? "저장 중..." : (letter.reply ? "답장 수정" : "답장 보내기")}</Btn>
+      </div>
+    );
+  };
+
   /* ========================================================================
      22-b. 💌 편지 (아기에게 보내는 편지 + 이미지 첨부)
         records 컬렉션에 type:"letter" 로 저장 (보안규칙/리스너 재사용)
@@ -2572,10 +2616,20 @@
               <h3 className="text-lg font-bold text-slate-800 dark:text-white">{viewing.title || "(제목 없음)"}</h3>
               <p className="text-[11px] text-slate-400">💛 {viewing.creatorName} · {fmtDateTime(viewing.at)}</p>
               <p className="text-sm text-slate-700 dark:text-slate-200 whitespace-pre-wrap leading-relaxed">{viewing.body}</p>
+
+              {/* 답장: 편지 작성자와 관리자만 볼 수 있음 */}
+              {viewing.reply && (isAdmin || viewing.createdBy === user.uid) && (
+                <div className="bg-violet-50 dark:bg-violet-900/20 rounded-xl p-3">
+                  <p className="text-[11px] text-violet-500 mb-1">💜 {viewing.replyBy || "관리자"}의 답장 · {fmtDateTime(viewing.replyAt)}</p>
+                  <p className="text-sm text-slate-700 dark:text-slate-200 whitespace-pre-wrap">{viewing.reply}</p>
+                </div>
+              )}
+              {isAdmin && <ReplyBox letter={viewing} onSaved={(r) => setViewing({ ...viewing, ...r })} />}
+
               {(isAdmin || viewing.createdBy === user.uid) && (
                 <div className="flex gap-2 pt-2">
                   <Btn variant="lavender" className="flex-1 text-sm py-2.5" onClick={() => { const l = viewing; setViewing(null); openEdit(l); }}>✏️ 수정</Btn>
-                  <Btn variant="danger" className="flex-1 text-sm py-2.5" onClick={() => { if (confirm("이 편지를 삭제할까요?")) { deleteRecord(viewing.id); setViewing(null); } }}>🗑️ 삭제</Btn>
+                  <Btn variant="danger" className="flex-1 text-sm py-2.5" onClick={() => { if (confirm("이 편지를 삭제할까요?")) { deleteRecord(viewing.id); if (viewing.createdBy) COL.users().doc(viewing.createdBy).update({ letterCount: firebase.firestore.FieldValue.increment(-1) }).catch(() => {}); setViewing(null); } }}>🗑️ 삭제</Btn>
                 </div>
               )}
             </div>
@@ -2625,6 +2679,8 @@
           toast("편지를 수정했어요.", "success");
         } else {
           await addRecord("letter", { title, body, image: image || null, vis, at: TS() }, user, profile);
+          // 편지 횟수 +1 (메달용)
+          await COL.users().doc(user.uid).update({ letterCount: firebase.firestore.FieldValue.increment(1) }).catch(() => {});
           toast("편지를 남겼어요 💛", "success");
         }
         onClose();
@@ -2665,6 +2721,43 @@
           <Btn onClick={save} disabled={busy} className="w-full">{busy ? "저장 중..." : (letter ? "수정 저장" : "편지 남기기")}</Btn>
         </div>
       </Modal>
+    );
+  };
+
+  /* ========================================================================
+     22-d. 🏅 메달 (성과 배지)
+     ======================================================================== */
+  const MedalGrid = ({ u }) => {
+    const s = medalStats(u);
+    return (
+      <div className="grid grid-cols-3 gap-2">
+        {MEDALS.map((m) => {
+          const val = s[m.type]; const got = val >= m.goal;
+          const pct = Math.min(100, Math.round((val / m.goal) * 100));
+          return (
+            <div key={m.id} className={`rounded-xl p-2 text-center border ${got ? "bg-amber-50 border-amber-200 dark:bg-amber-900/20 dark:border-amber-800" : "bg-slate-50 border-slate-100 dark:bg-slate-700/40 dark:border-slate-700"}`}>
+              <div className="text-2xl" style={got ? {} : { filter: "grayscale(1)", opacity: 0.45 }}>{m.icon}</div>
+              <p className="text-[11px] font-medium text-slate-700 dark:text-slate-200 mt-0.5 leading-tight">{m.name}</p>
+              <p className="text-[10px] text-slate-400">{m.desc}</p>
+              <div className="h-1 bg-slate-200 dark:bg-slate-600 rounded mt-1 overflow-hidden"><div className="h-full bg-amber-400" style={{ width: pct + "%" }} /></div>
+              <p className="text-[9px] text-slate-400 mt-0.5">{Math.min(val, m.goal)}/{m.goal}</p>
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+  const MyMedals = () => {
+    const { profile } = useAuth();
+    const s = medalStats(profile);
+    return (
+      <Card className="p-4">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-bold text-slate-800 dark:text-white">🏅 내 메달</h3>
+          <span className="text-xs text-slate-400">접속 {s.login}일 · 편지 {s.letter}회</span>
+        </div>
+        <MedalGrid u={profile} />
+      </Card>
     );
   };
 
@@ -2727,6 +2820,9 @@
         </Card>
         <NicknameModal open={nickOpen} onClose={() => setNickOpen(false)} />
 
+        {/* 내 메달 */}
+        <MyMedals />
+
         {/* 아기 정보 */}
         <Card className="p-4 space-y-3">
           <h3 className="font-bold text-slate-800 dark:text-white">아기 정보 {isAdmin ? "" : "(관리자만 수정)"}</h3>
@@ -2762,6 +2858,8 @@
                       </div>
                       <span className={`text-xs px-2 py-0.5 rounded-full whitespace-nowrap ${pending ? "bg-amber-200 text-amber-700" : u.role === "admin" ? "bg-violet-100 text-violet-600 dark:bg-violet-900/40" : u.role === "viewer" ? "bg-amber-100 text-amber-600 dark:bg-amber-900/40" : "bg-slate-100 text-slate-500 dark:bg-slate-700"}`}>{pending ? "승인대기" : roleLabel(u.role)}</span>
                     </div>
+                    {/* 메달 현황 */}
+                    <p className="text-[11px] text-slate-400 mt-1">🏅 접속 {medalStats(u).login}일 · ✍️ 편지 {medalStats(u).letter}회 · {earnedMedals(u).map((m) => m.icon).join(" ") || "획득 메달 없음"}</p>
 
                     {pending ? (
                       <div className="flex flex-wrap gap-1.5 mt-2">
@@ -2879,6 +2977,42 @@
   };
 
   /* ========================================================================
+     24-b. 관람전용 앱 셸 (갤러리 / 편지 / 메달)
+     ======================================================================== */
+  const ViewerApp = ({ dark, setDark }) => {
+    const [tab, setTab] = useState("gallery");
+    const navs = [
+      { id: "gallery", icon: "🖼️", label: "갤러리" },
+      { id: "letters", icon: "💌", label: "편지" },
+      { id: "medals", icon: "🏅", label: "메달" },
+    ];
+    return (
+      <div className="app-shell bg-warm">
+        <Header dark={dark} setDark={setDark} />
+        <main>
+          <div className="px-4 pt-3">
+            <p className="text-xs text-slate-400">관람 계정 · 사진 감상 ❤️ · 편지 작성 · 메달 수집이 가능해요</p>
+          </div>
+          {tab === "gallery" && <Gallery canUpload={false} openUpload={() => {}} />}
+          {tab === "letters" && <Letters />}
+          {tab === "medals" && <div className="p-4 pb-safe"><MyMedals /></div>}
+        </main>
+        <nav className="fixed bottom-0 inset-x-0 z-30 bg-white/95 dark:bg-slate-800/95 backdrop-blur border-t border-slate-100 dark:border-slate-700 nav-safe" aria-label="주요 메뉴">
+          <div className="max-w-[430px] mx-auto flex">
+            {navs.map((n) => (
+              <button key={n.id} onClick={() => setTab(n.id)} aria-current={tab === n.id ? "page" : undefined}
+                className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 ${tab === n.id ? "text-teal-500" : "text-slate-400"}`}>
+                <span className="text-xl" aria-hidden="true">{n.icon}</span>
+                <span className="text-[10px] font-medium">{n.label}</span>
+              </button>
+            ))}
+          </div>
+        </nav>
+      </div>
+    );
+  };
+
+  /* ========================================================================
      25. 메인 앱 셸
      ======================================================================== */
   const MainApp = () => {
@@ -2917,21 +3051,9 @@
       );
     }
 
-    // 관람전용(이모·삼촌): 사진 갤러리 + 슬라이드쇼만 (기록/설정 숨김)
+    // 관람전용(이모·삼촌): 갤러리 + 편지 + 메달
     const isViewer = profile && profile.role === "viewer" && !isAdmin;
-    if (isViewer) {
-      return (
-        <div className="app-shell bg-warm min-h-screen">
-          <Header dark={dark} setDark={setDark} />
-          <main>
-            <div className="px-4 pt-3">
-              <p className="text-xs text-slate-400">관람 전용 계정 · 사진을 감상하고 좋아요를 남길 수 있어요 ❤️</p>
-            </div>
-            <Gallery canUpload={false} openUpload={() => {}} />
-          </main>
-        </div>
-      );
-    }
+    if (isViewer) return <ViewerApp dark={dark} setDark={setDark} />;
 
     return (
       <div className="app-shell bg-warm">
