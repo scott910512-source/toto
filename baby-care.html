@@ -406,7 +406,7 @@
       {children}
     </label>
   );
-  const inputCls = "w-full rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 dark:text-white px-3.5 py-3 text-base focus:outline-none focus:ring-2 focus:ring-teal-400";
+  const inputCls = "w-full rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white px-3.5 py-3 text-base focus:outline-none focus:ring-2 focus:ring-teal-400";
 
   // 기록 시간 입력 (기본=지금, 직접 수정 가능)
   const DateTimeField = ({ value, onChange, label = "기록 시간" }) => (
@@ -860,7 +860,8 @@
     const tD = diapers.filter((r) => isSameDay(r.at, today));
     // 자정 넘긴 밤잠도 포함: 시작 또는 종료가 오늘인 완료 수면
     const tS = sleeps.filter((r) => r.end && (isSameDay(r.at, today) || isSameDay(r.end, today)));
-    const sleepMin = tS.reduce((s, r) => s + (r.durationMin || 0), 0);
+    const clampMin = (r) => Math.min(24 * 60, Math.max(0, r.durationMin || 0)); // 비정상 값 보정
+    const sleepMin = tS.reduce((s, r) => s + clampMin(r), 0);
 
     // 마지막 수유 & 다음 예상 (최근 간격 평균 기반)
     const lastFeed = feedings[0];
@@ -878,7 +879,7 @@
     const weekly = [];
     for (let i = 6; i >= 0; i--) {
       const d = new Date(); d.setDate(d.getDate() - i); const key = ymd(d);
-      const sl = sleeps.filter((r) => r.end && (ymd(r.at) === key || (r.end && ymd(r.end) === key))).reduce((s, r) => s + (r.durationMin || 0), 0) / 60;
+      const sl = sleeps.filter((r) => r.end && (ymd(r.at) === key || (r.end && ymd(r.end) === key))).reduce((s, r) => s + clampMin(r), 0) / 60;
       weekly.push({
         day: d.toLocaleDateString("ko-KR", { weekday: "short" }),
         수유: feedings.filter((r) => ymd(r.at) === key).length,
@@ -1094,7 +1095,7 @@
     const { user, profile } = useAuth();
     const toast = useToast();
     const items = useRecords("sleep");
-    const now = useNow(1000); // 실시간 경과 타이머용 (1초)
+    const now = useNow(20000); // 경과(분) 갱신용
     const [napKind, setNapKind] = useState("nap");
     const [busy, setBusy] = useState(false);
     // 직접 입력 모드
@@ -1123,15 +1124,19 @@
     };
     const stop = async () => {
       if (!ongoing) return;
+      const startD = toDate(ongoing.start);
+      if (!startD) { toast("시작 시각 기록 중이에요. 잠시 후 다시 눌러주세요.", "error"); return; }
       setBusy(true);
       try {
-        const startD = toDate(ongoing.start);
-        const min = Math.max(1, Math.round((Date.now() - startD) / 60000));
+        // 비정상 값 방지: 0~24시간 범위로 보정
+        const min = Math.min(24 * 60, Math.max(1, Math.round((Date.now() - startD) / 60000)));
         await COL.records().doc(ongoing.id).update({ end: TS(), durationMin: min });
         toast(`수면 종료 · ${hm(min)}`, "success");
       } catch (e) { toast(errMsg(e), "error"); } finally { setBusy(false); }
     };
 
+    // 비정상 값(이전 버그로 저장된 큰 수면시간) 방지: 0~24시간으로 보정
+    const dur = (r) => Math.min(24 * 60, Math.max(0, r.durationMin || 0));
     // 최근 7일 합계
     const chartData = useMemo(() => {
       if (!items) return [];
@@ -1139,13 +1144,13 @@
       for (let i = 6; i >= 0; i--) {
         const d = new Date(); d.setDate(d.getDate() - i);
         const key = ymd(d);
-        const total = items.filter((r) => r.end && ymd(r.at) === key).reduce((s, r) => s + (r.durationMin || 0), 0);
+        const total = items.filter((r) => r.end && ymd(r.at) === key).reduce((s, r) => s + dur(r), 0);
         days.push({ day: d.toLocaleDateString("ko-KR", { weekday: "short" }), hours: +(total / 60).toFixed(1) });
       }
       return days;
     }, [items]);
 
-    const todayMin = items ? items.filter((r) => r.end && isSameDay(r.at, new Date())).reduce((s, r) => s + (r.durationMin || 0), 0) : 0;
+    const todayMin = items ? items.filter((r) => r.end && isSameDay(r.at, new Date())).reduce((s, r) => s + dur(r), 0) : 0;
     const todayH = todayMin / 60;
     // 수면 안전: 신생아 14~17시간 권장 (육아 전문가 검토 #3)
     const sleepWarn = todayH > 0 && (todayH < 11 ? "부족" : todayH > 19 ? "과다" : null);
@@ -1158,9 +1163,11 @@
               <p className="text-sm text-violet-500">😴 수면 중 · {napKindLabel(ongoing.naptype)}</p>
               <p className="text-xs text-slate-400 mt-1">{fmtTime(ongoing.start)} 시작</p>
               {(() => {
-                const sec = Math.max(0, Math.floor((now - toDate(ongoing.start)) / 1000));
-                const mm = Math.floor(sec / 60), ss = sec % 60;
-                return <p className="text-4xl font-bold text-violet-500 my-2 tabular-nums" aria-live="polite">{String(mm).padStart(2, "0")}분 {String(ss).padStart(2, "0")}초</p>;
+                const startD = toDate(ongoing.start);
+                if (!startD) return <p className="text-2xl font-bold text-violet-400 my-3" aria-live="polite">측정 시작 중…</p>;
+                const min = Math.max(0, Math.floor((now - startD) / 60000));
+                const h = Math.floor(min / 60), m = min % 60;
+                return <p className="text-4xl font-bold text-violet-500 my-2 tabular-nums" aria-live="polite">{h > 0 ? `${h}시간 ` : ""}{m}분 경과</p>;
               })()}
               <Btn variant="lavender" onClick={stop} disabled={busy} className="w-full">😊 기상 (수면 종료)</Btn>
             </>
@@ -1881,10 +1888,10 @@
     const cur = (sub === "activity" && !isAdmin) ? "feeding" : sub;
     return (
       <div className="p-4 space-y-4 pb-safe">
-        <div className="flex gap-2 overflow-x-auto no-scrollbar -mx-4 px-4" role="tablist" aria-label="육아 기록 종류">
+        <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="육아 기록 종류">
           {tabs.map((t) => (
             <button key={t.id} role="tab" aria-selected={cur === t.id} onClick={() => setSub(t.id)}
-              className={`whitespace-nowrap px-4 py-2 rounded-full text-sm font-medium transition ${cur === t.id
+              className={`whitespace-nowrap px-3 py-1.5 rounded-full text-sm font-medium transition ${cur === t.id
                 ? "bg-teal-500 text-white" : "bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-300 border border-slate-200 dark:border-slate-700"}`}>
               {t.label}
             </button>
@@ -2555,12 +2562,12 @@
           <span className="text-sm">{index + 1} / {list.length}</span>
           <button onClick={onClose} aria-label="닫기" className="text-3xl w-11 h-11 bg-white/15 rounded-full flex items-center justify-center">×</button>
         </div>
-        <div className="flex-1 flex items-center justify-center relative" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
+        <div className="flex-1 min-h-0 flex items-center justify-center relative" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
           <button onClick={prev} aria-label="이전 사진" disabled={index === 0} className="absolute left-2 text-white text-4xl w-12 h-12 disabled:opacity-20 z-10">‹</button>
           <img src={p.url} alt={p.caption || "사진"} className="max-h-full max-w-full object-contain" />
           <button onClick={next} aria-label="다음 사진" disabled={index === list.length - 1} className="absolute right-2 text-white text-4xl w-12 h-12 disabled:opacity-20 z-10">›</button>
         </div>
-        <div className="bg-white dark:bg-slate-800 p-4 space-y-3">
+        <div className="bg-white dark:bg-slate-800 p-4 space-y-3 shrink-0 overflow-y-auto" style={{ maxHeight: "42vh", paddingBottom: "calc(env(safe-area-inset-bottom) + 1rem)" }}>
           <div className="flex items-center justify-between">
             <div>
               <p className="font-medium text-slate-800 dark:text-white">{p.uploaderName} · {catLabel}</p>
