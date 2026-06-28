@@ -143,7 +143,7 @@
 
     // 👑 항상 관리자로 처리할 이메일 목록 (여기에 이메일을 추가하면 무조건 관리자)
     //    소문자로 적어주세요. 기존에 구성원으로 저장돼 있어도 자동으로 관리자로 승격됩니다.
-    const ADMIN_EMAILS = ["admin@baby.app", "scott7259@naver.com"];
+    const ADMIN_EMAILS = ["scott7259@naver.com"];
   </script>
 
   <!--
@@ -2708,18 +2708,22 @@
     const { user, isAdmin } = useAuth();
     const { docs } = useMySaved(user.uid);
     const [photos, setPhotos] = useState({}); // id -> 최신 photo
+    const [loaded, setLoaded] = useState(false);
     const [detail, setDetail] = useState(null);
 
-    // 저장한 사진의 최신 메타(좋아요 수 등)를 photos에서 가져옴
+    // 저장한 사진의 최신 메타(좋아요 수 등)를 photos에서 가져옴 (삭제/실패해도 멈추지 않게 .catch)
     useEffect(() => {
       let active = true;
-      Promise.all(docs.map((d) => COL.photos().doc(d.photoRef || d.id).get()))
+      setLoaded(false);
+      if (docs.length === 0) { setPhotos({}); setLoaded(true); return; }
+      Promise.all(docs.map((d) => COL.photos().doc(d.photoRef || d.id).get().catch(() => null)))
         .then((snaps) => {
           if (!active) return;
           const m = {};
-          snaps.forEach((s) => { if (s.exists) m[s.id] = { id: s.id, ...s.data() }; });
-          setPhotos(m);
-        });
+          snaps.forEach((s) => { if (s && s.exists) m[s.id] = { id: s.id, ...s.data() }; });
+          setPhotos(m); setLoaded(true);
+        })
+        .catch(() => { if (active) setLoaded(true); });
       return () => { active = false; };
     }, [docs.map((d) => d.id).join(",")]);
 
@@ -2730,9 +2734,9 @@
     return (
       <div className="p-4 space-y-3 pb-safe">
         <h2 className="font-bold text-lg text-slate-800 dark:text-white">🔖 내 저장</h2>
-        {docs.length === 0 ? (
+        {!loaded ? <Spinner /> : list.length === 0 ? (
           <Card className="p-8 text-center text-sm text-slate-400">저장한 사진이 없어요.<br />갤러리에서 🔖 버튼으로 저장해보세요.</Card>
-        ) : list.length === 0 ? <Spinner /> : (
+        ) : (
           <div className="grid grid-cols-3 gap-2">
             {list.map((p, i) => (
               <PhotoCard key={p.id} photo={p} uid={user.uid} saved={savedSet.has(p.id)} onOpen={() => setDetail(i)} />
