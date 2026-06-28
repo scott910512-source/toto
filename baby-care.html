@@ -3087,6 +3087,7 @@
   const Settings = () => {
     const { user, profile, isAdmin } = useAuth();
     const toast = useToast();
+    const confirm = useConfirm();
     const baby = useBaby();
     const [users, setUsers] = useState(null);
     const [babyForm, setBabyForm] = useState({ name: baby.name, birthDate: baby.birthDate || "", dueDate: baby.dueDate || "", sex: baby.sex || "" });
@@ -3120,6 +3121,13 @@
     };
     const resetPw = async (u) => {
       try { await auth.sendPasswordResetEmail(u.email); toast(`${u.name}님께 재설정 메일 발송`, "success"); }
+      catch (e) { toast(errMsg(e), "error"); }
+    };
+    const deleteUser = async (u) => {
+      if (u.uid === user.uid) { toast("본인 계정은 여기서 삭제할 수 없어요.", "error"); return; }
+      if (u.role === "admin") { toast("관리자 계정은 삭제할 수 없어요.", "error"); return; }
+      if (!(await confirm(`'${u.name}' 계정을 삭제할까요?\n앱 목록에서 제거됩니다. (로그인 자체는 Firebase 콘솔에서 삭제)`, { ok: "삭제" }))) return;
+      try { await COL.users().doc(u.uid).delete(); toast("계정을 삭제했어요.", "success"); }
       catch (e) { toast(errMsg(e), "error"); }
     };
     const approveUser = async (u, role) => {
@@ -3191,7 +3199,8 @@
                       <div className="flex flex-wrap gap-1.5 mt-2">
                         <button onClick={() => approveUser(u, "viewer")} className="text-xs px-3 py-1.5 rounded-lg bg-teal-500 text-white font-medium">✓ 관람전용 승인</button>
                         <button onClick={() => approveUser(u, "member")} className="text-xs px-3 py-1.5 rounded-lg bg-violet-400 text-white font-medium">✓ 구성원 승인</button>
-                        <button onClick={() => toggleDisabled(u)} className="text-xs px-3 py-1.5 rounded-lg bg-rose-100 text-rose-500">거절(차단)</button>
+                        <button onClick={() => toggleDisabled(u)} className="text-xs px-3 py-1.5 rounded-lg bg-amber-100 text-amber-600">거절(차단)</button>
+                        {u.uid !== user.uid && <button onClick={() => deleteUser(u)} className="text-xs px-3 py-1.5 rounded-lg bg-rose-100 text-rose-600">🗑️ 삭제</button>}
                       </div>
                     ) : (
                       <>
@@ -3210,6 +3219,9 @@
                           <button onClick={() => resetPw(u)} className="text-xs px-2.5 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300">비번 재설정</button>
                           {(u.role !== "admin" || u.disabled) && (
                             <button onClick={() => toggleDisabled(u)} className="text-xs px-2.5 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300">{u.disabled ? "차단 해제" : "차단"}</button>
+                          )}
+                          {u.role !== "admin" && u.uid !== user.uid && (
+                            <button onClick={() => deleteUser(u)} className="text-xs px-2.5 py-1.5 rounded-lg bg-rose-100 text-rose-600 dark:bg-rose-900/40">🗑️ 삭제</button>
                           )}
                         </div>
                       </>
