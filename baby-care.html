@@ -3129,8 +3129,7 @@
     };
     const deleteUser = async (u) => {
       if (u.uid === user.uid) { toast("본인 계정은 여기서 삭제할 수 없어요.", "error"); return; }
-      if (u.role === "admin") { toast("관리자 계정은 삭제할 수 없어요.", "error"); return; }
-      if (!(await confirm(`'${u.name}' 계정을 삭제할까요?\n앱 목록에서 제거됩니다. (로그인 자체는 Firebase 콘솔에서 삭제)`, { ok: "삭제" }))) return;
+      if (!(await confirm(`'${u.name}' (${u.email}) 계정을 삭제할까요?\n앱 목록에서 제거됩니다. (로그인 자체는 Firebase 콘솔에서 삭제)`, { ok: "삭제" }))) return;
       try { await COL.users().doc(u.uid).delete(); toast("계정을 삭제했어요.", "success"); }
       catch (e) { toast(errMsg(e), "error"); }
     };
@@ -3188,8 +3187,8 @@
                   <li key={u.uid} className={`border rounded-xl p-3 ${pending ? "border-amber-300 bg-amber-50/50 dark:bg-amber-900/20" : "border-slate-100 dark:border-slate-700"}`}>
                     <div className="flex items-center justify-between">
                       <div className="min-w-0">
-                        <p className="font-medium text-slate-800 dark:text-white truncate">{u.name} {u.disabled && <span className="text-xs text-rose-400">(차단됨)</span>}</p>
-                        <p className="text-xs text-slate-400 truncate">{u.email}</p>
+                        <p className="font-medium text-slate-800 dark:text-white truncate">{u.name} {u.uid === user.uid && <span className="text-[10px] text-teal-500">(나)</span>} {u.disabled && <span className="text-xs text-rose-400">(차단됨)</span>}</p>
+                        <p className="text-xs text-slate-400 truncate">{u.email} <span className="text-slate-300">#{(u.uid || "").slice(-4)}</span></p>
                       </div>
                       <span className={`text-xs px-2 py-0.5 rounded-full whitespace-nowrap ${pending ? "bg-amber-200 text-amber-700" : u.role === "admin" ? "bg-violet-100 text-violet-600 dark:bg-violet-900/40" : u.role === "viewer" ? "bg-amber-100 text-amber-600 dark:bg-amber-900/40" : "bg-slate-100 text-slate-500 dark:bg-slate-700"}`}>{pending ? "승인대기" : roleLabel(u.role)}</span>
                     </div>
@@ -3210,21 +3209,25 @@
                       <>
                         <div className="mt-2">
                           <span className="block text-[11px] text-slate-400 mb-1">등급</span>
-                          <div className="flex gap-1.5">
-                            {["viewer", "member", "admin"].map((r) => (
-                              <button key={r} onClick={() => setRole(u, r)}
-                                className={`text-xs px-2.5 py-1.5 rounded-lg border ${u.role === r ? "bg-teal-500 border-teal-500 text-white" : "bg-white dark:bg-slate-700 border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300"}`}>
-                                {roleLabel(r)}
-                              </button>
-                            ))}
-                          </div>
+                          {u.role === "admin" ? (
+                            <span className="inline-block text-xs px-3 py-1.5 rounded-lg bg-violet-100 text-violet-600 dark:bg-violet-900/40">👑 관리자 (고정)</span>
+                          ) : (
+                            <div className="flex gap-1.5">
+                              {["viewer", "member", "admin"].map((r) => (
+                                <button key={r} onClick={() => setRole(u, r)}
+                                  className={`text-xs px-2.5 py-1.5 rounded-lg border ${u.role === r ? "bg-teal-500 border-teal-500 text-white" : "bg-white dark:bg-slate-700 border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300"}`}>
+                                  {roleLabel(r)}
+                                </button>
+                              ))}
+                            </div>
+                          )}
                         </div>
                         <div className="flex flex-wrap gap-1.5 mt-2">
                           <button onClick={() => resetPw(u)} className="text-xs px-2.5 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300">비번 재설정</button>
                           {(u.role !== "admin" || u.disabled) && (
                             <button onClick={() => toggleDisabled(u)} className="text-xs px-2.5 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300">{u.disabled ? "차단 해제" : "차단"}</button>
                           )}
-                          {u.role !== "admin" && u.uid !== user.uid && (
+                          {u.uid !== user.uid && (
                             <button onClick={() => deleteUser(u)} className="text-xs px-2.5 py-1.5 rounded-lg bg-rose-100 text-rose-600 dark:bg-rose-900/40">🗑️ 삭제</button>
                           )}
                         </div>
