@@ -473,6 +473,31 @@
     );
   };
 
+  // 앱 내부 확인창 (iOS 홈화면 앱에선 window.confirm이 막혀서 자체 모달 사용)
+  const ConfirmCtx = createContext((m) => Promise.resolve(typeof window !== "undefined" && window.confirm ? window.confirm(m) : true));
+  const useConfirm = () => useContext(ConfirmCtx);
+  const ConfirmProvider = ({ children }) => {
+    const [st, setSt] = useState(null); // { message, opts, resolve }
+    const confirm = useCallback((message, opts = {}) => new Promise((resolve) => setSt({ message, opts, resolve })), []);
+    const done = (v) => { setSt((s) => { if (s) s.resolve(v); return null; }); };
+    return (
+      <ConfirmCtx.Provider value={confirm}>
+        {children}
+        <Modal open={!!st} onClose={() => done(false)} title={(st && st.opts.title) || "확인"}>
+          {st && (
+            <div className="space-y-4">
+              <p className="text-sm text-slate-700 dark:text-slate-200 whitespace-pre-wrap">{st.message}</p>
+              <div className="flex gap-2">
+                <Btn variant="ghost" className="flex-1" onClick={() => done(false)}>취소</Btn>
+                <Btn variant={st.opts.variant || "danger"} className="flex-1" onClick={() => done(true)}>{st.opts.ok || "삭제"}</Btn>
+              </div>
+            </div>
+          )}
+        </Modal>
+      </ConfirmCtx.Provider>
+    );
+  };
+
   // 의료 면책 배너 (육아 전문가 검토 #1)
   const MedicalDisclaimer = () => (
     <div className="text-[11px] leading-relaxed text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 rounded-xl p-3">
@@ -1640,6 +1665,7 @@
   const PrenatalTracker = ({ openUpload }) => {
     const { user, profile, isAdmin } = useAuth();
     const toast = useToast();
+    const confirm = useConfirm();
     const items = useRecords("prenatal", 100);
     const photos = usePhotos(200);
     const usPhotos = (photos || []).filter((p) => p.category === "ultrasound" && canSeePhoto(p, user.uid, isAdmin))
@@ -1721,7 +1747,7 @@
                   {fc && !fc.ok && <p className="text-xs text-rose-500 mt-2">{fc.msg}</p>}
                   {r.note && <p className="text-sm text-slate-500 dark:text-slate-400 mt-2 border-t border-slate-100 dark:border-slate-700 pt-2">{r.note}</p>}
                   {(isAdmin || r.createdBy === user.uid) &&
-                    <button onClick={() => { if (confirm("이 기록을 삭제할까요?")) deleteRecord(r.id); }} className="text-xs text-rose-400 mt-2">삭제</button>}
+                    <button onClick={async () => { if (await confirm("이 기록을 삭제할까요?")) deleteRecord(r.id); }} className="text-xs text-rose-400 mt-2">삭제</button>}
                 </Card>
               );
             })}
@@ -1824,6 +1850,7 @@
   const RecordList = ({ items, render }) => {
     const { user, isAdmin } = useAuth();
     const toast = useToast();
+    const confirm = useConfirm();
     const [editing, setEditing] = useState(null); // 수정 중인 기록(복사본)
     if (!items) return <Spinner />;
     if (items.length === 0) return <Card className="p-6 text-center text-sm text-slate-400">아직 기록이 없어요.</Card>;
@@ -1851,7 +1878,7 @@
                     aria-label="기록 수정" className="text-slate-300 hover:text-teal-500 text-base px-1">✏️</button>
                 )}
                 {mine && (
-                  <button onClick={() => { if (confirm("삭제할까요?")) deleteRecord(r.id); }}
+                  <button onClick={async () => { if (await confirm("삭제할까요?")) deleteRecord(r.id); }}
                     aria-label="기록 삭제" className="text-slate-300 hover:text-rose-500 text-base px-1">🗑️</button>
                 )}
               </li>
@@ -2522,6 +2549,7 @@
   const PhotoDetail = ({ list, index, setIndex, uid, saved, onClose }) => {
     const { user, isAdmin } = useAuth();
     const toast = useToast();
+    const confirm = useConfirm();
     const [editOpen, setEditOpen] = useState(false);
     const p = list[index];
     const touch = useRef(null);
@@ -2547,7 +2575,7 @@
       } catch { window.open(p.url, "_blank"); }
     };
     const remove = async () => {
-      if (!confirm("이 사진을 삭제할까요?")) return;
+      if (!(await confirm("이 사진을 삭제할까요?"))) return;
       try {
         if (p.storagePath) await storage.ref(p.storagePath).delete().catch(() => {});
         await COL.photos().doc(p.id).delete();
@@ -2746,6 +2774,7 @@
      ======================================================================== */
   const Letters = () => {
     const { user, profile, isAdmin } = useAuth();
+    const confirm = useConfirm();
     const all = useRecords("letter", 100);
     const visible = all && all.filter((l) => canSeeLetter(l, user.uid, isAdmin)); // 공개 범위 필터
     const [who, setWho] = useState("all"); // 등록자별 필터
@@ -2828,7 +2857,7 @@
               {(isAdmin || viewing.createdBy === user.uid) && (
                 <div className="flex gap-2 pt-2">
                   <Btn variant="lavender" className="flex-1 text-sm py-2.5" onClick={() => { const l = viewing; setViewing(null); openEdit(l); }}>✏️ 수정</Btn>
-                  <Btn variant="danger" className="flex-1 text-sm py-2.5" onClick={() => { if (confirm("이 편지를 삭제할까요?")) { deleteRecord(viewing.id); if (viewing.createdBy) COL.users().doc(viewing.createdBy).update({ letterCount: firebase.firestore.FieldValue.increment(-1) }).catch(() => {}); setViewing(null); } }}>🗑️ 삭제</Btn>
+                  <Btn variant="danger" className="flex-1 text-sm py-2.5" onClick={async () => { if (await confirm("이 편지를 삭제할까요?")) { deleteRecord(viewing.id); if (viewing.createdBy) COL.users().doc(viewing.createdBy).update({ letterCount: firebase.firestore.FieldValue.increment(-1) }).catch(() => {}); setViewing(null); } }}>🗑️ 삭제</Btn>
                 </div>
               )}
             </div>
@@ -3422,9 +3451,11 @@
     return (
       <ErrorBoundary>
         <ToastProvider>
-          <AuthProvider>
-            <Root />
-          </AuthProvider>
+          <ConfirmProvider>
+            <AuthProvider>
+              <Root />
+            </AuthProvider>
+          </ConfirmProvider>
         </ToastProvider>
       </ErrorBoundary>
     );
