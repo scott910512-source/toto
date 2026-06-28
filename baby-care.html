@@ -385,14 +385,16 @@
     return (
       <ToastCtx.Provider value={push}>
         {children}
-        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[100] flex flex-col gap-2 w-[92%] max-w-[400px]" aria-live="assertive">
-          {toasts.map((t) => (
-            <div key={t.id} role="alert"
-              className={`fade-in px-4 py-3 rounded-xl shadow-lg text-sm text-white ${t.type === "error" ? "bg-rose-500" : t.type === "success" ? "bg-teal-500" : "bg-slate-700"}`}>
-              {t.msg}
-            </div>
-          ))}
-        </div>
+        <Portal>
+          <div className="fixed left-1/2 -translate-x-1/2 z-[120] flex flex-col gap-2 w-[92%] max-w-[400px]" style={{ top: "calc(env(safe-area-inset-top) + 1rem)" }} aria-live="assertive">
+            {toasts.map((t) => (
+              <div key={t.id} role="alert"
+                className={`fade-in px-4 py-3 rounded-xl shadow-lg text-sm text-white ${t.type === "error" ? "bg-rose-500" : t.type === "success" ? "bg-teal-500" : "bg-slate-700"}`}>
+                {t.msg}
+              </div>
+            ))}
+          </div>
+        </Portal>
       </ToastCtx.Provider>
     );
   };
@@ -438,6 +440,10 @@
     </div>
   );
 
+  // 전체화면 오버레이를 body 최상위로 띄움(내부 스크롤 컨테이너에 갇히는 iOS 버그 회피)
+  const Portal = ({ children }) =>
+    (ReactDOM.createPortal ? ReactDOM.createPortal(children, document.body) : children);
+
   // 모달 셸
   const Modal = ({ open, onClose, children, title, full }) => {
     useEffect(() => {
@@ -449,19 +455,21 @@
     }, [open]);
     if (!open) return null;
     return (
-      <div className="fixed inset-0 z-50 bg-black/60 flex items-end sm:items-center justify-center fade-in"
-        onClick={onClose} role="dialog" aria-modal="true" aria-label={title || "대화상자"}>
-        <div onClick={(e) => e.stopPropagation()}
-          className={`slide-up bg-white dark:bg-slate-800 w-full ${full ? "h-full max-w-[430px]" : "max-w-[420px] rounded-t-3xl sm:rounded-3xl max-h-[92vh]"} overflow-y-auto`}>
-          {title && (
-            <div className="sticky top-0 bg-white dark:bg-slate-800 px-5 py-4 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between z-10">
-              <h2 className="text-lg font-bold text-slate-800 dark:text-white">{title}</h2>
-              <button onClick={onClose} aria-label="닫기" className="text-2xl text-slate-400 hover:text-slate-600 w-9 h-9">×</button>
-            </div>
-          )}
-          <div className="p-5">{children}</div>
+      <Portal>
+        <div className="fixed inset-0 z-[80] bg-black/60 flex items-end sm:items-center justify-center fade-in"
+          onClick={onClose} role="dialog" aria-modal="true" aria-label={title || "대화상자"}>
+          <div onClick={(e) => e.stopPropagation()}
+            className={`slide-up bg-white dark:bg-slate-800 w-full ${full ? "h-full max-w-[430px]" : "max-w-[420px] rounded-t-3xl sm:rounded-3xl max-h-[92vh]"} overflow-y-auto`}>
+            {title && (
+              <div className="sticky top-0 bg-white dark:bg-slate-800 px-5 py-4 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between z-10">
+                <h2 className="text-lg font-bold text-slate-800 dark:text-white">{title}</h2>
+                <button onClick={onClose} aria-label="닫기" className="text-2xl text-slate-400 hover:text-slate-600 w-9 h-9">×</button>
+              </div>
+            )}
+            <div className="p-5">{children}</div>
+          </div>
         </div>
-      </div>
+      </Portal>
     );
   };
 
@@ -2444,10 +2452,12 @@
 
     if (deck.length === 0) {
       return (
-        <div className="fixed inset-0 z-[60] bg-black flex flex-col items-center justify-center text-white gap-4">
+        <Portal>
+        <div className="fixed inset-0 z-[90] bg-black flex flex-col items-center justify-center text-white gap-4">
           <p>{photos == null ? "불러오는 중..." : "표시할 전체공개 사진이 없어요."}</p>
           <Btn variant="ghost" onClick={onClose}>닫기</Btn>
         </div>
+        </Portal>
       );
     }
 
@@ -2457,7 +2467,8 @@
     const meta = [cur.uploaderName, (cur.people || []).join(", "), cur.place, fmtDate(cur.takenAt || cur.createdAt)].filter(Boolean).join(" · ");
 
     return (
-      <div ref={rootRef} className="fixed inset-0 z-[60] bg-black overflow-hidden" role="dialog" aria-modal="true" aria-label="슬라이드쇼">
+      <Portal>
+      <div ref={rootRef} className="fixed inset-0 z-[90] bg-black overflow-hidden" role="dialog" aria-modal="true" aria-label="슬라이드쇼">
         {/* 진행 막대 */}
         <div className="absolute top-0 inset-x-0 h-1 bg-white/20 z-20">
           <div className="h-full bg-violet-400 transition-all duration-200 ease-linear" style={{ width: `${progress}%` }}></div>
@@ -2494,6 +2505,7 @@
           </div>
         </div>
       </div>
+      </Portal>
     );
   };
 
@@ -2537,10 +2549,11 @@
     };
 
     return (
-      <div className="fixed inset-0 z-50 bg-black flex flex-col fade-in" role="dialog" aria-modal="true" aria-label="사진 상세">
+      <Portal>
+      <div className="fixed inset-0 z-[90] bg-black flex flex-col fade-in" role="dialog" aria-modal="true" aria-label="사진 상세" style={{ paddingTop: "env(safe-area-inset-top)" }}>
         <div className="flex justify-between items-center p-3 text-white">
           <span className="text-sm">{index + 1} / {list.length}</span>
-          <button onClick={onClose} aria-label="닫기" className="text-3xl w-10 h-10">×</button>
+          <button onClick={onClose} aria-label="닫기" className="text-3xl w-11 h-11 bg-white/15 rounded-full flex items-center justify-center">×</button>
         </div>
         <div className="flex-1 flex items-center justify-center relative" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
           <button onClick={prev} aria-label="이전 사진" disabled={index === 0} className="absolute left-2 text-white text-4xl w-12 h-12 disabled:opacity-20 z-10">‹</button>
@@ -2577,6 +2590,7 @@
         </div>
         <EditPhotoModal open={editOpen} onClose={() => setEditOpen(false)} photo={p} />
       </div>
+      </Portal>
     );
   };
 
