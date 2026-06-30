@@ -874,13 +874,57 @@
   /* ========================================================================
      8. 대시보드
      ======================================================================== */
+  // 빠른 메모
+  const QuickMemoModal = ({ open, onClose }) => {
+    const { user, profile } = useAuth();
+    const toast = useToast();
+    const [text, setText] = useState("");
+    const [busy, setBusy] = useState(false);
+    useEffect(() => { if (open) setText(""); }, [open]);
+    const save = async () => {
+      if (!text.trim()) { toast("메모를 입력하세요.", "error"); return; }
+      setBusy(true);
+      try { await addRecord("memo", { text: text.trim(), at: TS() }, user, profile); toast("메모를 저장했어요.", "success"); onClose(); }
+      catch (e) { toast(errMsg(e), "error"); } finally { setBusy(false); }
+    };
+    return (
+      <Modal open={open} onClose={onClose} title="📝 빠른 메모">
+        <div className="space-y-4">
+          <textarea className={inputCls} rows="4" value={text} onChange={(e) => setText(e.target.value)} placeholder="예: 트림 잘함 / 콧물 약간 / 기분 좋음" autoFocus />
+          <Btn onClick={save} disabled={busy} className="w-full">{busy ? "저장 중..." : "메모 저장"}</Btn>
+        </div>
+      </Modal>
+    );
+  };
+
   const Dashboard = ({ go }) => {
+    const { user, profile } = useAuth();
+    const toast = useToast();
     const feedings = useRecords("feeding");
     const sleeps = useRecords("sleep");
     const diapers = useRecords("diaper");
+    const pumps = useRecords("pump", 50);
+    const solids = useRecords("solid", 50);
+    const meds = useRecords("med", 50);
     const ageInfo = useBabyAge();
     const baby = useBaby();
     const now = useNow(30000);
+    const [memoOpen, setMemoOpen] = useState(false);
+    const [qbusy, setQbusy] = useState(false);
+
+    // 홈 빠른 입력
+    const quickDiaper = async (t) => {
+      setQbusy(true);
+      try { await addRecord("diaper", { diaperType: t, color: null, at: TS() }, user, profile); toast("기저귀 기록 추가", "success"); }
+      catch (e) { toast(errMsg(e), "error"); } finally { setQbusy(false); }
+    };
+    const quickRepeatFeed = async () => {
+      const lf = feedings && feedings[0];
+      if (!lf) { go("records", "feeding"); return; }
+      setQbusy(true);
+      try { await addRecord("feeding", { kind: lf.kind, side: lf.side || null, amount: lf.amount || null, durationMin: lf.durationMin || null, at: TS() }, user, profile); toast("직전 수유와 동일하게 기록", "success"); }
+      catch (e) { toast(errMsg(e), "error"); } finally { setQbusy(false); }
+    };
 
     if (!feedings || !sleeps || !diapers) return <Spinner label="불러오는 중..." />;
 
@@ -920,12 +964,18 @@
 
     return (
       <div className="p-4 space-y-4 pb-safe">
-        {/* 아기 나이 */}
+        {/* 아기 나이 + D-day */}
         <Card className="p-5 bg-gradient-to-br from-teal-50 to-violet-50 dark:from-slate-800 dark:to-slate-800">
           <p className="text-sm text-slate-500 dark:text-slate-400">{baby.name}</p>
-          <p className="text-xl font-bold text-slate-800 dark:text-white mt-0.5">{ageInfo.label}</p>
+          <p className="text-2xl font-bold text-slate-800 dark:text-white mt-0.5">{ageInfo.label}</p>
           {ageInfo.mode === "pregnant" && ageInfo.daysLeft > 0 &&
-            <p className="text-xs text-violet-500 mt-1">출산까지 {ageInfo.daysLeft}일 💜</p>}
+            <p className="text-sm text-violet-500 mt-1 font-medium">출산까지 D-{ageInfo.daysLeft} 💜</p>}
+          {ageInfo.mode === "born" && (() => {
+            // 다가오는 기념일 D-day (100일/200일/돌/2돌)
+            const ms = [{ d: 100, n: "100일" }, { d: 200, n: "200일" }, { d: 365, n: "첫 돌" }, { d: 730, n: "두 돌" }];
+            const up = ms.find((m) => m.d >= ageInfo.days);
+            return up ? <p className="text-sm text-teal-600 mt-1 font-medium">🎂 {up.n}까지 D-{up.d - ageInfo.days}</p> : null;
+          })()}
         </Card>
 
         {/* 다음 수유 / 경고 */}
@@ -960,11 +1010,61 @@
           ))}
         </div>
 
-        {/* 빠른 입력 */}
+        {/* 빠른 입력 (홈에서 1탭) */}
+        <Card className="p-3">
+          <p className="text-xs font-semibold text-slate-400 mb-2 px-1">⚡ 빠른 입력</p>
+          <div className="grid grid-cols-4 gap-2">
+            <button disabled={qbusy} onClick={() => quickDiaper("pee")} className="flex flex-col items-center gap-1 py-2.5 rounded-xl bg-sky-50 dark:bg-sky-900/30 active:scale-95 transition disabled:opacity-50">
+              <span className="text-xl">💧</span><span className="text-[11px] text-slate-600 dark:text-slate-300">소변</span>
+            </button>
+            <button disabled={qbusy} onClick={() => quickDiaper("poo")} className="flex flex-col items-center gap-1 py-2.5 rounded-xl bg-amber-50 dark:bg-amber-900/30 active:scale-95 transition disabled:opacity-50">
+              <span className="text-xl">💩</span><span className="text-[11px] text-slate-600 dark:text-slate-300">대변</span>
+            </button>
+            <button disabled={qbusy} onClick={quickRepeatFeed} className="flex flex-col items-center gap-1 py-2.5 rounded-xl bg-teal-50 dark:bg-teal-900/30 active:scale-95 transition disabled:opacity-50">
+              <span className="text-xl">🔁</span><span className="text-[11px] text-slate-600 dark:text-slate-300">수유반복</span>
+            </button>
+            <button onClick={() => setMemoOpen(true)} className="flex flex-col items-center gap-1 py-2.5 rounded-xl bg-violet-50 dark:bg-violet-900/30 active:scale-95 transition">
+              <span className="text-xl">📝</span><span className="text-[11px] text-slate-600 dark:text-slate-300">메모</span>
+            </button>
+          </div>
+        </Card>
         <div className="grid grid-cols-2 gap-3">
           <Btn variant="primary" onClick={() => go("records", "feeding")}>🍼 수유 기록</Btn>
           <Btn variant="lavender" onClick={() => go("records", "sleep")}>😴 수면 기록</Btn>
         </div>
+
+        {/* 오늘 타임라인 */}
+        {(() => {
+          const td = [...tF, ...tD, ...(pumps || []).filter((r) => isSameDay(r.at, today)), ...(solids || []).filter((r) => isSameDay(r.at, today)), ...(meds || []).filter((r) => isSameDay(r.at, today)), ...tS]
+            .sort((a, b) => toDate(b.at) - toDate(a.at)).slice(0, 20);
+          const line = (r) => {
+            if (r.type === "feeding") return `${({ breast: "모유", formula: "분유", mixed: "혼합" })[r.kind] || "수유"}${r.amount ? ` ${r.amount}ml` : ""}`;
+            if (r.type === "diaper") return ({ pee: "소변", poo: "대변", both: "소변+대변" })[r.diaperType] || "기저귀";
+            if (r.type === "sleep") return `수면 ${r.durationMin ? hm(Math.min(1440, r.durationMin)) : ""}`;
+            if (r.type === "pump") return `유축${r.amount ? ` ${r.amount}ml` : ""}`;
+            if (r.type === "solid") return `이유식 ${r.food || ""}`;
+            if (r.type === "med") return `투약 ${r.name || ""}`;
+            return REC_LABEL[r.type] || "기록";
+          };
+          return (
+            <Card className="p-4">
+              <h3 className="font-bold text-slate-800 dark:text-white mb-2">📋 오늘 타임라인</h3>
+              {td.length === 0 ? <p className="text-sm text-slate-400 text-center py-3">오늘 기록이 아직 없어요.</p> : (
+                <ul className="space-y-2">
+                  {td.map((r) => (
+                    <li key={r.type + "_" + r.id} className="flex items-center gap-2.5 text-sm">
+                      <span className="text-xs text-slate-400 tabular-nums w-12 shrink-0">{fmtTime(r.at)}</span>
+                      <span aria-hidden="true">{REC_ICON[r.type]}</span>
+                      <span className="flex-1 text-slate-700 dark:text-slate-200 truncate">{line(r)}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </Card>
+          );
+        })()}
+
+        <QuickMemoModal open={memoOpen} onClose={() => setMemoOpen(false)} />
 
         {/* 주간 통계 */}
         <Card className="p-4">
@@ -995,21 +1095,27 @@
   /* ========================================================================
      8-b. 활동로그 (기록 탭의 '활동로그' 서브메뉴 · 관리자 전용)
      ======================================================================== */
+  const REC_LABEL = { feeding: "수유 기록", sleep: "수면 기록", diaper: "기저귀 기록", pump: "유축 기록", solid: "이유식 기록", med: "투약 기록", growth: "성장 기록", health: "건강 기록", milestone: "마일스톤", letter: "편지", photo: "사진", memo: "메모" };
+  const REC_ICON = { feeding: "🍼", sleep: "😴", diaper: "👶", pump: "🤱", solid: "🥣", med: "💊", growth: "📏", health: "🩺", milestone: "🎉", letter: "💌", photo: "🖼️", memo: "📝" };
   const ActivityLog = ({ limit = 60 }) => {
     const feedings = useRecords("feeding", 60);
     const sleeps = useRecords("sleep", 60);
     const diapers = useRecords("diaper", 60);
+    const pumps = useRecords("pump", 30);
+    const solids = useRecords("solid", 30);
+    const meds = useRecords("med", 30);
     const growths = useRecords("growth", 40);
     const healths = useRecords("health", 40);
+    const milestones = useRecords("milestone", 30);
     const letters = useRecords("letter", 40);
     const photos = usePhotos(40);
     const loading = !feedings || !sleeps || !diapers;
     const photoActs = (photos || []).map((p) => ({ ...p, type: "photo", at: p.createdAt, creatorName: p.uploaderName }));
-    const feed = [...(feedings || []), ...(sleeps || []), ...(diapers || []), ...(growths || []), ...(healths || []), ...(letters || []), ...photoActs]
+    const feed = [...(feedings || []), ...(sleeps || []), ...(diapers || []), ...(pumps || []), ...(solids || []), ...(meds || []), ...(growths || []), ...(healths || []), ...(milestones || []), ...(letters || []), ...photoActs]
       .sort((a, b) => (toDate(b.createdAt || b.at) - toDate(a.createdAt || a.at)))
       .slice(0, limit);
-    const labelOf = (r) => ({ feeding: "수유 기록", sleep: "수면 기록", diaper: "기저귀 기록", growth: "성장 기록", health: "건강 기록", letter: "편지", photo: "사진" })[r.type] || "기록";
-    const iconOf = (r) => ({ feeding: "🍼", sleep: "😴", diaper: "👶", growth: "📏", health: "🩺", letter: "💌", photo: "🖼️" })[r.type] || "📋";
+    const labelOf = (r) => REC_LABEL[r.type] || "기록";
+    const iconOf = (r) => REC_ICON[r.type] || "📋";
     return (
       <div className="space-y-3">
         <p className="text-xs text-slate-400 px-1">누가 무엇을 기록했는지 한눈에 (관리자 전용)</p>
@@ -1067,6 +1173,11 @@
     const overdue = elapsedMin != null && elapsedMin > 180;
     const kindLabel = { breast: "모유", formula: "분유", mixed: "혼합" };
 
+    // 좌/우 자동 추천: 지난 모유 수유 반대쪽 (모유 첫 선택 시)
+    const lastBreast = items && items.find((r) => r.kind === "breast" && r.side);
+    const suggestSide = lastBreast ? (lastBreast.side === "left" ? "right" : lastBreast.side === "right" ? "left" : "left") : null;
+    useEffect(() => { if (kind === "breast" && suggestSide) setSide(suggestSide); }, [kind, suggestSide]);
+
     // 직전 수유와 동일하게 한 번 더 (야간 빠른 입력)
     const repeatLast = async () => {
       if (!last) return;
@@ -1096,9 +1207,13 @@
         <Card className="p-4 space-y-4">
           <ChipGroup label="수유 종류" value={kind} onChange={setKind}
             options={[{ value: "breast", label: "🤱 모유" }, { value: "formula", label: "🍼 분유" }, { value: "mixed", label: "🥛 혼합" }]} />
-          {kind === "breast" &&
-            <ChipGroup label="수유 위치" value={side} onChange={setSide}
-              options={[{ value: "left", label: "왼쪽" }, { value: "right", label: "오른쪽" }, { value: "both", label: "양쪽" }]} />}
+          {kind === "breast" && (
+            <div>
+              <ChipGroup label="수유 위치" value={side} onChange={setSide}
+                options={[{ value: "left", label: "왼쪽" }, { value: "right", label: "오른쪽" }, { value: "both", label: "양쪽" }]} />
+              {suggestSide && <p className="text-[11px] text-teal-500 mt-1">💡 지난번 {lastBreast.side === "left" ? "왼쪽" : lastBreast.side === "right" ? "오른쪽" : "양쪽"} → 이번엔 <b>{suggestSide === "left" ? "왼쪽" : "오른쪽"}</b> 추천</p>}
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-3">
             <Field label="수유량 (ml)"><input className={inputCls} type="number" inputMode="numeric" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="120" /></Field>
             <Field label="시간 (분)"><input className={inputCls} type="number" inputMode="numeric" value={dur} onChange={(e) => setDur(e.target.value)} placeholder="15" /></Field>
@@ -1658,6 +1773,150 @@
     if (w >= 6 && w <= 13) return { ok: true, msg: "CRL(머리-엉덩이 길이)은 임신 6~13주 주수 측정에 가장 정확합니다." };
     return { ok: false, msg: "CRL은 보통 6~13주에만 측정합니다. 13주 이후엔 BPD/HC/AC/FL로 주수·체중을 추정합니다." };
   };
+  /* ========================================================================
+     13-b. 유축 / 투약 / 이유식 / 마일스톤 / 메모 (신규 기록 종류)
+     ======================================================================== */
+  const PumpTracker = () => {
+    const { user, profile } = useAuth();
+    const toast = useToast();
+    const items = useRecords("pump", 100);
+    const [side, setSide] = useState("both");
+    const [amount, setAmount] = useState("");
+    const [dur, setDur] = useState("");
+    const [at, setAt] = useState(toLocalInput(new Date()));
+    const [busy, setBusy] = useState(false);
+    const last = items && items[0];
+    const save = async () => {
+      setBusy(true);
+      try {
+        await addRecord("pump", { side, amount: amount ? Number(amount) : null, durationMin: dur ? Number(dur) : null, at: fromLocalInput(at) }, user, profile);
+        setAmount(""); setDur(""); setAt(toLocalInput(new Date())); toast("유축 기록을 추가했어요.", "success");
+      } catch (e) { toast(errMsg(e), "error"); } finally { setBusy(false); }
+    };
+    const sideL = { left: "왼쪽", right: "오른쪽", both: "양쪽" };
+    return (
+      <div className="space-y-4">
+        <Card className="p-4 space-y-3">
+          <ChipGroup label="유축 위치" value={side} onChange={setSide} options={[{ value: "left", label: "왼쪽" }, { value: "right", label: "오른쪽" }, { value: "both", label: "양쪽" }]} />
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="유축량 (ml)"><input className={inputCls} type="number" inputMode="numeric" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="80" /></Field>
+            <Field label="시간 (분)"><input className={inputCls} type="number" inputMode="numeric" value={dur} onChange={(e) => setDur(e.target.value)} placeholder="15" /></Field>
+          </div>
+          <DateTimeField value={at} onChange={setAt} />
+          <Btn onClick={save} disabled={busy} className="w-full">{busy ? "저장 중..." : "유축 기록 저장"}</Btn>
+        </Card>
+        <RecordList items={items} render={(r) => (<>🤱 {sideL[r.side] || ""}{r.amount ? ` · ${r.amount}ml` : ""}{r.durationMin ? ` · ${r.durationMin}분` : ""}</>)} />
+      </div>
+    );
+  };
+
+  const MedTracker = () => {
+    const { user, profile } = useAuth();
+    const toast = useToast();
+    const items = useRecords("med", 100);
+    const [name, setName] = useState("");
+    const [dose, setDose] = useState("");
+    const [at, setAt] = useState(toLocalInput(new Date()));
+    const [busy, setBusy] = useState(false);
+    const presets = ["해열제(타이레놀)", "해열제(부루펜)", "항생제", "유산균", "비타민D", "감기약"];
+    const save = async () => {
+      if (!name.trim()) { toast("약 이름을 입력하세요.", "error"); return; }
+      setBusy(true);
+      try {
+        await addRecord("med", { name: name.trim(), dose: dose || null, at: fromLocalInput(at) }, user, profile);
+        setName(""); setDose(""); setAt(toLocalInput(new Date())); toast("투약 기록을 추가했어요.", "success");
+      } catch (e) { toast(errMsg(e), "error"); } finally { setBusy(false); }
+    };
+    // 해열제 4시간 간격 안내
+    const lastFever = items && items.find((r) => /해열|타이레놀|부루펜/.test(r.name || ""));
+    const feverGapH = lastFever ? (Date.now() - toDate(lastFever.at)) / 3600000 : null;
+    return (
+      <div className="space-y-4">
+        <MedicalDisclaimer />
+        {feverGapH != null && feverGapH < 4 && (
+          <p className="text-xs text-amber-600 bg-amber-50 dark:bg-amber-900/30 rounded-lg px-3 py-2">⏱️ 마지막 해열제 후 {feverGapH.toFixed(1)}시간 — 해열제는 보통 4~6시간 간격을 권장해요.</p>
+        )}
+        <Card className="p-4 space-y-3">
+          <Field label="약 이름"><input className={inputCls} value={name} onChange={(e) => setName(e.target.value)} placeholder="예: 해열제(타이레놀)" /></Field>
+          <div className="flex flex-wrap gap-1.5">
+            {presets.map((p) => <button key={p} type="button" onClick={() => setName(p)} className="text-xs px-2.5 py-1.5 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300">{p}</button>)}
+          </div>
+          <Field label="용량 (선택)"><input className={inputCls} value={dose} onChange={(e) => setDose(e.target.value)} placeholder="예: 4ml, 1정" /></Field>
+          <DateTimeField value={at} onChange={setAt} />
+          <Btn onClick={save} disabled={busy} className="w-full">{busy ? "저장 중..." : "투약 기록 저장"}</Btn>
+        </Card>
+        <RecordList items={items} render={(r) => (<>💊 {r.name}{r.dose ? ` · ${r.dose}` : ""}</>)} />
+      </div>
+    );
+  };
+
+  const SolidTracker = () => {
+    const { user, profile } = useAuth();
+    const toast = useToast();
+    const items = useRecords("solid", 100);
+    const [food, setFood] = useState("");
+    const [amount, setAmount] = useState("");
+    const [reaction, setReaction] = useState("none");
+    const [note, setNote] = useState("");
+    const [at, setAt] = useState(toLocalInput(new Date()));
+    const [busy, setBusy] = useState(false);
+    const save = async () => {
+      if (!food.trim()) { toast("음식 이름을 입력하세요.", "error"); return; }
+      setBusy(true);
+      try {
+        await addRecord("solid", { food: food.trim(), amount: amount || null, reaction, note: note || null, at: fromLocalInput(at) }, user, profile);
+        setFood(""); setAmount(""); setReaction("none"); setNote(""); setAt(toLocalInput(new Date())); toast("이유식 기록을 추가했어요.", "success");
+      } catch (e) { toast(errMsg(e), "error"); } finally { setBusy(false); }
+    };
+    return (
+      <div className="space-y-4">
+        <Card className="p-4 space-y-3">
+          <Field label="음식 (새 음식은 알레르기 관찰)"><input className={inputCls} value={food} onChange={(e) => setFood(e.target.value)} placeholder="예: 쌀미음, 사과, 계란노른자" /></Field>
+          <Field label="양 (선택)"><input className={inputCls} value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="예: 30g, 5스푼" /></Field>
+          <ChipGroup label="반응(알레르기)" value={reaction} onChange={setReaction} options={[{ value: "none", label: "👍 이상 없음" }, { value: "mild", label: "🟡 약간(발진 등)" }, { value: "bad", label: "🔴 심함" }]} />
+          {reaction !== "none" && <p className="text-xs text-rose-600 bg-rose-50 dark:bg-rose-900/30 rounded-lg px-3 py-2">⚠️ 알레르기 반응이 의심되면 그 음식을 중단하고 소아과 상담을 권장합니다.</p>}
+          <Field label="메모 (선택)"><input className={inputCls} value={note} onChange={(e) => setNote(e.target.value)} placeholder="잘 먹음 / 뱉음 등" /></Field>
+          <DateTimeField value={at} onChange={setAt} />
+          <Btn onClick={save} disabled={busy} className="w-full">{busy ? "저장 중..." : "이유식 기록 저장"}</Btn>
+        </Card>
+        <RecordList items={items} render={(r) => (<>🥣 {r.food}{r.amount ? ` · ${r.amount}` : ""}{r.reaction && r.reaction !== "none" ? (r.reaction === "bad" ? " · 🔴알레르기" : " · 🟡반응") : ""}</>)} />
+      </div>
+    );
+  };
+
+  const MilestoneTracker = () => {
+    const { user, profile } = useAuth();
+    const toast = useToast();
+    const items = useRecords("milestone", 100);
+    const [title, setTitle] = useState("");
+    const [note, setNote] = useState("");
+    const [at, setAt] = useState(toLocalInput(new Date()));
+    const [busy, setBusy] = useState(false);
+    const presets = ["첫 미소", "목 가누기", "뒤집기", "혼자 앉기", "기기", "첫 이앓이", "첫 옹알이", "잡고 서기", "첫 걸음", "첫 단어"];
+    const save = async () => {
+      if (!title.trim()) { toast("기념할 내용을 입력하세요.", "error"); return; }
+      setBusy(true);
+      try {
+        await addRecord("milestone", { title: title.trim(), note: note || null, at: fromLocalInput(at) }, user, profile);
+        setTitle(""); setNote(""); setAt(toLocalInput(new Date())); toast("마일스톤을 기록했어요 🎉", "success");
+      } catch (e) { toast(errMsg(e), "error"); } finally { setBusy(false); }
+    };
+    return (
+      <div className="space-y-4">
+        <Card className="p-4 space-y-3">
+          <Field label="기념일 / 처음 한 일"><input className={inputCls} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="예: 첫 걸음" /></Field>
+          <div className="flex flex-wrap gap-1.5">
+            {presets.map((p) => <button key={p} type="button" onClick={() => setTitle(p)} className="text-xs px-2.5 py-1.5 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300">{p}</button>)}
+          </div>
+          <Field label="메모 (선택)"><input className={inputCls} value={note} onChange={(e) => setNote(e.target.value)} placeholder="그날의 기억" /></Field>
+          <DateTimeField value={at} onChange={setAt} label="날짜" />
+          <Btn onClick={save} disabled={busy} className="w-full">{busy ? "저장 중..." : "🎉 마일스톤 기록"}</Btn>
+        </Card>
+        <RecordList items={items} render={(r) => (<>🎉 {r.title}{r.note ? ` · ${r.note}` : ""}</>)} />
+      </div>
+    );
+  };
+
   // 태아 심박수 정상 범위 120~160 bpm (육아 전문가 검토 #1)
   const fhrCheck = (bpm) => {
     if (!bpm) return null;
@@ -1911,8 +2170,10 @@
     const { isAdmin } = useAuth();
     const tabs = [
       { id: "feeding", label: "🍼 수유" }, { id: "sleep", label: "😴 수면" },
-      { id: "diaper", label: "👶 기저귀" }, { id: "growth", label: "📏 성장" },
-      { id: "health", label: "🩺 건강" }, { id: "prenatal", label: "🔬 임신" },
+      { id: "diaper", label: "👶 기저귀" }, { id: "pump", label: "🤱 유축" },
+      { id: "solid", label: "🥣 이유식" }, { id: "med", label: "💊 투약" },
+      { id: "growth", label: "📏 성장" }, { id: "health", label: "🩺 건강" },
+      { id: "milestone", label: "🎉 마일스톤" }, { id: "prenatal", label: "🔬 임신" },
       ...(isAdmin ? [{ id: "activity", label: "📜 활동로그" }] : []),
     ];
     // 관리자만 보던 활동로그 탭을 비관리자가 선택 못 하도록 보정
@@ -1931,8 +2192,12 @@
         {cur === "feeding" && <FeedingTracker />}
         {cur === "sleep" && <SleepTracker />}
         {cur === "diaper" && <DiaperTracker />}
+        {cur === "pump" && <PumpTracker />}
+        {cur === "solid" && <SolidTracker />}
+        {cur === "med" && <MedTracker />}
         {cur === "growth" && <GrowthTracker />}
         {cur === "health" && <HealthLog />}
+        {cur === "milestone" && <MilestoneTracker />}
         {cur === "prenatal" && <PrenatalTracker openUpload={openUpload} />}
         {cur === "activity" && isAdmin && <ActivityLog />}
       </div>
@@ -2286,6 +2551,7 @@
     const [uploader, setUploader] = useState("all"); // 관리자 업로더별 필터
     const [detail, setDetail] = useState(null); // index
     const [showSlide, setShowSlide] = useState(false);
+    const [grouped, setGrouped] = useState(false); // 월별 묶어보기
     const { saved } = useMySaved(user.uid);
     const sentinel = useRef(null);
     const canMore = photos && photos.length >= lim; // 더 있을 가능성
@@ -2371,15 +2637,34 @@
           </select>
         )}
 
+        <div className="flex justify-end">
+          <button onClick={() => setGrouped((g) => !g)} className="text-xs text-slate-500 dark:text-slate-300 px-2 py-1">{grouped ? "전체 보기" : "📅 월별 보기"}</button>
+        </div>
+
         {!photos ? <Spinner /> : list.length === 0 ? (
           <Card className="p-8 text-center text-sm text-slate-400">{q || from || to ? "검색 결과가 없어요." : <>아직 사진이 없어요.<br />아래 + 버튼으로 추가해보세요.</>}</Card>
         ) : (
           <>
-            <div className="grid grid-cols-3 gap-2">
-              {list.map((p, i) => (
-                <PhotoCard key={p.id} photo={p} uid={user.uid} saved={saved.has(p.id)} onOpen={() => setDetail(i)} />
-              ))}
-            </div>
+            {grouped ? (
+              (() => {
+                const g = []; let cur = null;
+                list.forEach((p, i) => { const d = toDate(p.takenAt || p.createdAt); const key = d ? `${d.getFullYear()}년 ${d.getMonth() + 1}월` : "날짜 없음"; if (!cur || cur.key !== key) { cur = { key, items: [] }; g.push(cur); } cur.items.push({ p, i }); });
+                return g.map((grp) => (
+                  <div key={grp.key} className="mb-3">
+                    <p className="text-sm font-bold text-slate-600 dark:text-slate-300 mb-1.5 px-1">{grp.key} <span className="text-xs font-normal text-slate-400">({grp.items.length})</span></p>
+                    <div className="grid grid-cols-3 gap-2">
+                      {grp.items.map(({ p, i }) => <PhotoCard key={p.id} photo={p} uid={user.uid} saved={saved.has(p.id)} onOpen={() => setDetail(i)} />)}
+                    </div>
+                  </div>
+                ));
+              })()
+            ) : (
+              <div className="grid grid-cols-3 gap-2">
+                {list.map((p, i) => (
+                  <PhotoCard key={p.id} photo={p} uid={user.uid} saved={saved.has(p.id)} onOpen={() => setDetail(i)} />
+                ))}
+              </div>
+            )}
             <div ref={sentinel} className="h-8 flex items-center justify-center">
               {canMore && <span className="text-xs text-slate-400">더 불러오는 중…</span>}
             </div>
@@ -3031,7 +3316,7 @@
     const cnt = (t) => (recs || []).filter((r) => r.type === t).length;
     const recentDays = (u.loginDays || []).slice().sort().reverse().slice(0, 14);
     const recent = [...(recs || [])].sort((a, b) => toDate(b.createdAt || b.at) - toDate(a.createdAt || a.at)).slice(0, 12);
-    const TLABEL = { feeding: "🍼 수유", sleep: "😴 수면", diaper: "👶 기저귀", growth: "📏 성장", health: "🩺 건강", letter: "💌 편지", prenatal: "🔬 초음파" };
+    const TLABEL = { feeding: "🍼 수유", sleep: "😴 수면", diaper: "👶 기저귀", pump: "🤱 유축", solid: "🥣 이유식", med: "💊 투약", growth: "📏 성장", health: "🩺 건강", milestone: "🎉 마일스톤", letter: "💌 편지", prenatal: "🔬 초음파" };
     return (
       <Modal open={open} onClose={onClose} title={`${u.name} 현황`}>
         <div className="space-y-4">
@@ -3055,7 +3340,7 @@
             {recs == null ? <Spinner /> : (
               <>
                 <div className="grid grid-cols-4 gap-2 text-center">
-                  {[["feeding", "수유"], ["sleep", "수면"], ["diaper", "기저귀"], ["growth", "성장"], ["health", "건강"], ["prenatal", "초음파"], ["letter", "편지"]].map(([t, l]) => (
+                  {[["feeding", "수유"], ["sleep", "수면"], ["diaper", "기저귀"], ["pump", "유축"], ["solid", "이유식"], ["med", "투약"], ["growth", "성장"], ["health", "건강"], ["milestone", "마일스톤"], ["letter", "편지"]].map(([t, l]) => (
                     <div key={t} className="bg-slate-50 dark:bg-slate-700/40 rounded-lg py-1.5">
                       <p className="text-sm font-bold text-slate-700 dark:text-slate-200">{t === "letter" ? (u.letterCount || cnt("letter")) : cnt(t)}</p>
                       <p className="text-[10px] text-slate-400">{l}</p>
@@ -3138,6 +3423,60 @@
       catch (e) { toast(errMsg(e), "error"); }
     };
 
+    // 데이터 내보내기/백업
+    const download = (content, filename, mime) => {
+      const blob = new Blob([content], { type: mime });
+      const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = filename; a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    };
+    const fetchAllRecords = async () => {
+      const snap = await COL.records().limit(3000).get();
+      return snap.docs.map((d) => ({ id: d.id, ...d.data() })).sort((a, b) => toDate(a.at) - toDate(b.at));
+    };
+    const detailOf = (r) => {
+      switch (r.type) {
+        case "feeding": return `${({ breast: "모유", formula: "분유", mixed: "혼합" })[r.kind] || ""}${r.side ? "/" + ({ left: "왼쪽", right: "오른쪽", both: "양쪽" })[r.side] : ""}${r.amount ? " " + r.amount + "ml" : ""}${r.durationMin ? " " + r.durationMin + "분" : ""}`;
+        case "sleep": return `${r.naptype === "night" ? "밤잠" : "낮잠"} ${r.durationMin ? Math.min(1440, r.durationMin) + "분" : ""}`;
+        case "diaper": return ({ pee: "소변", poo: "대변", both: "소변+대변" })[r.diaperType] || "";
+        case "pump": return `${({ left: "왼쪽", right: "오른쪽", both: "양쪽" })[r.side] || ""}${r.amount ? " " + r.amount + "ml" : ""}`;
+        case "solid": return `${r.food || ""}${r.amount ? " " + r.amount : ""}${r.reaction && r.reaction !== "none" ? " [반응:" + r.reaction + "]" : ""}`;
+        case "med": return `${r.name || ""}${r.dose ? " " + r.dose : ""}`;
+        case "growth": return `${r.height ? "키" + r.height + "cm " : ""}${r.weight ? "몸무게" + r.weight + "kg " : ""}${r.head ? "머리" + r.head + "cm" : ""}`;
+        case "health": return `${r.temp ? r.temp + "℃ " : ""}${r.symptom || ""} ${r.hospital || ""}`.trim();
+        case "milestone": return `${r.title || ""} ${r.note || ""}`.trim();
+        case "letter": return `${r.title || ""}`;
+        case "memo": return r.text || "";
+        default: return "";
+      }
+    };
+    const exportCSV = async () => {
+      try {
+        const recs = await fetchAllRecords();
+        const rows = [["종류", "날짜", "시간", "입력자", "상세"]];
+        recs.forEach((r) => { const d = toDate(r.at); rows.push([(REC_LABEL[r.type] || r.type), d ? ymd(d) : "", d ? fmtTime(d) : "", r.creatorName || "", detailOf(r).replace(/[\n,]/g, " ")]); });
+        const csv = "﻿" + rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
+        download(csv, `아기수첩_${ymd(new Date())}.csv`, "text/csv;charset=utf-8");
+        toast("CSV로 내보냈어요.", "success");
+      } catch (e) { toast(errMsg(e), "error"); }
+    };
+    const backupJSON = async () => {
+      try {
+        const recs = await fetchAllRecords();
+        const data = { exportedAt: new Date().toISOString(), baby, records: recs };
+        download(JSON.stringify(data, null, 2), `아기수첩_백업_${ymd(new Date())}.json`, "application/json");
+        toast("JSON 백업을 저장했어요.", "success");
+      } catch (e) { toast(errMsg(e), "error"); }
+    };
+    const printSummary = async () => {
+      try {
+        const recs = await fetchAllRecords();
+        const rowsHtml = recs.slice(-500).reverse().map((r) => { const d = toDate(r.at); return `<tr><td>${REC_LABEL[r.type] || r.type}</td><td>${d ? ymd(d) + " " + fmtTime(d) : ""}</td><td>${(r.creatorName || "")}</td><td>${detailOf(r)}</td></tr>`; }).join("");
+        const html = `<!doctype html><html><head><meta charset="utf-8"><title>아기수첩 기록</title><style>body{font-family:sans-serif;padding:16px}h1{font-size:18px}table{width:100%;border-collapse:collapse;font-size:12px}th,td{border:1px solid #ccc;padding:4px 6px;text-align:left}th{background:#f1f5f9}</style></head><body><h1>🍼 ${baby.name} 육아 기록 (${ymd(new Date())})</h1><table><thead><tr><th>종류</th><th>일시</th><th>입력자</th><th>상세</th></tr></thead><tbody>${rowsHtml}</tbody></table><script>window.onload=function(){window.print()}<\/script></body></html>`;
+        const w = window.open("", "_blank");
+        if (w) { w.document.write(html); w.document.close(); } else toast("팝업이 차단됐어요. 허용해주세요.", "error");
+      } catch (e) { toast(errMsg(e), "error"); }
+    };
+
     return (
       <div className="p-4 space-y-4 pb-safe">
         {/* 내 정보 */}
@@ -3171,6 +3510,19 @@
           )}
           {isAdmin && <Btn onClick={saveBaby} className="w-full">저장</Btn>}
         </Card>
+
+        {/* 데이터 내보내기 / 백업 */}
+        {isAdmin && (
+          <Card className="p-4 space-y-3">
+            <h3 className="font-bold text-slate-800 dark:text-white">데이터 내보내기</h3>
+            <p className="text-[11px] text-slate-400">소아과 진료·기록 보관용으로 내보낼 수 있어요.</p>
+            <div className="grid grid-cols-3 gap-2">
+              <Btn variant="ghost" onClick={exportCSV} className="text-sm py-2.5">📄 CSV</Btn>
+              <Btn variant="ghost" onClick={printSummary} className="text-sm py-2.5">🖨️ 인쇄/PDF</Btn>
+              <Btn variant="ghost" onClick={backupJSON} className="text-sm py-2.5">💾 백업</Btn>
+            </div>
+          </Card>
+        )}
 
         {/* 관리자: 계정 관리 */}
         {isAdmin && (
