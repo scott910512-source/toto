@@ -587,6 +587,20 @@
     return <BabyCtx.Provider value={baby}>{children}</BabyCtx.Provider>;
   };
 
+  // 단위 설정 (저장은 항상 ml, 표시/입력만 변환)
+  const OZ = 29.5735;
+  const useUnits = () => {
+    const baby = useBaby();
+    const vol = (baby && baby.units && baby.units.vol) === "oz" ? "oz" : "ml";
+    return {
+      vol,
+      volLabel: vol === "oz" ? "oz" : "ml",
+      volToMl: (v) => (v === "" || v == null ? null : (vol === "oz" ? Math.round(Number(v) * OZ) : Number(v))),
+      mlToVol: (ml) => (ml == null ? null : (vol === "oz" ? +(ml / OZ).toFixed(1) : Math.round(ml))),
+      fmtVol: (ml) => (ml == null ? "" : (vol === "oz" ? +(ml / OZ).toFixed(1) + "oz" : Math.round(ml) + "ml")),
+    };
+  };
+
   // 아기 나이/임신주수 계산
   const useBabyAge = () => {
     const baby = useBaby();
@@ -897,9 +911,77 @@
     );
   };
 
+  // 상세 통계 (수면 패턴 · 시간대별 수유 · 주간/월간 리포트)
+  const StatsModal = ({ open, onClose }) => {
+    const feedings = useRecords("feeding", 400);
+    const sleeps = useRecords("sleep", 400);
+    const diapers = useRecords("diaper", 400);
+    if (!open) return null;
+    const clamp = (r) => Math.min(1440, Math.max(0, r.durationMin || 0));
+    const cut14 = Date.now() - 14 * 86400000;
+    const hourly = Array.from({ length: 24 }, (_, h) => ({ h: h + "시", 수유: 0 }));
+    (feedings || []).forEach((r) => { const d = toDate(r.at); if (d && d.getTime() >= cut14) hourly[d.getHours()].수유++; });
+    const done = (sleeps || []).filter((r) => r.end);
+    const napMin = done.filter((r) => r.naptype !== "night").reduce((s, r) => s + clamp(r), 0);
+    const nightMin = done.filter((r) => r.naptype === "night").reduce((s, r) => s + clamp(r), 0);
+    const nights = done.filter((r) => r.naptype === "night");
+    const avgHour = (arr, fn) => { const hs = arr.map(fn).filter((h) => h != null); return hs.length ? hs.reduce((a, b) => a + b, 0) / hs.length : null; };
+    const fmtHH = (h) => h == null ? "-" : `${String(Math.floor(h)).padStart(2, "0")}:${String(Math.round((h % 1) * 60) % 60).padStart(2, "0")}`;
+    const avgBed = avgHour(nights, (r) => { const d = toDate(r.start); return d ? d.getHours() + d.getMinutes() / 60 : null; });
+    const avgWake = avgHour(nights, (r) => { const d = toDate(r.end); return d ? d.getHours() + d.getMinutes() / 60 : null; });
+    const napRatio = (napMin + nightMin) ? Math.round(napMin / (napMin + nightMin) * 100) : 0;
+    const report = (days) => { const c = Date.now() - days * 86400000; const f = (feedings || []).filter((r) => toDate(r.at) >= c).length; const dp = (diapers || []).filter((r) => toDate(r.at) >= c).length; const sl = done.filter((r) => toDate(r.at) >= c).reduce((s, r) => s + clamp(r), 0) / 60; return { f: (f / days).toFixed(1), dp: (dp / days).toFixed(1), sl: (sl / days).toFixed(1) }; };
+    const r7 = report(7), r30 = report(30);
+    return (
+      <Modal open={open} onClose={onClose} title="📊 상세 통계">
+        <div className="space-y-5">
+          {/* 리포트 */}
+          <div>
+            <h4 className="text-sm font-bold text-slate-700 dark:text-slate-200 mb-2">하루 평균 (주간 / 월간)</h4>
+            <div className="grid grid-cols-3 gap-2 text-center">
+              {[["🍼 수유", r7.f + "회", r30.f + "회"], ["😴 수면", r7.sl + "h", r30.sl + "h"], ["👶 기저귀", r7.dp + "회", r30.dp + "회"]].map(([l, a, b]) => (
+                <div key={l} className="bg-slate-50 dark:bg-slate-700/40 rounded-xl py-2">
+                  <p className="text-[11px] text-slate-400">{l}</p>
+                  <p className="text-sm font-bold text-teal-600">{a}</p>
+                  <p className="text-[10px] text-slate-400">월 {b}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+          {/* 수면 패턴 */}
+          <div>
+            <h4 className="text-sm font-bold text-slate-700 dark:text-slate-200 mb-2">😴 수면 패턴</h4>
+            <div className="text-sm text-slate-600 dark:text-slate-300 space-y-1">
+              <p>낮잠 {hm(napMin)} · 밤잠 {hm(nightMin)} <span className="text-slate-400">(낮잠 비율 {napRatio}%)</span></p>
+              <p>평균 취침 <b>{fmtHH(avgBed)}</b> · 평균 기상 <b>{fmtHH(avgWake)}</b></p>
+            </div>
+          </div>
+          {/* 시간대별 수유 */}
+          <div>
+            <h4 className="text-sm font-bold text-slate-700 dark:text-slate-200 mb-2">🍼 시간대별 수유 (최근 14일)</h4>
+            <div style={{ width: "100%", height: 170 }}>
+              <ResponsiveContainer>
+                <BarChart data={hourly} margin={{ top: 5, right: 5, left: -24, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                  <XAxis dataKey="h" tick={{ fontSize: 8 }} interval={2} />
+                  <YAxis tick={{ fontSize: 10 }} allowDecimals={false} />
+                  <Tooltip />
+                  <Bar dataKey="수유" fill="#14b8a6" radius={[3, 3, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+            <p className="text-[10px] text-slate-400">자주 먹는 시간대를 파악해 수유 리듬을 잡아보세요.</p>
+          </div>
+        </div>
+      </Modal>
+    );
+  };
+
   const Dashboard = ({ go }) => {
     const { user, profile } = useAuth();
     const toast = useToast();
+    const units = useUnits();
+    const [statsOpen, setStatsOpen] = useState(false);
     const feedings = useRecords("feeding");
     const sleeps = useRecords("sleep");
     const diapers = useRecords("diaper");
@@ -1038,10 +1120,10 @@
           const td = [...tF, ...tD, ...(pumps || []).filter((r) => isSameDay(r.at, today)), ...(solids || []).filter((r) => isSameDay(r.at, today)), ...(meds || []).filter((r) => isSameDay(r.at, today)), ...tS]
             .sort((a, b) => toDate(b.at) - toDate(a.at)).slice(0, 20);
           const line = (r) => {
-            if (r.type === "feeding") return `${({ breast: "모유", formula: "분유", mixed: "혼합" })[r.kind] || "수유"}${r.amount ? ` ${r.amount}ml` : ""}`;
+            if (r.type === "feeding") return `${({ breast: "모유", formula: "분유", mixed: "혼합" })[r.kind] || "수유"}${r.amount ? ` ${units.fmtVol(r.amount)}` : ""}`;
             if (r.type === "diaper") return ({ pee: "소변", poo: "대변", both: "소변+대변" })[r.diaperType] || "기저귀";
             if (r.type === "sleep") return `수면 ${r.durationMin ? hm(Math.min(1440, r.durationMin)) : ""}`;
-            if (r.type === "pump") return `유축${r.amount ? ` ${r.amount}ml` : ""}`;
+            if (r.type === "pump") return `유축${r.amount ? ` ${units.fmtVol(r.amount)}` : ""}`;
             if (r.type === "solid") return `이유식 ${r.food || ""}`;
             if (r.type === "med") return `투약 ${r.name || ""}`;
             return REC_LABEL[r.type] || "기록";
@@ -1065,10 +1147,14 @@
         })()}
 
         <QuickMemoModal open={memoOpen} onClose={() => setMemoOpen(false)} />
+        <StatsModal open={statsOpen} onClose={() => setStatsOpen(false)} />
 
         {/* 주간 통계 */}
         <Card className="p-4">
-          <h3 className="font-bold text-slate-800 dark:text-white mb-1">최근 7일 통계</h3>
+          <div className="flex items-center justify-between mb-1">
+            <h3 className="font-bold text-slate-800 dark:text-white">최근 7일 통계</h3>
+            <button onClick={() => setStatsOpen(true)} className="text-xs text-teal-600 dark:text-teal-400">📊 상세 통계 ›</button>
+          </div>
           <div className="grid grid-cols-3 gap-2 my-3 text-center">
             <div><p className="text-lg font-bold text-teal-500">{avg("수유").toFixed(1)}</p><p className="text-[11px] text-slate-400">하루 평균 수유</p></div>
             <div><p className="text-lg font-bold text-violet-500">{avg("수면").toFixed(1)}h</p><p className="text-[11px] text-slate-400">하루 평균 수면</p></div>
@@ -1144,6 +1230,7 @@
   const FeedingTracker = () => {
     const { user, profile } = useAuth();
     const toast = useToast();
+    const units = useUnits();
     const items = useRecords("feeding");
     const [kind, setKind] = useState("breast"); // breast/formula/mixed
     const [side, setSide] = useState("left");
@@ -1157,7 +1244,7 @@
       try {
         await addRecord("feeding", {
           kind, side: kind === "breast" ? side : null,
-          amount: amount ? Number(amount) : null,
+          amount: amount ? units.volToMl(amount) : null,
           durationMin: dur ? Number(dur) : null,
           at: fromLocalInput(at),
         }, user, profile);
@@ -1198,7 +1285,7 @@
           <Card className={`p-4 text-center ${overdue ? "ring-2 ring-amber-400" : ""}`}>
             <p className="text-sm text-slate-500 dark:text-slate-400">마지막 수유 경과</p>
             <p className={`text-2xl font-bold ${overdue ? "text-amber-500" : "text-teal-500"}`}>{hm(elapsedMin)}</p>
-            <p className="text-[11px] text-slate-400">{kindLabel[last.kind]}{last.amount ? ` ${last.amount}ml` : ""} · {fmtTime(last.at)}</p>
+            <p className="text-[11px] text-slate-400">{kindLabel[last.kind]}{last.amount ? ` ${units.fmtVol(last.amount)}` : ""} · {fmtTime(last.at)}</p>
             {overdue && <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">⚠️ 3시간 초과 — 수유 시간을 확인해주세요</p>}
             <Btn variant="ghost" onClick={repeatLast} disabled={busy} className="w-full mt-3 text-sm py-2.5">🔁 직전과 동일하게 한 번 더</Btn>
           </Card>
@@ -1215,7 +1302,7 @@
             </div>
           )}
           <div className="grid grid-cols-2 gap-3">
-            <Field label="수유량 (ml)"><input className={inputCls} type="number" inputMode="numeric" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="120" /></Field>
+            <Field label={`수유량 (${units.volLabel})`}><input className={inputCls} type="number" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder={units.vol === "oz" ? "4" : "120"} /></Field>
             <Field label="시간 (분)"><input className={inputCls} type="number" inputMode="numeric" value={dur} onChange={(e) => setDur(e.target.value)} placeholder="15" /></Field>
           </div>
           <DateTimeField value={at} onChange={setAt} />
@@ -1225,7 +1312,7 @@
         <RecordList items={items} render={(r) => (
           <>
             <span className="font-medium text-slate-800 dark:text-white">{kindLabel[r.kind]}{r.side && ` · ${{ left: "왼쪽", right: "오른쪽", both: "양쪽" }[r.side]}`}</span>
-            {r.amount ? ` · ${r.amount}ml` : ""}{r.durationMin ? ` · ${r.durationMin}분` : ""}
+            {r.amount ? ` · ${units.fmtVol(r.amount)}` : ""}{r.durationMin ? ` · ${r.durationMin}분` : ""}
           </>
         )} />
       </div>
@@ -1461,6 +1548,28 @@
           <Btn onClick={save} disabled={busy} className="w-full">{busy ? "저장 중..." : "기저귀 기록"}</Btn>
         </Card>
 
+        {/* 대변 색상 가이드 (18) */}
+        <Card className="p-4">
+          <h3 className="font-bold text-slate-800 dark:text-white mb-2">💩 대변 색상 가이드</h3>
+          <div className="space-y-1.5">
+            {[
+              { c: "#caa15a", n: "노랑/황금색", s: "정상 (모유)", ok: true },
+              { c: "#8a6d3b", n: "갈색/연갈색", s: "정상 (분유·이유식)", ok: true },
+              { c: "#3b7a3b", n: "초록색", s: "대체로 정상 (전유/철분)", ok: true },
+              { c: "#9b1c1c", n: "빨강(혈변)", s: "⚠️ 진료 권장", ok: false },
+              { c: "#1a1a1a", n: "검정색", s: "⚠️ 진료 권장(태변 이후)", ok: false },
+              { c: "#e5e5e5", n: "흰색/회색", s: "⚠️ 즉시 진료", ok: false },
+            ].map((g) => (
+              <div key={g.n} className="flex items-center gap-2.5 text-xs">
+                <span className="w-5 h-5 rounded-full border border-slate-200 dark:border-slate-600 shrink-0" style={{ background: g.c }} />
+                <span className="font-medium text-slate-700 dark:text-slate-200 w-24 shrink-0">{g.n}</span>
+                <span className={g.ok ? "text-slate-500 dark:text-slate-400" : "text-rose-600 font-medium"}>{g.s}</span>
+              </div>
+            ))}
+          </div>
+          <p className="text-[10px] text-slate-400 mt-2">참고용입니다. 이상 색상이 지속되면 소아과 상담을 권장해요.</p>
+        </Card>
+
         <RecordList items={items} render={(r) => (
           <>{{ pee: "💧 소변", poo: "💩 대변", both: "💧💩 둘 다" }[r.diaperType]}{r.color && ` · ${r.color}`}</>
         )} />
@@ -1552,7 +1661,10 @@
     }, [items, metric, whoRows, baby.birthDate]);
 
     // 최신 측정의 백분위
-    const latest = items && items.find((r) => r[metric] != null);
+    const measured = items ? items.filter((r) => r[metric] != null) : [];
+    const latest = measured[0];
+    const prev = measured[1];
+    const trend = latest && prev ? +(latest[metric] - prev[metric]).toFixed(2) : null; // 직전 대비 변화
     const latestM = latest ? ageMonthsAt(latest.at) : null;
     const pct = (whoRows && latest && latestM != null && latestM >= 0 && latestM <= 24)
       ? estPercentile(whoRows, latestM, latest[metric]) : null;
@@ -1588,7 +1700,9 @@
             <>
               {pct != null && (
                 <p className="text-xs text-slate-500 dark:text-slate-400 mb-2">
-                  최근 {metric === "weight" ? "몸무게" : "키"} <b>{latest[metric]}{unit}</b> · 또래 약 <b className="text-teal-600">{pct}백분위</b>
+                  최근 {metric === "weight" ? "몸무게" : "키"} <b>{latest[metric]}{unit}</b>
+                  {trend != null && <b className={trend > 0 ? "text-teal-600" : trend < 0 ? "text-rose-500" : "text-slate-400"}> {trend > 0 ? "▲" : trend < 0 ? "▼" : "—"}{Math.abs(trend)}{unit}</b>}
+                  {" · 또래 약 "}<b className="text-teal-600">{pct}백분위</b>
                   {(pct < 3 || pct > 97) && <span className="text-amber-600"> · 소아과 상담 권장</span>}
                 </p>
               )}
@@ -1779,6 +1893,7 @@
   const PumpTracker = () => {
     const { user, profile } = useAuth();
     const toast = useToast();
+    const units = useUnits();
     const items = useRecords("pump", 100);
     const [side, setSide] = useState("both");
     const [amount, setAmount] = useState("");
@@ -1789,7 +1904,7 @@
     const save = async () => {
       setBusy(true);
       try {
-        await addRecord("pump", { side, amount: amount ? Number(amount) : null, durationMin: dur ? Number(dur) : null, at: fromLocalInput(at) }, user, profile);
+        await addRecord("pump", { side, amount: amount ? units.volToMl(amount) : null, durationMin: dur ? Number(dur) : null, at: fromLocalInput(at) }, user, profile);
         setAmount(""); setDur(""); setAt(toLocalInput(new Date())); toast("유축 기록을 추가했어요.", "success");
       } catch (e) { toast(errMsg(e), "error"); } finally { setBusy(false); }
     };
@@ -1799,13 +1914,13 @@
         <Card className="p-4 space-y-3">
           <ChipGroup label="유축 위치" value={side} onChange={setSide} options={[{ value: "left", label: "왼쪽" }, { value: "right", label: "오른쪽" }, { value: "both", label: "양쪽" }]} />
           <div className="grid grid-cols-2 gap-3">
-            <Field label="유축량 (ml)"><input className={inputCls} type="number" inputMode="numeric" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="80" /></Field>
+            <Field label={`유축량 (${units.volLabel})`}><input className={inputCls} type="number" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder={units.vol === "oz" ? "3" : "80"} /></Field>
             <Field label="시간 (분)"><input className={inputCls} type="number" inputMode="numeric" value={dur} onChange={(e) => setDur(e.target.value)} placeholder="15" /></Field>
           </div>
           <DateTimeField value={at} onChange={setAt} />
           <Btn onClick={save} disabled={busy} className="w-full">{busy ? "저장 중..." : "유축 기록 저장"}</Btn>
         </Card>
-        <RecordList items={items} render={(r) => (<>🤱 {sideL[r.side] || ""}{r.amount ? ` · ${r.amount}ml` : ""}{r.durationMin ? ` · ${r.durationMin}분` : ""}</>)} />
+        <RecordList items={items} render={(r) => (<>🤱 {sideL[r.side] || ""}{r.amount ? ` · ${units.fmtVol(r.amount)}` : ""}{r.durationMin ? ` · ${r.durationMin}분` : ""}</>)} />
       </div>
     );
   };
@@ -3379,12 +3494,12 @@
     const confirm = useConfirm();
     const baby = useBaby();
     const [users, setUsers] = useState(null);
-    const [babyForm, setBabyForm] = useState({ name: baby.name, birthDate: baby.birthDate || "", dueDate: baby.dueDate || "", sex: baby.sex || "" });
+    const [babyForm, setBabyForm] = useState({ name: baby.name, birthDate: baby.birthDate || "", dueDate: baby.dueDate || "", sex: baby.sex || "", unitsVol: (baby.units && baby.units.vol) || "ml" });
     const [addOpen, setAddOpen] = useState(false);
     const [nickOpen, setNickOpen] = useState(false);
     const [statusUser, setStatusUser] = useState(null); // 현황보기 대상
 
-    useEffect(() => setBabyForm({ name: baby.name, birthDate: baby.birthDate || "", dueDate: baby.dueDate || "", sex: baby.sex || "" }), [baby]);
+    useEffect(() => setBabyForm({ name: baby.name, birthDate: baby.birthDate || "", dueDate: baby.dueDate || "", sex: baby.sex || "", unitsVol: (baby.units && baby.units.vol) || "ml" }), [baby]);
 
     useEffect(() => {
       if (!isAdmin) return;
@@ -3393,8 +3508,11 @@
     }, [isAdmin]);
 
     const saveBaby = async () => {
-      try { await COL.settings().set(babyForm, { merge: true }); toast("아기 정보를 저장했어요.", "success"); }
-      catch (e) { toast(errMsg(e), "error"); }
+      try {
+        const { unitsVol, ...rest } = babyForm;
+        await COL.settings().set({ ...rest, units: { vol: unitsVol || "ml" } }, { merge: true });
+        toast("아기 정보를 저장했어요.", "success");
+      } catch (e) { toast(errMsg(e), "error"); }
     };
 
     const setRole = async (u, role) => {
@@ -3503,10 +3621,14 @@
           <Field label="출산 예정일"><input className={inputCls + " w-full"} type="date" value={babyForm.dueDate} disabled={!isAdmin} onChange={(e) => setBabyForm({ ...babyForm, dueDate: e.target.value })} /></Field>
           <Field label="출생일 (태어난 뒤 입력)"><input className={inputCls + " w-full"} type="date" value={babyForm.birthDate} disabled={!isAdmin} onChange={(e) => setBabyForm({ ...babyForm, birthDate: e.target.value })} /></Field>
           {isAdmin ? (
-            <ChipGroup label="성별 (WHO 성장곡선용)" value={babyForm.sex} onChange={(v) => setBabyForm({ ...babyForm, sex: v })}
-              options={[{ value: "male", label: "👦 남아" }, { value: "female", label: "👧 여아" }]} />
+            <>
+              <ChipGroup label="성별 (WHO 성장곡선용)" value={babyForm.sex} onChange={(v) => setBabyForm({ ...babyForm, sex: v })}
+                options={[{ value: "male", label: "👦 남아" }, { value: "female", label: "👧 여아" }]} />
+              <ChipGroup label="수유량 단위" value={babyForm.unitsVol} onChange={(v) => setBabyForm({ ...babyForm, unitsVol: v })}
+                options={[{ value: "ml", label: "ml" }, { value: "oz", label: "oz (온스)" }]} />
+            </>
           ) : (
-            <p className="text-sm text-slate-500 dark:text-slate-400">성별: {babyForm.sex === "male" ? "남아" : babyForm.sex === "female" ? "여아" : "미설정"}</p>
+            <p className="text-sm text-slate-500 dark:text-slate-400">성별: {babyForm.sex === "male" ? "남아" : babyForm.sex === "female" ? "여아" : "미설정"} · 수유량: {babyForm.unitsVol}</p>
           )}
           {isAdmin && <Btn onClick={saveBaby} className="w-full">저장</Btn>}
         </Card>
