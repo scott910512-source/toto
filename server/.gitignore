@@ -1,9 +1,0 @@
-node_modules/
-dist/
-public/
-uploads/
-*.db
-*.db-journal
-.env
-prisma/dev.db
-prisma/*.db
