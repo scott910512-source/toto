@@ -1181,7 +1181,7 @@
   /* ========================================================================
      8-b. 활동로그 (기록 탭의 '활동로그' 서브메뉴 · 관리자 전용)
      ======================================================================== */
-  const REC_LABEL = { feeding: "수유 기록", sleep: "수면 기록", diaper: "기저귀 기록", pump: "유축 기록", solid: "이유식 기록", med: "투약 기록", growth: "성장 기록", health: "건강 기록", milestone: "마일스톤", letter: "편지", photo: "사진", memo: "메모" };
+  const REC_LABEL = { feeding: "수유 기록", sleep: "수면 기록", diaper: "기저귀 기록", pump: "유축 기록", solid: "이유식 기록", med: "투약 기록", growth: "성장 기록", health: "건강 기록", milestone: "다이어리", letter: "편지", photo: "사진", memo: "메모" };
   const REC_ICON = { feeding: "🍼", sleep: "😴", diaper: "👶", pump: "🤱", solid: "🥣", med: "💊", growth: "📏", health: "🩺", milestone: "🎉", letter: "💌", photo: "🖼️", memo: "📝" };
   const ActivityLog = ({ limit = 60 }) => {
     const feedings = useRecords("feeding", 60);
@@ -1999,35 +1999,146 @@
     );
   };
 
-  const MilestoneTracker = () => {
+  // 📖 첫돌 다이어리 슬롯 (처음 순간 + 귀여운 문구)
+  const DIARY_SLOTS = [
+    { key: "born", icon: "🐣", title: "세상에 온 날", quote: "네가 우리에게 온 그날, 온 세상이 반짝였어 ✨" },
+    { key: "smile", icon: "😊", title: "첫 미소", quote: "너의 첫 미소에 온 세상이 환해졌어 ☺️" },
+    { key: "neck", icon: "🙆", title: "목 가누기", quote: "혼자 고개를 든 날, 참 대견했어 💪" },
+    { key: "rollover", icon: "🔄", title: "첫 뒤집기", quote: "데굴— 세상을 뒤집은 날! 🌍" },
+    { key: "tooth", icon: "🦷", title: "첫 이", quote: "하얀 이가 쏙, 앙증맞은 이앓이 🦷" },
+    { key: "babble", icon: "💬", title: "첫 옹알이", quote: "옹알옹알, 너의 첫 이야기 🎵" },
+    { key: "sit", icon: "🪑", title: "혼자 앉기", quote: "혼자 앉아 세상을 바라본 날 👀" },
+    { key: "crawl", icon: "🐛", title: "기어다니기", quote: "온 집이 너의 놀이터가 됐어 🏠" },
+    { key: "stand", icon: "🧍", title: "잡고 서기", quote: "두 발로 우뚝, 한 뼘 더 컸구나 🌱" },
+    { key: "word", icon: "🗣️", title: "첫 단어", quote: "세상에서 가장 예쁜 첫 말 💛" },
+    { key: "walk", icon: "👣", title: "첫 걸음", quote: "한 걸음, 두 걸음… 큰 세상으로 👣" },
+    { key: "birthday", icon: "🎂", title: "첫 생일 (돌)", quote: "우리 아기, 첫 번째 생일 축하해 🎉" },
+  ];
+
+  const DiaryEntryModal = ({ entry, onClose }) => {
     const { user, profile } = useAuth();
     const toast = useToast();
-    const items = useRecords("milestone", 100);
     const [title, setTitle] = useState("");
     const [note, setNote] = useState("");
+    const [image, setImage] = useState(null);
     const [at, setAt] = useState(toLocalInput(new Date()));
     const [busy, setBusy] = useState(false);
-    const presets = ["첫 미소", "목 가누기", "뒤집기", "혼자 앉기", "기기", "첫 이앓이", "첫 옹알이", "잡고 서기", "첫 걸음", "첫 단어"];
+    const fileRef = useRef();
+    const slot = entry && entry.slot;
+    const rec = entry && entry.record;
+    useEffect(() => {
+      if (!entry) return;
+      setTitle(rec ? (rec.title || "") : (slot ? slot.title : ""));
+      setNote(rec ? (rec.note || "") : "");
+      setImage(rec ? (rec.image || null) : null);
+      setAt(rec ? toLocalInput(rec.at) : toLocalInput(new Date()));
+    }, [entry && (rec ? rec.id : slot ? slot.key : "free")]);
+    const pickImage = async (e) => {
+      const f = (e.target.files || [])[0]; if (!f) return;
+      try { setBusy(true); setImage(await compressToDataURL(f)); } catch (ex) { toast(errMsg(ex), "error"); } finally { setBusy(false); }
+    };
     const save = async () => {
-      if (!title.trim()) { toast("기념할 내용을 입력하세요.", "error"); return; }
+      if (!title.trim()) { toast("제목을 입력하세요.", "error"); return; }
       setBusy(true);
       try {
-        await addRecord("milestone", { title: title.trim(), note: note || null, at: fromLocalInput(at) }, user, profile);
-        setTitle(""); setNote(""); setAt(toLocalInput(new Date())); toast("마일스톤을 기록했어요 🎉", "success");
+        const payload = { title: title.trim(), note: note || null, image: image || null, slot: slot ? slot.key : null, at: fromLocalInput(at) };
+        if (rec) await COL.records().doc(rec.id).update(payload);
+        else await addRecord("milestone", payload, user, profile);
+        toast("다이어리에 담았어요 📖", "success"); onClose();
       } catch (e) { toast(errMsg(e), "error"); } finally { setBusy(false); }
     };
     return (
-      <div className="space-y-4">
-        <Card className="p-4 space-y-3">
-          <Field label="기념일 / 처음 한 일"><input className={inputCls} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="예: 첫 걸음" /></Field>
-          <div className="flex flex-wrap gap-1.5">
-            {presets.map((p) => <button key={p} type="button" onClick={() => setTitle(p)} className="text-xs px-2.5 py-1.5 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300">{p}</button>)}
+      <Modal open={!!entry} onClose={onClose} title={slot ? `${slot.icon} ${slot.title}` : "🎉 순간 기록"}>
+        {entry && (
+          <div className="space-y-4">
+            {slot && <p className="text-sm text-violet-500 bg-violet-50 dark:bg-violet-900/20 rounded-xl p-3">{slot.quote}</p>}
+            <input ref={fileRef} type="file" accept="image/*" onChange={pickImage} className="hidden" />
+            {image ? (
+              <div className="relative">
+                <img src={image} alt="" className="w-full rounded-xl" />
+                <button onClick={() => setImage(null)} aria-label="사진 제거" className="absolute top-2 right-2 w-8 h-8 rounded-full bg-black/50 text-white text-lg">×</button>
+              </div>
+            ) : (
+              <button onClick={() => fileRef.current.click()} className="w-full border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-2xl py-6 text-slate-400 hover:border-teal-400">
+                <div className="text-3xl mb-1">📷</div><p className="text-sm">사진 추가</p>
+              </button>
+            )}
+            {!slot && <Field label="제목"><input className={inputCls} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="예: 첫 물놀이" /></Field>}
+            <Field label="한마디 (선택)"><textarea className={inputCls} rows="2" value={note} onChange={(e) => setNote(e.target.value)} placeholder="그날의 기억을 남겨보세요" /></Field>
+            <DateTimeField value={at} onChange={setAt} label="날짜" />
+            <Btn onClick={save} disabled={busy} className="w-full">{busy ? "저장 중..." : "📖 다이어리에 담기"}</Btn>
           </div>
-          <Field label="메모 (선택)"><input className={inputCls} value={note} onChange={(e) => setNote(e.target.value)} placeholder="그날의 기억" /></Field>
-          <DateTimeField value={at} onChange={setAt} label="날짜" />
-          <Btn onClick={save} disabled={busy} className="w-full">{busy ? "저장 중..." : "🎉 마일스톤 기록"}</Btn>
-        </Card>
-        <RecordList items={items} render={(r) => (<>🎉 {r.title}{r.note ? ` · ${r.note}` : ""}</>)} />
+        )}
+      </Modal>
+    );
+  };
+
+  const DiaryTracker = () => {
+    const { user } = useAuth();
+    const toast = useToast();
+    const baby = useBaby();
+    const items = useRecords("milestone", 200);
+    const [entry, setEntry] = useState(null);
+    const bySlot = {};
+    (items || []).forEach((r) => { if (r.slot && !bySlot[r.slot]) bySlot[r.slot] = r; });
+    const free = (items || []).filter((r) => !r.slot);
+    const ageAt = (d) => baby.birthDate ? Math.floor((toDate(d) - new Date(baby.birthDate)) / 86400000) : null;
+    const doneCount = DIARY_SLOTS.filter((s) => bySlot[s.key]).length;
+
+    const printBook = () => {
+      const filled = DIARY_SLOTS.map((sl) => ({ sl, r: bySlot[sl.key] })).filter((x) => x.r);
+      if (filled.length === 0) { toast("먼저 다이어리를 채워주세요 📖", "error"); return; }
+      const esc = (s) => String(s || "").replace(/[<>&]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" }[c]));
+      const pages = filled.map(({ sl, r }) => {
+        const age = ageAt(r.at);
+        const media = r.image ? `<img src="${r.image}" style="width:100%;height:55vh;object-fit:cover;border-radius:18px"/>` : `<div style="font-size:130px;padding:80px 0">${sl.icon}</div>`;
+        return `<div class="page">${media}<h2>${sl.icon} ${esc(sl.title)}</h2><p class="q">${esc(sl.quote)}</p><p class="d">${r.at ? fmtDate(r.at) : ""}${age != null ? ` · 생후 ${age}일` : ""}</p>${r.note ? `<p class="n">${esc(r.note)}</p>` : ""}</div>`;
+      }).join("");
+      const html = `<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>${esc(baby.name)} 첫돌 다이어리</title><style>@page{margin:0}body{font-family:'Noto Sans KR',sans-serif;margin:0;background:#fdfbf7;color:#334155}.cover{height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;background:linear-gradient(135deg,#7dd3c0,#a78bfa);color:#fff;page-break-after:always}.cover h1{font-size:44px;margin:8px}.page{min-height:100vh;box-sizing:border-box;padding:32px;text-align:center;page-break-after:always;display:flex;flex-direction:column;justify-content:center}.page h2{font-size:26px;margin:18px 0 6px}.q{color:#7c3aed;font-size:16px;margin:0}.d{color:#64748b;font-size:14px;margin-top:8px}.n{margin-top:14px;font-size:15px;white-space:pre-wrap}</style></head><body><div class="cover"><div style="font-size:90px">🍼</div><h1>${esc(baby.name)}</h1><p style="font-size:22px">첫돌 다이어리</p></div>${pages}<script>window.onload=function(){setTimeout(function(){window.print()},400)}<\/script></body></html>`;
+      const w = window.open("", "_blank");
+      if (w) { w.document.write(html); w.document.close(); } else toast("팝업이 차단됐어요. 허용해주세요.", "error");
+    };
+
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div><h3 className="font-bold text-slate-800 dark:text-white">📖 첫돌 다이어리</h3><p className="text-xs text-slate-400">처음 순간을 사진·한마디와 함께 · {doneCount}/{DIARY_SLOTS.length}</p></div>
+          <Btn onClick={printBook} variant="lavender" className="text-sm py-2 px-3">📖 책으로</Btn>
+        </div>
+        <div className="grid grid-cols-2 gap-2.5">
+          {DIARY_SLOTS.map((sl) => {
+            const r = bySlot[sl.key];
+            return (
+              <button key={sl.key} onClick={() => setEntry({ slot: sl, record: r })}
+                className={`text-left rounded-2xl border overflow-hidden active:scale-[.98] transition ${r ? "border-teal-200 dark:border-teal-800" : "border-dashed border-slate-200 dark:border-slate-700"}`}>
+                {r && r.image ? <img src={r.image} alt="" className="w-full h-24 object-cover" />
+                  : <div className={`h-24 flex items-center justify-center text-3xl ${r ? "bg-teal-50 dark:bg-teal-900/20" : "bg-slate-50 dark:bg-slate-700/40"}`}>{sl.icon}</div>}
+                <div className="p-2">
+                  <p className="text-sm font-bold text-slate-700 dark:text-slate-200 truncate">{sl.title}</p>
+                  {r ? <p className="text-[11px] text-teal-500">{fmtDate(r.at)}{ageAt(r.at) != null ? ` · 생후 ${ageAt(r.at)}일` : ""}</p>
+                    : <p className="text-[11px] text-slate-400">기록하기 ›</p>}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="flex items-center justify-between pt-1">
+          <h4 className="text-sm font-bold text-slate-700 dark:text-slate-200">✨ 그 밖의 순간</h4>
+          <button onClick={() => setEntry({ slot: null, record: null })} className="text-xs text-teal-600 dark:text-teal-400">+ 추가</button>
+        </div>
+        {free.length > 0 && (
+          <div className="grid grid-cols-2 gap-2.5">
+            {free.map((r) => (
+              <button key={r.id} onClick={() => setEntry({ slot: null, record: r })} className="text-left rounded-2xl border border-slate-100 dark:border-slate-700 overflow-hidden active:scale-[.98]">
+                {r.image ? <img src={r.image} alt="" className="w-full h-24 object-cover" /> : <div className="h-24 flex items-center justify-center text-3xl bg-slate-50 dark:bg-slate-700/40">🎉</div>}
+                <div className="p-2"><p className="text-sm font-bold text-slate-700 dark:text-slate-200 truncate">{r.title}</p><p className="text-[11px] text-teal-500">{fmtDate(r.at)}</p></div>
+              </button>
+            ))}
+          </div>
+        )}
+
+        <DiaryEntryModal entry={entry} onClose={() => setEntry(null)} />
       </div>
     );
   };
@@ -2288,7 +2399,7 @@
       { id: "diaper", label: "👶 기저귀" }, { id: "pump", label: "🤱 유축" },
       { id: "solid", label: "🥣 이유식" }, { id: "med", label: "💊 투약" },
       { id: "growth", label: "📏 성장" }, { id: "health", label: "🩺 건강" },
-      { id: "milestone", label: "🎉 마일스톤" }, { id: "prenatal", label: "🔬 임신" },
+      { id: "milestone", label: "📖 다이어리" }, { id: "prenatal", label: "🔬 임신" },
       ...(isAdmin ? [{ id: "activity", label: "📜 활동로그" }] : []),
     ];
     // 관리자만 보던 활동로그 탭을 비관리자가 선택 못 하도록 보정
@@ -2312,7 +2423,7 @@
         {cur === "med" && <MedTracker />}
         {cur === "growth" && <GrowthTracker />}
         {cur === "health" && <HealthLog />}
-        {cur === "milestone" && <MilestoneTracker />}
+        {cur === "milestone" && <DiaryTracker />}
         {cur === "prenatal" && <PrenatalTracker openUpload={openUpload} />}
         {cur === "activity" && isAdmin && <ActivityLog />}
       </div>
@@ -3431,7 +3542,7 @@
     const cnt = (t) => (recs || []).filter((r) => r.type === t).length;
     const recentDays = (u.loginDays || []).slice().sort().reverse().slice(0, 14);
     const recent = [...(recs || [])].sort((a, b) => toDate(b.createdAt || b.at) - toDate(a.createdAt || a.at)).slice(0, 12);
-    const TLABEL = { feeding: "🍼 수유", sleep: "😴 수면", diaper: "👶 기저귀", pump: "🤱 유축", solid: "🥣 이유식", med: "💊 투약", growth: "📏 성장", health: "🩺 건강", milestone: "🎉 마일스톤", letter: "💌 편지", prenatal: "🔬 초음파" };
+    const TLABEL = { feeding: "🍼 수유", sleep: "😴 수면", diaper: "👶 기저귀", pump: "🤱 유축", solid: "🥣 이유식", med: "💊 투약", growth: "📏 성장", health: "🩺 건강", milestone: "📖 다이어리", letter: "💌 편지", prenatal: "🔬 초음파" };
     return (
       <Modal open={open} onClose={onClose} title={`${u.name} 현황`}>
         <div className="space-y-4">
@@ -3455,7 +3566,7 @@
             {recs == null ? <Spinner /> : (
               <>
                 <div className="grid grid-cols-4 gap-2 text-center">
-                  {[["feeding", "수유"], ["sleep", "수면"], ["diaper", "기저귀"], ["pump", "유축"], ["solid", "이유식"], ["med", "투약"], ["growth", "성장"], ["health", "건강"], ["milestone", "마일스톤"], ["letter", "편지"]].map(([t, l]) => (
+                  {[["feeding", "수유"], ["sleep", "수면"], ["diaper", "기저귀"], ["pump", "유축"], ["solid", "이유식"], ["med", "투약"], ["growth", "성장"], ["health", "건강"], ["milestone", "다이어리"], ["letter", "편지"]].map(([t, l]) => (
                     <div key={t} className="bg-slate-50 dark:bg-slate-700/40 rounded-lg py-1.5">
                       <p className="text-sm font-bold text-slate-700 dark:text-slate-200">{t === "letter" ? (u.letterCount || cnt("letter")) : cnt(t)}</p>
                       <p className="text-[10px] text-slate-400">{l}</p>
