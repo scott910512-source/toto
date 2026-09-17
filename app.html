@@ -401,7 +401,7 @@
   const hm = (mins) => `${Math.floor(mins / 60)}시간 ${Math.round(mins % 60)}분`;
 
   // 화면에 표시할 빌드 버전 — 폰이 최신인지 바로 확인할 수 있게
-  const APP_VERSION = "v18";
+  const APP_VERSION = "v19";
 
   /* ========================================================================
      1. Supabase 초기화 + Firestore 호환 계층
@@ -485,6 +485,7 @@
       table: "media",
       fromDb: (r) => ({
         id: r.id,
+        albumId: r.album_id || null,
         url: r.__url || null,                 // 서명 URL(표시용) — 주입됨
         thumbUrl: r.__thumb || r.__url || null,
         storagePath: r.storage_path, previewPath: r.preview_path, thumbPath: r.thumb_path,
@@ -498,6 +499,7 @@
       split: (o) => {
         const row = {};
         const M = {
+          albumId: "album_id",
           storagePath: "storage_path", previewPath: "preview_path", thumbPath: "thumb_path",
           caption: "caption", category: "category", uploaderName: "uploader_name",
           uploadedBy: "uploaded_by", takenAt: "captured_at", createdAt: "uploaded_at",
@@ -510,6 +512,22 @@
           if (!c) return;
           row[c] = (c === "captured_at" || c === "uploaded_at") ? isoOf(v) : v;
         });
+        return { row, data: null };
+      },
+    },
+    albums: {
+      table: "albums",
+      fromDb: (r) => ({
+        id: r.id, title: r.title, emoji: r.emoji || "📁", description: r.description || "",
+        coverMediaId: r.cover_media_id, eventDate: r.event_date,
+        sortOrder: r.sort_order || 0, createdBy: r.created_by, createdAt: r.created_at,
+      }),
+      split: (o) => {
+        const row = {};
+        const M = { title: "title", emoji: "emoji", description: "description",
+                    coverMediaId: "cover_media_id", eventDate: "event_date",
+                    sortOrder: "sort_order", createdBy: "created_by" };
+        Object.entries(o).forEach(([k, v]) => { if (M[k]) row[M[k]] = v; });
         return { row, data: null };
       },
     },
@@ -617,6 +635,7 @@
     records: { type: "type", createdBy: "created_by", at: "at", createdAt: "created_at" },
     photos: { uploadedBy: "uploaded_by", category: "category", createdAt: "uploaded_at", takenAt: "captured_at" },
     users: { role: "role", approved: "approved" },
+    albums: { sortOrder: "sort_order", createdBy: "created_by" },
   };
   const collHandle = (name) => {
     const M = MAPPERS[name];
@@ -728,6 +747,7 @@
     records: () => collHandle("records"),
     photos: () => collHandle("photos"),
     users: () => collHandle("users"),
+    albums: () => collHandle("albums"),
     settings: settingsHandle,
   };
 
@@ -3025,6 +3045,7 @@
      ======================================================================== */
   const ALL_CATS = [{ value: "ultrasound", label: "초음파" }, { value: "baby", label: "아기사진" }, { value: "milestone", label: "성장기록" }];
   const UploadModal = ({ open, onClose, defaultCategory = "baby" }) => {
+    const [albumId, setAlbumId] = useState(null);
     // 초음파 업로드는 임신 페이지에서만 → 갤러리 업로드는 아기사진/성장기록만
     const catOptions = defaultCategory === "ultrasound" ? ALL_CATS.filter((c) => c.value === "ultrasound") : ALL_CATS.filter((c) => c.value !== "ultrasound");
     const { user, profile } = useAuth();
@@ -3087,7 +3108,7 @@
           await COL.photos().add({
             uploadedBy: user.uid,
             uploaderName: (profile && profile.name) || (user.email || "").split("@")[0],
-            caption: caption || "", category,
+            caption: caption || "", category, albumId,
             people, place: place || "",
             gps: perMeta.gps || null,
             takenAt: perMeta.takenAt || takenDate,
@@ -3135,9 +3156,11 @@
           )}
           <Field label="캡션"><input className={inputCls} value={caption} onChange={(e) => setCaption(e.target.value)} placeholder="사진 설명" /></Field>
 
+          <AlbumPicker value={albumId} onChange={setAlbumId} label="앨범 (선택)" />
           {/* 공개 범위 */}
           <ChipGroup label="공개 범위" value={vis} onChange={setVis}
             options={[{ value: "public", label: "🌐 전체공개" }, { value: "private", label: "🔒 나만보기" }]} />
+          <AlbumPicker value={albumId} onChange={setAlbumId} />
           <p className="text-[11px] text-slate-400 -mt-1">나만보기는 본인과 관리자(엄마·아빠)만 볼 수 있어요.</p>
 
           {/* 함께한 사람 (인물 태그) */}
@@ -3263,6 +3286,31 @@
   };
 
   // 사진 컬렉션 실시간 구독 (갤러리/슬라이드쇼 공용)
+  /* 앨범 목록 (실시간) */
+  const useAlbums = () => {
+    const [albums, setAlbums] = useState(null);
+    useEffect(() => {
+      const unsub = COL.albums().orderBy("sortOrder").limit(100)
+        .onSnapshot((snap) => setAlbums(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+          (e) => { console.error(e); setAlbums([]); });
+      return () => unsub();
+    }, []);
+    return albums;
+  };
+
+  /* 앨범 선택 드롭다운 (업로드·사진수정에서 공용) */
+  const AlbumPicker = ({ value, onChange, label = "앨범" }) => {
+    const albums = useAlbums();
+    return (
+      <Field label={label}>
+        <select className={inputCls} value={value || ""} onChange={(e) => onChange(e.target.value || null)}>
+          <option value="">앨범 없음</option>
+          {(albums || []).map((a) => <option key={a.id} value={a.id}>{a.emoji} {a.title}</option>)}
+        </select>
+      </Field>
+    );
+  };
+
   const usePhotos = (max = 300) => {
     const [photos, setPhotos] = useState(null);
     useEffect(() => {
@@ -3284,6 +3332,112 @@
     return photos;
   };
 
+  /* ========================================================================
+     20-c. 앨범 — 사진을 주제별로 묶어보기
+     ======================================================================== */
+  const AlbumGrid = ({ photos, onOpen, onBack }) => {
+    const { isAdmin, profile } = useAuth();
+    const albums = useAlbums();
+    const toast = useToast();
+    const confirm = useConfirm();
+    const canEdit = isAdmin || (profile && profile.role === "member");
+    const [creating, setCreating] = useState(false);
+    const [title, setTitle] = useState("");
+    const [emoji, setEmoji] = useState("📁");
+    const [busy, setBusy] = useState(false);
+
+    // 앨범별 사진 수 · 대표사진
+    const stat = useMemo(() => {
+      const m = {};
+      (photos || []).forEach((p) => {
+        if (!p.albumId) return;
+        if (!m[p.albumId]) m[p.albumId] = { n: 0, cover: null };
+        m[p.albumId].n++;
+        if (!m[p.albumId].cover) m[p.albumId].cover = p.thumbUrl || p.url;
+      });
+      return m;
+    }, [photos]);
+
+    const create = async () => {
+      if (!title.trim()) { toast("앨범 이름을 입력하세요.", "error"); return; }
+      setBusy(true);
+      try {
+        await COL.albums().add({ title: title.trim(), emoji: emoji || "📁", sortOrder: 50 });
+        toast("앨범을 만들었어요.", "success");
+        setTitle(""); setEmoji("📁"); setCreating(false);
+      } catch (e) { toast(errMsg(e), "error"); }
+      finally { setBusy(false); }
+    };
+
+    const remove = async (a) => {
+      if (!(await confirm(`'${a.title}' 앨범을 지울까요?\n사진은 지워지지 않고 '앨범 없음'이 됩니다.`, { ok: "삭제" }))) return;
+      try { await COL.albums().doc(a.id).delete(); toast("앨범을 지웠어요.", "success"); }
+      catch (e) { toast(errMsg(e), "error"); }
+    };
+
+    const unfiled = (photos || []).filter((p) => !p.albumId).length;
+
+    return (
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <button onClick={onBack} className="text-sm text-teal-600 dark:text-teal-400">← 전체 사진</button>
+          {canEdit && <button onClick={() => setCreating((c) => !c)} className="text-sm text-teal-600 dark:text-teal-400">＋ 새 앨범</button>}
+        </div>
+
+        {creating && canEdit && (
+          <Card className="p-4 space-y-3">
+            <div className="flex gap-2">
+              <input className={inputCls + " w-20 text-center"} value={emoji} maxLength={4}
+                onChange={(e) => setEmoji(e.target.value)} aria-label="이모지" />
+              <input className={inputCls + " flex-1"} value={title} placeholder="앨범 이름 (예: 첫 크리스마스)"
+                onChange={(e) => setTitle(e.target.value)} />
+            </div>
+            <Btn onClick={create} disabled={busy} className="w-full">{busy ? "만드는 중…" : "만들기"}</Btn>
+          </Card>
+        )}
+
+        {!albums ? <Spinner /> : (
+          <div className="grid grid-cols-2 gap-2.5">
+            {albums.map((a) => {
+              const st = stat[a.id] || { n: 0, cover: null };
+              return (
+                <div key={a.id} className="relative">
+                  <button onClick={() => onOpen(a)}
+                    className="w-full text-left rounded-2xl overflow-hidden bg-white dark:bg-slate-800 shadow-sm active:scale-[.98] transition">
+                    <div className="aspect-square bg-slate-100 dark:bg-slate-700 flex items-center justify-center text-4xl overflow-hidden">
+                      {st.cover ? <img src={st.cover} alt="" className="w-full h-full object-cover" /> : a.emoji}
+                    </div>
+                    <div className="p-2.5">
+                      <p className="text-sm font-bold text-slate-700 dark:text-slate-200 truncate">{a.emoji} {a.title}</p>
+                      <p className="text-xs text-slate-400">{st.n}장</p>
+                    </div>
+                  </button>
+                  {canEdit && (
+                    <button onClick={() => remove(a)} aria-label="앨범 삭제"
+                      className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-black/25 hover:bg-black/60 text-white/70 hover:text-white text-xs leading-none transition">×</button>
+                  )}
+                </div>
+              );
+            })}
+            {unfiled > 0 && (
+              <button onClick={() => onOpen(null)}
+                className="text-left rounded-2xl overflow-hidden bg-white dark:bg-slate-800 shadow-sm active:scale-[.98] transition">
+                <div className="aspect-square bg-slate-50 dark:bg-slate-700/40 flex items-center justify-center text-4xl">🗂️</div>
+                <div className="p-2.5">
+                  <p className="text-sm font-bold text-slate-700 dark:text-slate-200">앨범 없음</p>
+                  <p className="text-xs text-slate-400">{unfiled}장</p>
+                </div>
+              </button>
+            )}
+          </div>
+        )}
+        {albums && albums.length === 0 && (
+          <Card className="p-8 text-center text-sm text-slate-400">아직 앨범이 없어요.</Card>
+        )}
+      </div>
+    );
+  };
+
   const Gallery = ({ openUpload, canUpload = true }) => {
     const { user, isAdmin } = useAuth();
     const [lim, setLim] = useState(60);          // 무한스크롤: 60장씩 늘려가며 로딩
@@ -3297,6 +3451,8 @@
     const [detail, setDetail] = useState(null); // index
     const [showSlide, setShowSlide] = useState(false);
     const [grouped, setGrouped] = useState(false); // 월별 묶어보기
+    const [albumView, setAlbumView] = useState(false);   // 앨범 목록 보기
+    const [album, setAlbum] = useState(undefined);       // undefined=전체, null=앨범없음, {..}=특정앨범
     const { saved } = useMySaved(user.uid);
     const sentinel = useRef(null);
     const canMore = photos && photos.length >= lim; // 더 있을 가능성
@@ -3324,6 +3480,7 @@
       let l = photos.filter((p) => p.category !== "ultrasound" && canSeePhoto(p, user.uid, isAdmin));
       if (cat !== "all") l = l.filter((p) => p.category === cat);
       if (isAdmin && uploader !== "all") l = l.filter((p) => p.uploadedBy === uploader);
+      if (album !== undefined) l = l.filter((p) => (album ? p.albumId === album.id : !p.albumId));
       const kw = q.trim().toLowerCase();
       if (kw) {
         l = l.filter((p) =>
@@ -3339,21 +3496,38 @@
       if (sort === "likes") l = [...l].sort((a, b) => likeCountOf(b) - likeCountOf(a));
       else l = [...l].sort((a, b) => (toDate(b.takenAt || b.createdAt) - toDate(a.takenAt || a.createdAt)));
       return l;
-    }, [photos, cat, sort, q, from, to, uploader, isAdmin, user.uid]);
+    }, [photos, cat, sort, q, from, to, uploader, isAdmin, user.uid, album]);
 
     const cats = [{ v: "all", l: "전체" }, { v: "baby", l: "아기사진" }, { v: "milestone", l: "성장기록" }];
 
     return (
       <div className="p-4 space-y-3 pb-safe">
-        {/* 새 가족 갤러리(Supabase) 안내 — 기존 갤러리는 그대로 유지 */}
-        <a href="./gallery.html" className="block rounded-2xl bg-gradient-to-r from-teal-400 to-violet-400 text-white p-3.5 shadow-sm active:scale-[.99] transition">
-          <p className="text-sm font-bold">📸 가족 갤러리가 새로 열렸어요</p>
-          <p className="text-xs text-white/80 mt-0.5">원본 화질 저장 · 영상 · 앨범 · 🖼 액자 모드 →</p>
-        </a>
+        {/* 앨범 목록 화면 */}
+        {albumView && (
+          <AlbumGrid photos={photos} onBack={() => { setAlbumView(false); setAlbum(undefined); }}
+            onOpen={(a) => { setAlbum(a); setAlbumView(false); }} />
+        )}
+
+        {/* 선택된 앨범 헤더 */}
+        {!albumView && album !== undefined && (
+          <div className="flex items-center justify-between bg-white dark:bg-slate-800 rounded-2xl p-3 shadow-sm">
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-slate-700 dark:text-slate-200 truncate">
+                {album ? `${album.emoji} ${album.title}` : "🗂️ 앨범 없음"}
+              </p>
+              <p className="text-xs text-slate-400">{list.length}장</p>
+            </div>
+            <button onClick={() => setAlbum(undefined)} className="text-xs text-teal-600 dark:text-teal-400 whitespace-nowrap">전체 사진 →</button>
+          </div>
+        )}
+
+        {!albumView && <>
         {/* 검색 */}
         <div className="flex gap-2">
           <input className={inputCls + " flex-1"} value={q} onChange={(e) => setQ(e.target.value)}
             placeholder="🔍 사람·장소·설명 검색" aria-label="사진 검색" />
+          <button onClick={() => setAlbumView(true)} aria-label="앨범 보기"
+            className="whitespace-nowrap px-3 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 text-sm font-medium">📚 앨범</button>
           <button onClick={() => setShowSlide(true)} aria-label="슬라이드쇼 시작"
             className="whitespace-nowrap px-3 rounded-xl bg-violet-400 text-white text-sm font-medium">▶ 슬라이드쇼</button>
         </div>
@@ -3420,6 +3594,7 @@
             </div>
           </>
         )}
+        </>}
 
         {/* 업로드 FAB */}
         {canUpload && (
@@ -3430,7 +3605,7 @@
         {detail != null && (
           <PhotoDetail list={list} index={detail} setIndex={setDetail} uid={user.uid} saved={saved} onClose={() => setDetail(null)} />
         )}
-        {showSlide && <Slideshow photos={photos} onClose={() => setShowSlide(false)} />}
+        {showSlide && <Slideshow photos={album !== undefined ? list : photos} onClose={() => setShowSlide(false)} />}
       </div>
     );
   };
@@ -3845,6 +4020,7 @@
     const [personInput, setPersonInput] = useState("");
     const [place, setPlace] = useState("");
     const [vis, setVis] = useState("public");
+    const [albumId, setAlbumId] = useState(null);
     const [busy, setBusy] = useState(false);
 
     useEffect(() => {
@@ -3852,6 +4028,7 @@
       setCaption(photo.caption || ""); setCategory(photo.category || "baby");
       setPeople(photo.people || []); setPersonInput(""); setPlace(photo.place || "");
       setVis(photo.vis === "private" ? "private" : "public");
+      setAlbumId(photo.albumId || null);
     }, [open, photo && photo.id]);
 
     const addPerson = () => {
@@ -3863,7 +4040,7 @@
       setBusy(true);
       try {
         await COL.photos().doc(photo.id).update({
-          caption, category, people, place, placeLower: (place || "").toLowerCase(), vis,
+          caption, category, people, place, placeLower: (place || "").toLowerCase(), vis, albumId,
         });
         toast("사진 정보를 수정했어요.", "success");
         onClose();
@@ -3875,6 +4052,7 @@
         <div className="space-y-4">
           <ChipGroup label="공개 범위" value={vis} onChange={setVis}
             options={[{ value: "public", label: "🌐 전체공개" }, { value: "private", label: "🔒 나만보기" }]} />
+          <AlbumPicker value={albumId} onChange={setAlbumId} />
           <ChipGroup label="카테고리" value={category} onChange={setCategory}
             options={[{ value: "ultrasound", label: "초음파" }, { value: "baby", label: "아기사진" }, { value: "milestone", label: "성장기록" }]} />
           <Field label="캡션"><input className={inputCls} value={caption} onChange={(e) => setCaption(e.target.value)} placeholder="사진 설명" /></Field>
