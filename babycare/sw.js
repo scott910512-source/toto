@@ -3,7 +3,7 @@
    - CDN/폰트(타 출처): 캐시 우선 → 빠른 로딩, 백그라운드 갱신
    - Firebase Auth/Firestore: 캐시하지 않음(실시간/인증)
    업데이트 배포 시 CACHE 버전을 올리면 이전 캐시가 정리됩니다. */
-const CACHE = "babybook-v13";
+const CACHE = "babybook-v14";
 const SHELL = [
   "./",
   "./index.html",
@@ -26,8 +26,9 @@ self.addEventListener("activate", (e) => {
   );
 });
 
-// 캐시하면 안 되는(실시간/인증) 요청
-const BYPASS = /firestore\.googleapis|firebasestorage|identitytoolkit|firebaseinstallations|firebaselogging|googleapis\.com\/google|google-analytics|googletagmanager|securetoken/;
+// 캐시하면 안 되는(실시간/인증/가족사진) 요청
+//  · supabase.co : 인증 토큰과 사진 signed URL — 절대 캐시 금지(개인정보 잔존 방지)
+const BYPASS = /firestore\.googleapis|firebasestorage|identitytoolkit|firebaseinstallations|firebaselogging|googleapis\.com\/google|google-analytics|googletagmanager|securetoken|supabase\.co|supabase\.in/;
 
 self.addEventListener("fetch", (e) => {
   const req = e.request;

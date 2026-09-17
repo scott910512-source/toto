@@ -1,0 +1,1691 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=5" />
+<meta name="theme-color" content="#7dd3c0" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="또또" />
+<title>또또의 갤러리 · 우리 가족</title>
+<link rel="manifest" href="./manifest.webmanifest" />
+<link rel="apple-touch-icon" href="./apple-touch-icon.png" />
+<link rel="icon" href="./icon-192.png" />
+
+<!-- 미리 연결 (첫 로딩 체감 속도) -->
+<link rel="preconnect" href="https://cdn.tailwindcss.com" crossorigin />
+<link rel="preconnect" href="https://unpkg.com" crossorigin />
+
+<script src="https://cdn.tailwindcss.com?plugins=" crossorigin></script>
+<script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js" crossorigin></script>
+<script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.26.4/babel.min.js" crossorigin></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js" crossorigin></script>
+<script src="./supabase-config.js"></script>
+
+<style>
+  :root { --warm: #fdfbf7; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; background: var(--warm);
+    font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", sans-serif;
+    -webkit-font-smoothing: antialiased;
+    overscroll-behavior-y: none;
+  }
+  .dark body, body.dark { background: #0f172a; }
+  .bg-warm { background: var(--warm); }
+  .dark .bg-warm { background: #0f172a; }
+
+  /* 앱 셸: 헤더/네비 고정 + 본문만 스크롤 (iOS 주소창 흔들림 방지) */
+  .app-shell { display: flex; flex-direction: column; height: 100dvh; }
+  .app-main { flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+  .nav-safe { padding-bottom: env(safe-area-inset-bottom); }
+  .pb-safe { padding-bottom: calc(env(safe-area-inset-bottom) + 1.25rem); }
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+  /* 슬라이드쇼 전환 효과 */
+  @keyframes fadeIn { from { opacity: 0 } to { opacity: 1 } }
+  @keyframes kenburns { from { transform: scale(1) } to { transform: scale(1.06) } }
+  @keyframes slideIn { from { opacity: 0; transform: translateX(6%) } to { opacity: 1; transform: translateX(0) } }
+  .fx-fade  { animation: fadeIn .9s ease both; }
+  .fx-cross { animation: fadeIn 1.4s ease both, kenburns 12s ease-out both; }
+  .fx-slide { animation: slideIn .6s cubic-bezier(.22,.61,.36,1) both; }
+  .fade-in  { animation: fadeIn .25s ease both; }
+
+  /* UI 자동 숨김 */
+  .ui-hide { opacity: 0; pointer-events: none; transition: opacity .5s ease; }
+  .ui-show { opacity: 1; transition: opacity .2s ease; }
+
+  img { -webkit-user-drag: none; }
+  button { touch-action: manipulation; }
+  .tap-lg { min-height: 48px; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<div id="fatal" style="display:none;padding:24px;font-size:14px;line-height:1.7;color:#334155"></div>
+
+<script>
+  window.__showFatal = function (msg) {
+    var el = document.getElementById("fatal");
+    if (!el) return;
+    el.style.display = "block";
+    el.innerHTML = '<h2 style="font-size:18px;margin:0 0 8px">😢 화면을 표시하지 못했어요</h2>' +
+      '<pre style="white-space:pre-wrap;background:#f1f5f9;padding:12px;border-radius:12px;overflow:auto">' +
+      String(msg).replace(/[<>&]/g, function (c) { return { "<": "&lt;", ">": "&gt;", "&": "&amp;" }[c]; }) + "</pre>" +
+      '<p>새로고침해도 계속되면 이 내용을 알려주세요.</p>';
+  };
+  window.addEventListener("error", function (e) { window.__showFatal((e.error && e.error.stack) || e.message); });
+  window.addEventListener("unhandledrejection", function (e) {
+    var r = e.reason; window.__showFatal((r && (r.stack || r.message)) || String(r));
+  });
+</script>
+
+<script type="text/babel" data-presets="react">
+/* global React, ReactDOM, supabase */
+const { useState, useEffect, useRef, useMemo, useCallback, createContext, useContext } = React;
+
+/* ==========================================================================
+   0. 설정 · Supabase 클라이언트
+   ========================================================================== */
+const CFG_URL = (window.SUPABASE_URL || "").trim();
+const CFG_KEY = (window.SUPABASE_ANON_KEY || "").trim();
+const BUCKET = window.MEDIA_BUCKET || "family-media";
+const BABY = window.BABY_INFO || { name: "또또", birthDate: "" };
+const CONFIGURED = !!(CFG_URL && CFG_KEY && /^https?:\/\//.test(CFG_URL));
+
+const sb = CONFIGURED
+  ? window.supabase.createClient(CFG_URL, CFG_KEY, {
+      auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false },
+    })
+  : null;
+
+/* 역할별 권한표 — 메뉴 숨김이 아니라 실제 접근 차단에 사용 */
+const PERM = {
+  admin:        { view: 1, download: 1, upload: 1, albums: 1, users: 1, babycare: 1 },
+  parent:       { view: 1, download: 1, upload: 1, albums: 1, users: 0, babycare: 1 },
+  family:       { view: 1, download: 1, upload: 0, albums: 0, users: 0, babycare: 0 },
+  gallery_only: { view: 1, download: 1, upload: 0, albums: 0, users: 0, babycare: 0 },
+};
+const ROLE_LABEL = { admin: "관리자", parent: "부모", family: "가족", gallery_only: "갤러리 전용" };
+const ROLE_DESC = {
+  admin: "모든 기능 + 가족 관리",
+  parent: "육아수첩 · 사진 올리기 · 갤러리",
+  family: "갤러리 · 슬라이드쇼 · 저장",
+  gallery_only: "갤러리 · 슬라이드쇼 · 저장 (가장 단순)",
+};
+const permOf = (role) => PERM[role] || PERM.gallery_only;
+
+/* ==========================================================================
+   1. 유틸
+   ========================================================================== */
+const pad2 = (n) => String(n).padStart(2, "0");
+const toDate = (v) => { if (!v) return null; const d = v instanceof Date ? v : new Date(v); return isNaN(d) ? null : d; };
+const ymd = (d) => { d = toDate(d); return d ? `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}` : ""; };
+const fmtDot = (v) => { const d = toDate(v); return d ? `${d.getFullYear()}.${pad2(d.getMonth() + 1)}.${pad2(d.getDate())}` : ""; };
+const fmtMonth = (d) => `${d.getFullYear()}년 ${d.getMonth() + 1}월`;
+const fmtDay = (d) => `${d.getMonth() + 1}월 ${d.getDate()}일`;
+const dayKey = (m) => ymd(m.captured_at || m.uploaded_at);
+
+const dPlus = (v) => {
+  if (!BABY.birthDate) return "";
+  const b = toDate(BABY.birthDate), d = toDate(v);
+  if (!b || !d) return "";
+  const n = Math.floor((d - b) / 86400000);
+  return n >= 0 ? `D+${n}` : "";
+};
+
+const errMsg = (e) => {
+  const m = (e && (e.message || e.error_description || e.msg)) || String(e || "");
+  if (/Invalid login credentials/i.test(m)) return "이메일 또는 비밀번호가 올바르지 않아요.";
+  if (/Email not confirmed/i.test(m)) return "이메일 인증이 아직 완료되지 않았어요.";
+  if (/User already registered/i.test(m)) return "이미 가입된 이메일이에요.";
+  if (/Password should be at least/i.test(m)) return "비밀번호는 6자 이상이어야 해요.";
+  if (/row-level security|permission denied|violates/i.test(m)) return "권한이 없어요. 관리자에게 문의해주세요.";
+  if (/Failed to fetch|NetworkError/i.test(m)) return "네트워크 연결을 확인해주세요.";
+  return m || "알 수 없는 오류가 발생했어요.";
+};
+
+/* ==========================================================================
+   2. 공통 UI
+   ========================================================================== */
+const Portal = ({ children }) => ReactDOM.createPortal(children, document.body);
+
+const Btn = ({ variant = "primary", className = "", ...p }) => {
+  const v = {
+    primary: "bg-teal-500 hover:bg-teal-600 text-white",
+    lavender: "bg-violet-400 hover:bg-violet-500 text-white",
+    ghost: "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-200 border border-slate-200 dark:border-slate-600",
+    danger: "bg-rose-500 hover:bg-rose-600 text-white",
+  }[variant];
+  return <button {...p} className={`${v} rounded-2xl px-4 py-3 font-medium transition active:scale-[.98] disabled:opacity-50 ${className}`} />;
+};
+
+const Card = ({ className = "", ...p }) => (
+  <div {...p} className={`bg-white dark:bg-slate-800 rounded-2xl shadow-sm ${className}`} />
+);
+
+const inputCls = "w-full rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white px-3 py-3 outline-none focus:border-teal-400";
+
+const Spinner = ({ label = "불러오는 중…" }) => (
+  <div className="py-10 flex flex-col items-center gap-2 text-slate-400">
+    <div className="w-7 h-7 border-2 border-teal-400 border-t-transparent rounded-full animate-spin" />
+    <span className="text-xs">{label}</span>
+  </div>
+);
+
+/* 토스트 */
+const ToastCtx = createContext(() => {});
+const useToast = () => useContext(ToastCtx);
+const ToastProvider = ({ children }) => {
+  const [list, setList] = useState([]);
+  const push = useCallback((msg, kind = "info") => {
+    const id = Math.random().toString(36).slice(2);
+    setList((l) => [...l, { id, msg, kind }]);
+    setTimeout(() => setList((l) => l.filter((t) => t.id !== id)), 3200);
+  }, []);
+  return (
+    <ToastCtx.Provider value={push}>
+      {children}
+      <Portal>
+        <div className="fixed bottom-24 inset-x-0 z-[200] flex flex-col items-center gap-2 px-4 pointer-events-none">
+          {list.map((t) => (
+            <div key={t.id} className={`fade-in max-w-sm w-full text-center rounded-2xl px-4 py-3 text-sm text-white shadow-lg ${
+              t.kind === "error" ? "bg-rose-500" : t.kind === "success" ? "bg-teal-500" : "bg-slate-800"}`}>{t.msg}</div>
+          ))}
+        </div>
+      </Portal>
+    </ToastCtx.Provider>
+  );
+};
+
+/* 확인 대화상자 (iOS PWA 에서 window.confirm 이 막히는 문제 회피) */
+const ConfirmCtx = createContext(() => Promise.resolve(false));
+const useConfirm = () => useContext(ConfirmCtx);
+const ConfirmProvider = ({ children }) => {
+  const [state, setState] = useState(null);
+  const ask = useCallback((message, okText = "확인") => new Promise((resolve) => setState({ message, okText, resolve })), []);
+  const done = (v) => { if (state) state.resolve(v); setState(null); };
+  return (
+    <ConfirmCtx.Provider value={ask}>
+      {children}
+      {state && (
+        <Portal>
+          <div className="fixed inset-0 z-[210] bg-black/50 flex items-center justify-center p-6 fade-in" role="dialog" aria-modal="true">
+            <Card className="w-full max-w-sm p-5 space-y-4">
+              <p className="text-slate-700 dark:text-slate-100 whitespace-pre-wrap">{state.message}</p>
+              <div className="flex gap-2">
+                <Btn variant="ghost" className="flex-1 tap-lg" onClick={() => done(false)}>취소</Btn>
+                <Btn variant="danger" className="flex-1 tap-lg" onClick={() => done(true)}>{state.okText}</Btn>
+              </div>
+            </Card>
+          </div>
+        </Portal>
+      )}
+    </ConfirmCtx.Provider>
+  );
+};
+
+/* 다크모드 */
+const useDarkMode = () => {
+  const [dark, setDark] = useState(() => localStorage.getItem("toto-dark") === "1");
+  useEffect(() => {
+    document.documentElement.classList.toggle("dark", dark);
+    document.body.classList.toggle("dark", dark);
+    localStorage.setItem("toto-dark", dark ? "1" : "0");
+  }, [dark]);
+  return [dark, setDark];
+};
+
+/* ==========================================================================
+   3. 인증 · 프로필
+   ========================================================================== */
+const AuthCtx = createContext(null);
+const useAuth = () => useContext(AuthCtx);
+
+const AuthProvider = ({ children }) => {
+  const [session, setSession] = useState(undefined); // undefined = 확인 중
+  const [profile, setProfile] = useState(null);
+  const [profileLoaded, setProfileLoaded] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    sb.auth.getSession().then(({ data }) => { if (alive) setSession(data.session || null); });
+    const { data: sub } = sb.auth.onAuthStateChange((_e, s) => {
+      if (!alive) return;
+      setSession(s || null);
+      if (!s) { setProfile(null); setProfileLoaded(false); }
+    });
+    return () => { alive = false; sub.subscription.unsubscribe(); };
+  }, []);
+
+  const loadProfile = useCallback(async (uid) => {
+    const { data, error } = await sb.from("profiles").select("*").eq("id", uid).maybeSingle();
+    if (error) { setProfile(null); setProfileLoaded(true); return; }
+    setProfile(data || null);
+    setProfileLoaded(true);
+  }, []);
+
+  useEffect(() => {
+    if (session === undefined) return;
+    if (!session) { setProfileLoaded(true); return; }
+    setProfileLoaded(false);
+    loadProfile(session.user.id);
+  }, [session, loadProfile]);
+
+  const role = (profile && profile.role) || "gallery_only";
+  const approved = !!(profile && profile.approved);
+  const perm = permOf(role);
+  const value = {
+    session, user: session ? session.user : null, profile, profileLoaded,
+    role, approved, perm,
+    isAdmin: role === "admin" && approved,
+    refreshProfile: () => session && loadProfile(session.user.id),
+    signOut: async () => {
+      try { await sb.auth.signOut(); } catch (e) { /* 세션이 이미 없으면 무시 */ }
+      // 로그아웃 시 개인정보 흔적 제거
+      try {
+        localStorage.removeItem("toto-remember-email");
+        sessionStorage.clear();
+        if (window.caches) { const ks = await caches.keys(); await Promise.all(ks.filter((k) => /media|thumb/i.test(k)).map((k) => caches.delete(k))); }
+      } catch (e) { /* 무시 */ }
+      signedUrlCache.clear();
+    },
+  };
+  return <AuthCtx.Provider value={value}>{children}</AuthCtx.Provider>;
+};
+
+/* ==========================================================================
+   4. Storage — 비공개 버킷 + signed URL 캐시
+   ========================================================================== */
+const SIGN_TTL = 60 * 60;            // 1시간짜리 서명 URL
+const signedUrlCache = new Map();    // path -> { url, exp }
+
+const signPaths = async (paths) => {
+  const now = Date.now();
+  const uniq = [...new Set(paths.filter(Boolean))];
+  const need = uniq.filter((p) => { const c = signedUrlCache.get(p); return !c || c.exp < now + 120000; });
+  for (let i = 0; i < need.length; i += 90) {
+    const chunk = need.slice(i, i + 90);
+    const { data, error } = await sb.storage.from(BUCKET).createSignedUrls(chunk, SIGN_TTL);
+    if (error) continue;
+    (data || []).forEach((d) => {
+      const p = d.path || d.signedURL || "";
+      const u = d.signedUrl || d.signedURL;
+      if (u && p) signedUrlCache.set(p, { url: u, exp: now + SIGN_TTL * 1000 });
+    });
+  }
+  const out = {};
+  uniq.forEach((p) => { const c = signedUrlCache.get(p); if (c) out[p] = c.url; });
+  return out;
+};
+
+const signOne = async (path) => (path ? (await signPaths([path]))[path] || null : null);
+
+/* 미디어 목록에 표시용 URL 주입 */
+const useSignedMedia = (items, field = "thumb_path") => {
+  const [urls, setUrls] = useState({});
+  useEffect(() => {
+    if (!items || items.length === 0) return;
+    let alive = true;
+    const paths = items.map((m) => m[field] || m.preview_path || m.storage_path).filter(Boolean);
+    signPaths(paths).then((map) => { if (alive) setUrls((u) => ({ ...u, ...map })); });
+    return () => { alive = false; };
+  }, [items, field]);
+  return urls;
+};
+
+const urlOf = (urls, m, field = "thumb_path") => urls[m[field] || m.preview_path || m.storage_path] || null;
+
+/* ==========================================================================
+   5. 데이터 훅
+   ========================================================================== */
+const useMedia = ({ albumId = null, favoriteOnly = false, limit = 120 } = {}) => {
+  const [items, setItems] = useState(null);
+  const [more, setMore] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(async (lim) => {
+    setBusy(true);
+    let q = sb.from("media").select("*").order("captured_at", { ascending: false, nullsFirst: false }).limit(lim);
+    if (albumId) q = q.eq("album_id", albumId);
+    if (favoriteOnly) q = q.eq("favorite", true);
+    const { data, error } = await q;
+    setBusy(false);
+    if (error) { setItems([]); return; }
+    setItems(data || []);
+    setMore((data || []).length >= lim);
+  }, [albumId, favoriteOnly]);
+
+  useEffect(() => { load(limit); }, [load, limit]);
+  return { items, more, busy, reload: () => load(limit) };
+};
+
+const useAlbums = () => {
+  const [albums, setAlbums] = useState(null);
+  const load = useCallback(async () => {
+    const { data } = await sb.from("albums").select("*").order("sort_order").order("created_at");
+    setAlbums(data || []);
+  }, []);
+  useEffect(() => { load(); }, [load]);
+  return { albums, reload: load };
+};
+
+/* ==========================================================================
+   6. 해시 라우터 + 권한 가드
+   ========================================================================== */
+const useHashRoute = () => {
+  const [path, setPath] = useState(() => (location.hash || "#/gallery").slice(1));
+  useEffect(() => {
+    const on = () => setPath((location.hash || "#/gallery").slice(1));
+    window.addEventListener("hashchange", on);
+    return () => window.removeEventListener("hashchange", on);
+  }, []);
+  const nav = useCallback((p) => { if (location.hash.slice(1) !== p) location.hash = p; else setPath(p); }, []);
+  return [path, nav];
+};
+
+/* 경로 → 필요한 권한 */
+const ROUTE_PERM = {
+  "/gallery": "view", "/albums": "view", "/slideshow": "view", "/frame": "view",
+  "/upload": "upload", "/manage-albums": "albums", "/users": "users", "/me": "view",
+};
+const routeBase = (p) => "/" + (p.split("/")[1] || "gallery");
+
+/* ==========================================================================
+   7. 설정 안내 화면 (Supabase 미연결 시)
+   ========================================================================== */
+const SetupScreen = () => (
+  <div className="min-h-dvh bg-warm p-6 flex items-center justify-center">
+    <Card className="w-full max-w-lg p-6 space-y-4">
+      <div className="text-center">
+        <div className="text-5xl mb-2">🔌</div>
+        <h1 className="text-xl font-bold text-slate-800 dark:text-white">Supabase 연결이 필요해요</h1>
+        <p className="text-sm text-slate-500 mt-1">아래 2단계만 하면 갤러리가 바로 열립니다.</p>
+      </div>
+      <ol className="text-sm text-slate-600 dark:text-slate-300 space-y-3 list-decimal pl-5">
+        <li>
+          <b>DB 준비</b> — Supabase 대시보드 → <b>SQL Editor</b> 에서
+          저장소의 <code className="bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 rounded">supabase/schema.sql</code>
+          내용을 전부 붙여넣고 RUN.
+        </li>
+        <li>
+          <b>키 입력</b> — Project Settings → API 에서 <b>Project URL</b> 과 <b>anon public</b> 키를 복사해
+          <code className="bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 rounded">supabase-config.js</code> 에 붙여넣고 저장.
+        </li>
+      </ol>
+      <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-3 text-xs text-amber-800 dark:text-amber-200">
+        ⚠️ <b>service_role</b> 키는 절대 넣지 마세요. RLS를 무시하는 키라 유출되면 사진 전체가 열립니다.
+        프론트엔드에는 <b>anon</b> 키만 넣는 것이 정상입니다.
+      </div>
+      <a href="./baby-care.html" className="block text-center text-sm text-teal-600 dark:text-teal-400 underline">← 육아수첩으로 돌아가기</a>
+    </Card>
+  </div>
+);
+
+/* ==========================================================================
+   8. 로그인 / 가입
+   ========================================================================== */
+const AuthScreen = () => {
+  const toast = useToast();
+  const [mode, setMode] = useState("login");
+  const [email, setEmail] = useState(() => localStorage.getItem("toto-remember-email") || "");
+  const [pw, setPw] = useState("");
+  const [name, setName] = useState("");
+  const [remember, setRemember] = useState(() => localStorage.getItem("toto-remember-email") !== null);
+  const [busy, setBusy] = useState(false);
+
+  const submit = async (e) => {
+    e.preventDefault();
+    if (!email.trim() || !pw) { toast("이메일과 비밀번호를 입력해주세요.", "error"); return; }
+    setBusy(true);
+    try {
+      if (mode === "login") {
+        const { error } = await sb.auth.signInWithPassword({ email: email.trim(), password: pw });
+        if (error) throw error;
+        if (remember) localStorage.setItem("toto-remember-email", email.trim());
+        else localStorage.removeItem("toto-remember-email");
+      } else {
+        const { error } = await sb.auth.signUp({
+          email: email.trim(), password: pw,
+          options: { data: { display_name: name.trim() || email.split("@")[0] } },
+        });
+        if (error) throw error;
+        toast("가입 완료! 관리자 승인 후 사진을 볼 수 있어요.", "success");
+      }
+    } catch (err) { toast(errMsg(err), "error"); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <div className="min-h-dvh bg-warm flex items-center justify-center p-6">
+      <div className="w-full max-w-sm space-y-5">
+        <div className="text-center">
+          <div className="text-6xl mb-2">👶</div>
+          <h1 className="text-2xl font-bold text-slate-800 dark:text-white">{BABY.name}의 갤러리</h1>
+          <p className="text-sm text-slate-500 mt-1">우리 가족이 함께 모은 {BABY.name}의 순간들</p>
+        </div>
+        <Card className="p-5">
+          <form onSubmit={submit} className="space-y-3">
+            {mode === "signup" && (
+              <input className={inputCls} value={name} onChange={(e) => setName(e.target.value)}
+                placeholder="이름 (예: 할머니)" autoComplete="name" />
+            )}
+            <input className={inputCls} type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+              placeholder="이메일" autoComplete="username" inputMode="email" />
+            <input className={inputCls} type="password" value={pw} onChange={(e) => setPw(e.target.value)}
+              placeholder="비밀번호" autoComplete={mode === "login" ? "current-password" : "new-password"} />
+            {mode === "login" && (
+              <label className="flex items-center gap-2 py-1">
+                <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)}
+                  className="w-5 h-5 rounded accent-teal-500" />
+                <span className="text-sm text-slate-600 dark:text-slate-300">이메일 기억하기</span>
+              </label>
+            )}
+            <Btn type="submit" disabled={busy} className="w-full tap-lg">
+              {busy ? "잠시만요…" : mode === "login" ? "로그인" : "가입하기"}
+            </Btn>
+          </form>
+          <button onClick={() => setMode(mode === "login" ? "signup" : "login")}
+            className="w-full mt-3 text-sm text-teal-600 dark:text-teal-400 py-2">
+            {mode === "login" ? "처음이신가요? 가입하기" : "이미 계정이 있어요 · 로그인"}
+          </button>
+        </Card>
+        <p className="text-xs text-center text-slate-400 leading-relaxed">
+          가입하면 관리자 승인 후 사진을 볼 수 있어요.<br />가족 사진이라 승인된 분만 접근할 수 있습니다.
+        </p>
+      </div>
+    </div>
+  );
+};
+
+/* 승인 대기 */
+const PendingScreen = () => {
+  const { profile, signOut, refreshProfile } = useAuth();
+  return (
+    <div className="min-h-dvh bg-warm flex items-center justify-center p-6">
+      <Card className="w-full max-w-sm p-6 text-center space-y-4">
+        <div className="text-5xl">⏳</div>
+        <h1 className="text-lg font-bold text-slate-800 dark:text-white">승인을 기다리고 있어요</h1>
+        <p className="text-sm text-slate-500">
+          {(profile && profile.display_name) || "회원"}님, 관리자가 승인하면<br />바로 {BABY.name}의 사진을 보실 수 있어요.
+        </p>
+        <Btn variant="ghost" className="w-full tap-lg" onClick={refreshProfile}>🔄 새로고침</Btn>
+        <button onClick={signOut} className="text-sm text-slate-400 py-2">로그아웃</button>
+      </Card>
+    </div>
+  );
+};
+
+/* ==========================================================================
+   9. 사진 카드 (지연 로딩)
+   ========================================================================== */
+const MediaTile = ({ m, url, onOpen }) => {
+  const ref = useRef(null);
+  const [vis, setVis] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || vis) return;
+    const io = new IntersectionObserver((es) => { if (es[0].isIntersecting) { setVis(true); io.disconnect(); } }, { rootMargin: "400px" });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [vis]);
+  return (
+    <button ref={ref} onClick={onOpen} aria-label={m.caption || "사진 열기"}
+      className="relative block w-full aspect-square overflow-hidden rounded-xl bg-slate-100 dark:bg-slate-700 active:scale-[.98] transition">
+      {vis && url && (
+        m.type === "video"
+          ? <><video src={url} className="w-full h-full object-cover" muted playsInline preload="metadata" />
+              <span className="absolute inset-0 flex items-center justify-center text-white text-3xl drop-shadow">▶</span></>
+          : <img src={url} alt={m.caption || ""} loading="lazy" decoding="async" className="w-full h-full object-cover" />
+      )}
+      {m.favorite && <span className="absolute top-1.5 right-1.5 text-sm drop-shadow">❤️</span>}
+    </button>
+  );
+};
+
+/* ==========================================================================
+   10. 갤러리 (날짜별 그룹 + 반응형 그리드)
+   ========================================================================== */
+const GRID = "grid gap-1.5 grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6";
+
+const Gallery = ({ nav, filter, setFilter, albumId }) => {
+  const { perm } = useAuth();
+  const [limit, setLimit] = useState(120);
+  const { items, more } = useMedia({
+    albumId: filter === "album" ? albumId : null,
+    favoriteOnly: filter === "favorite",
+    limit,
+  });
+  const urls = useSignedMedia(items);
+  const [viewer, setViewer] = useState(null);
+  const sentinel = useRef(null);
+
+  useEffect(() => {
+    const el = sentinel.current;
+    if (!el) return;
+    const io = new IntersectionObserver((es) => { if (es[0].isIntersecting && more) setLimit((n) => n + 120); }, { rootMargin: "500px" });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [more]);
+
+  const list = useMemo(() => {
+    if (!items) return [];
+    let l = items;
+    if (filter === "recent") {
+      const cut = Date.now() - 30 * 86400000;
+      l = l.filter((m) => { const d = toDate(m.captured_at || m.uploaded_at); return d && d.getTime() >= cut; });
+    }
+    return l;
+  }, [items, filter]);
+
+  // 날짜별 그룹 (2026년 12월 → 12월 24일)
+  const groups = useMemo(() => {
+    const out = []; let month = null, day = null;
+    list.forEach((m, i) => {
+      const d = toDate(m.captured_at || m.uploaded_at);
+      const mk = d ? fmtMonth(d) : "날짜 없음";
+      const dk = d ? fmtDay(d) : "";
+      if (!month || month.key !== mk) { month = { key: mk, days: [] }; out.push(month); day = null; }
+      if (!day || day.key !== dk) { day = { key: dk, items: [] }; month.days.push(day); }
+      day.items.push({ m, i });
+    });
+    return out;
+  }, [list]);
+
+  const TABS = [
+    { id: "all", label: "전체" },
+    { id: "recent", label: "최근" },
+    { id: "favorite", label: "즐겨찾기" },
+    { id: "albums", label: "앨범" },
+  ];
+
+  return (
+    <div className="p-3 pb-safe space-y-3">
+      <div className="px-1">
+        <h1 className="text-xl font-bold text-slate-800 dark:text-white">{BABY.name}의 갤러리</h1>
+        <p className="text-xs text-slate-400 mt-0.5">우리 가족이 함께 모은 {BABY.name}의 순간들</p>
+      </div>
+
+      <div className="flex gap-2">
+        <Btn variant="lavender" className="flex-1 tap-lg text-base" onClick={() => nav("/slideshow")}>▶ 슬라이드쇼</Btn>
+        {perm.upload === 1 && <Btn className="tap-lg px-5" onClick={() => nav("/upload")}>＋</Btn>}
+      </div>
+
+      <div className="flex gap-1.5 overflow-x-auto no-scrollbar" role="tablist">
+        {TABS.map((t) => (
+          <button key={t.id} role="tab" aria-selected={filter === t.id}
+            onClick={() => (t.id === "albums" ? nav("/albums") : setFilter(t.id))}
+            className={`whitespace-nowrap px-4 py-2 rounded-full text-sm font-medium ${
+              filter === t.id ? "bg-teal-500 text-white" : "bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-300 border border-slate-200 dark:border-slate-700"}`}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {!items ? <Spinner /> : list.length === 0 ? (
+        <Card className="p-10 text-center text-sm text-slate-400">
+          {filter === "favorite" ? "❤️ 를 누른 사진이 아직 없어요." : "아직 사진이 없어요."}
+        </Card>
+      ) : (
+        <>
+          {groups.map((mo) => (
+            <div key={mo.key} className="space-y-2">
+              <h2 className="text-base font-bold text-slate-700 dark:text-slate-200 px-1 pt-2">{mo.key}</h2>
+              {mo.days.map((dy) => (
+                <div key={dy.key} className="space-y-1.5">
+                  {dy.key && <p className="text-xs text-slate-400 px-1">{dy.key}</p>}
+                  <div className={GRID}>
+                    {dy.items.map(({ m, i }) => (
+                      <MediaTile key={m.id} m={m} url={urlOf(urls, m)} onOpen={() => setViewer(i)} />
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ))}
+          <div ref={sentinel} className="h-10 flex items-center justify-center">
+            {more && <span className="text-xs text-slate-400">더 불러오는 중…</span>}
+          </div>
+        </>
+      )}
+
+      {viewer != null && (
+        <MediaViewer list={list} index={viewer} setIndex={setViewer} onClose={() => setViewer(null)}
+          onSlideshow={() => { setViewer(null); nav("/slideshow"); }} />
+      )}
+    </div>
+  );
+};
+
+/* ==========================================================================
+   11. 전체화면 뷰어 (스와이프 · 핀치줌 · 더블탭 · 저장 · 즐겨찾기)
+   ========================================================================== */
+const MediaViewer = ({ list, index, setIndex, onClose, onSlideshow }) => {
+  const { perm, isAdmin, user } = useAuth();
+  const toast = useToast();
+  const confirm = useConfirm();
+  const [ui, setUi] = useState(true);
+  const [info, setInfo] = useState(false);
+  const [url, setUrl] = useState(null);
+  const [fav, setFav] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [zoom, setZoom] = useState({ s: 1, x: 0, y: 0 });
+  const gesture = useRef({});
+  const m = list[index];
+
+  useEffect(() => { if (m) setFav(!!m.favorite); }, [m]);
+
+  // 현재 + 앞뒤 사진 미리 서명/프리로드 (흰 화면 방지)
+  useEffect(() => {
+    if (!m) return;
+    let alive = true;
+    const near = [list[index - 1], list[index], list[index + 1], list[index + 2]].filter(Boolean);
+    signPaths(near.map((x) => x.preview_path || x.storage_path)).then((map) => {
+      if (!alive) return;
+      setUrl(map[m.preview_path || m.storage_path] || null);
+      near.forEach((x) => { const u = map[x.preview_path || x.storage_path]; if (u && x.type !== "video") { const im = new Image(); im.src = u; } });
+    });
+    setZoom({ s: 1, x: 0, y: 0 });
+    return () => { alive = false; };
+  }, [m, index, list]);
+
+  const go = useCallback((d) => {
+    setIndex((i) => Math.min(list.length - 1, Math.max(0, i + d)));
+  }, [list.length, setIndex]);
+
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === "Escape") onClose();
+      if (e.key === "ArrowRight") go(1);
+      if (e.key === "ArrowLeft") go(-1);
+    };
+    window.addEventListener("keydown", onKey);
+    document.body.style.overflow = "hidden";
+    return () => { window.removeEventListener("keydown", onKey); document.body.style.overflow = ""; };
+  }, [go, onClose]);
+
+  const dist = (t) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+
+  const onTouchStart = (e) => {
+    const t = e.touches;
+    if (t.length === 2) {
+      gesture.current = { mode: "pinch", d0: dist(t), s0: zoom.s };
+    } else if (t.length === 1) {
+      const now = Date.now();
+      const last = gesture.current.lastTap || 0;
+      if (now - last < 300) {            // 더블탭 → 확대/축소 토글
+        setZoom((z) => (z.s > 1 ? { s: 1, x: 0, y: 0 } : { s: 2.5, x: 0, y: 0 }));
+        gesture.current = { lastTap: 0 };
+        return;
+      }
+      gesture.current = { mode: zoom.s > 1 ? "pan" : "swipe", x: t[0].clientX, y: t[0].clientY, ox: zoom.x, oy: zoom.y, lastTap: now };
+    }
+  };
+
+  const onTouchMove = (e) => {
+    const g = gesture.current, t = e.touches;
+    if (g.mode === "pinch" && t.length === 2) {
+      const s = Math.min(5, Math.max(1, g.s0 * (dist(t) / g.d0)));
+      setZoom((z) => ({ ...z, s, ...(s === 1 ? { x: 0, y: 0 } : {}) }));
+    } else if (g.mode === "pan" && t.length === 1) {
+      setZoom((z) => ({ ...z, x: g.ox + (t[0].clientX - g.x), y: g.oy + (t[0].clientY - g.y) }));
+    }
+  };
+
+  const onTouchEnd = (e) => {
+    const g = gesture.current;
+    if (g.mode === "swipe" && e.changedTouches.length) {
+      const dx = e.changedTouches[0].clientX - g.x;
+      const dy = e.changedTouches[0].clientY - g.y;
+      if (Math.abs(dx) > 55 && Math.abs(dx) > Math.abs(dy)) { dx > 0 ? go(-1) : go(1); gesture.current = {}; return; }
+    }
+    gesture.current = { lastTap: g.lastTap };
+  };
+
+  const toggleFav = async () => {
+    try {
+      const { data, error } = await sb.rpc("toggle_favorite", { p_media: m.id });
+      if (error) throw error;
+      setFav(!!data); m.favorite = !!data;
+    } catch (e) { toast(errMsg(e), "error"); }
+  };
+
+  /* 원본 화질 다운로드 — 항상 storage_path(원본)를 받음 */
+  const download = async () => {
+    setBusy(true);
+    try {
+      const orig = await signOne(m.storage_path);
+      if (!orig) throw new Error("원본을 찾을 수 없어요.");
+      const ext = (m.storage_path.split(".").pop() || "jpg").split("?")[0];
+      const fname = `${BABY.name}_${fmtDot(m.captured_at || m.uploaded_at).replace(/\./g, "")}_${m.id.slice(0, 6)}.${ext}`;
+      try {
+        const res = await fetch(orig);
+        if (!res.ok) throw new Error("다운로드 실패");
+        const blob = await res.blob();
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = fname;
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+        toast("원본을 저장했어요 ⬇️", "success");
+      } catch (e) {
+        // iOS Safari 등에서 blob 저장이 막히면 새 탭으로 열어 길게 눌러 저장
+        window.open(orig, "_blank");
+        toast("새 탭에서 사진을 길게 눌러 저장해주세요.", "info");
+      }
+    } catch (e) { toast(errMsg(e), "error"); }
+    finally { setBusy(false); }
+  };
+
+  const remove = async () => {
+    if (!(await confirm("이 사진을 삭제할까요?\n되돌릴 수 없어요.", "삭제"))) return;
+    try {
+      const paths = [m.storage_path, m.preview_path, m.thumb_path].filter(Boolean);
+      await sb.storage.from(BUCKET).remove(paths).catch(() => {});
+      const { error } = await sb.from("media").delete().eq("id", m.id);
+      if (error) throw error;
+      toast("삭제했어요.", "success");
+      onClose();
+    } catch (e) { toast(errMsg(e), "error"); }
+  };
+
+  if (!m) return null;
+  const canDelete = isAdmin || (user && m.uploaded_by === user.id);
+  const when = fmtDot(m.captured_at || m.uploaded_at);
+
+  return (
+    <Portal>
+      <div className="fixed inset-0 z-[100] bg-black select-none" role="dialog" aria-modal="true" aria-label="사진 보기">
+        <div className="absolute inset-0 flex items-center justify-center overflow-hidden"
+          onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
+          onClick={() => setUi((v) => !v)}>
+          {m.type === "video" ? (
+            <video src={url || undefined} className="max-w-full max-h-full" controls playsInline autoPlay />
+          ) : (
+            <img src={url || undefined} alt={m.caption || "사진"}
+              className="max-w-full max-h-full object-contain"
+              style={{ transform: `translate(${zoom.x}px, ${zoom.y}px) scale(${zoom.s})`, transition: gesture.current.mode ? "none" : "transform .2s ease" }} />
+          )}
+          {!url && <div className="absolute"><Spinner label="" /></div>}
+        </div>
+
+        {/* 상단 바 */}
+        <div className={`absolute top-0 inset-x-0 z-20 flex items-center justify-between p-3 bg-gradient-to-b from-black/70 to-transparent text-white ${ui ? "ui-show" : "ui-hide"}`}
+          style={{ paddingTop: "calc(env(safe-area-inset-top) + 0.75rem)" }}>
+          <span className="text-sm">{index + 1} / {list.length}</span>
+          <button onClick={onClose} aria-label="닫기" className="w-11 h-11 rounded-full bg-white/15 text-2xl flex items-center justify-center">×</button>
+        </div>
+
+        {/* 좌우 이동 (데스크톱) */}
+        <button onClick={(e) => { e.stopPropagation(); go(-1); }} aria-label="이전 사진" disabled={index === 0}
+          className={`absolute left-2 top-1/2 -translate-y-1/2 z-20 w-12 h-12 rounded-full bg-black/30 text-white text-3xl disabled:opacity-0 ${ui ? "ui-show" : "ui-hide"}`}>‹</button>
+        <button onClick={(e) => { e.stopPropagation(); go(1); }} aria-label="다음 사진" disabled={index === list.length - 1}
+          className={`absolute right-2 top-1/2 -translate-y-1/2 z-20 w-12 h-12 rounded-full bg-black/30 text-white text-3xl disabled:opacity-0 ${ui ? "ui-show" : "ui-hide"}`}>›</button>
+
+        {/* 하단 바 */}
+        <div className={`absolute bottom-0 inset-x-0 z-20 bg-gradient-to-t from-black/80 to-transparent px-4 pt-8 text-white ${ui ? "ui-show" : "ui-hide"}`}
+          style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 1rem)" }}>
+          {m.caption && <p className="text-base font-medium mb-1 drop-shadow">{m.caption}</p>}
+          <p className="text-xs text-white/70 mb-3">{[dPlus(m.captured_at || m.uploaded_at), when].filter(Boolean).join(" · ")}</p>
+          <div className="flex items-center justify-around">
+            <button onClick={(e) => { e.stopPropagation(); toggleFav(); }} aria-label="즐겨찾기"
+              className="flex flex-col items-center gap-1 w-16 py-1 text-2xl">{fav ? "❤️" : "🤍"}<span className="text-[10px] text-white/70">즐겨찾기</span></button>
+            {perm.download === 1 && (
+              <button onClick={(e) => { e.stopPropagation(); download(); }} disabled={busy} aria-label="저장"
+                className="flex flex-col items-center gap-1 w-16 py-1 text-2xl">⬇️<span className="text-[10px] text-white/70">{busy ? "받는 중" : "저장"}</span></button>
+            )}
+            <button onClick={(e) => { e.stopPropagation(); onSlideshow(); }} aria-label="슬라이드쇼"
+              className="flex flex-col items-center gap-1 w-16 py-1 text-2xl">▶<span className="text-[10px] text-white/70">슬라이드쇼</span></button>
+            <button onClick={(e) => { e.stopPropagation(); setInfo((v) => !v); }} aria-label="정보"
+              className="flex flex-col items-center gap-1 w-16 py-1 text-2xl">ℹ️<span className="text-[10px] text-white/70">정보</span></button>
+            {canDelete && (
+              <button onClick={(e) => { e.stopPropagation(); remove(); }} aria-label="삭제"
+                className="flex flex-col items-center gap-1 w-16 py-1 text-2xl">🗑️<span className="text-[10px] text-white/70">삭제</span></button>
+            )}
+          </div>
+          {info && (
+            <div className="mt-3 bg-white/10 rounded-xl p-3 text-xs text-white/80 space-y-1">
+              <p>📅 촬영: {m.captured_at ? fmtDot(m.captured_at) : "정보 없음"}</p>
+              <p>⬆️ 업로드: {fmtDot(m.uploaded_at)}</p>
+              {m.width && <p>📐 {m.width} × {m.height}</p>}
+              {m.bytes && <p>💾 {(m.bytes / 1048576).toFixed(1)} MB</p>}
+            </div>
+          )}
+        </div>
+      </div>
+    </Portal>
+  );
+};
+
+/* ==========================================================================
+   12. Wake Lock 훅 — 화면 자동 꺼짐 방지 (재획득 + graceful fallback)
+   ========================================================================== */
+const useWakeLock = (active) => {
+  const [supported] = useState(() => typeof navigator !== "undefined" && "wakeLock" in navigator);
+  const lockRef = useRef(null);
+
+  useEffect(() => {
+    if (!active) return;
+    let cancelled = false;
+
+    const acquire = async () => {
+      if (!supported || document.visibilityState !== "visible") return;
+      try {
+        const lock = await navigator.wakeLock.request("screen");
+        if (cancelled) { lock.release().catch(() => {}); return; }
+        lockRef.current = lock;
+        lock.addEventListener && lock.addEventListener("release", () => { lockRef.current = null; });
+      } catch (e) {
+        // 배터리 절약 모드 등으로 거부될 수 있음 — 조용히 무시
+        lockRef.current = null;
+      }
+    };
+
+    // 사용자가 슬라이드쇼를 직접 시작한 뒤에 요청됨 (이 훅은 재생 중에만 active)
+    acquire();
+
+    const onVis = () => { if (document.visibilityState === "visible" && !lockRef.current) acquire(); };
+    document.addEventListener("visibilitychange", onVis);
+
+    return () => {
+      cancelled = true;
+      document.removeEventListener("visibilitychange", onVis);
+      const l = lockRef.current;
+      lockRef.current = null;
+      if (l) l.release().catch(() => {});
+    };
+  }, [active, supported]);
+
+  return supported;
+};
+
+const enterFullscreen = (el) => {
+  try {
+    if (el && el.requestFullscreen) return el.requestFullscreen().catch(() => {});
+    if (el && el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+  } catch (e) { /* iPhone Safari 미지원 — 무시 */ }
+};
+const exitFullscreen = () => {
+  try {
+    if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen().catch(() => {});
+    else if (document.webkitFullscreenElement && document.webkitExitFullscreen) document.webkitExitFullscreen();
+  } catch (e) { /* 무시 */ }
+};
+
+/* ==========================================================================
+   13. 슬라이드쇼 + 액자 모드
+   ========================================================================== */
+const INTERVALS = [3, 5, 7, 10, 15, 30];
+const EFFECTS = [{ id: "cross", label: "크로스페이드" }, { id: "fade", label: "페이드" }, { id: "slide", label: "슬라이드" }];
+const ORDERS = [{ id: "recent", label: "최신순" }, { id: "old", label: "오래된순" }, { id: "random", label: "랜덤" }];
+const SOURCES = [{ id: "all", label: "전체 사진" }, { id: "favorite", label: "즐겨찾기" }, { id: "recent", label: "최근 30일" }];
+
+const lsGet = (k, d) => { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } };
+const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* 무시 */ } };
+
+const Slideshow = ({ nav, albumId, frameMode }) => {
+  const toast = useToast();
+  const [source, setSource] = useState(() => (albumId ? "album" : lsGet("toto-ss-source", "all")));
+  const [sec, setSec] = useState(() => lsGet("toto-ss-sec", 7));
+  const [order, setOrder] = useState(() => lsGet("toto-ss-order", "recent"));
+  const [effect, setEffect] = useState(() => lsGet("toto-ss-effect", "cross"));
+  const [fill, setFill] = useState(() => lsGet("toto-ss-fill", false));
+  const [frame, setFrame] = useState(!!frameMode);
+  const [settings, setSettings] = useState(false);
+
+  const { items } = useMedia({
+    albumId: source === "album" ? albumId : null,
+    favoriteOnly: source === "favorite",
+    limit: 400,
+  });
+
+  const deck = useMemo(() => {
+    if (!items) return [];
+    let l = items.filter((m) => m.type !== "video"); // 액자에는 사진만
+    if (source === "recent") {
+      const cut = Date.now() - 30 * 86400000;
+      l = l.filter((m) => { const d = toDate(m.captured_at || m.uploaded_at); return d && d.getTime() >= cut; });
+    }
+    if (order === "old") l = [...l].reverse();
+    else if (order === "random") { l = [...l]; for (let i = l.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [l[i], l[j]] = [l[j], l[i]]; } }
+    return l;
+  }, [items, source, order]);
+
+  const [idx, setIdx] = useState(0);
+  const [prev, setPrev] = useState(null);
+  const [paused, setPaused] = useState(false);
+  const [ui, setUi] = useState(true);
+  const [urls, setUrls] = useState({});
+  const rootRef = useRef(null);
+  const hideTimer = useRef(null);
+
+  const wakeSupported = useWakeLock(!paused && deck.length > 0);
+
+  useEffect(() => { if (idx >= deck.length && deck.length) setIdx(0); }, [deck.length, idx]);
+
+  // 현재 + 다음 3장 서명 & 프리로드 (전환 시 흰 화면 방지)
+  useEffect(() => {
+    if (!deck.length) return;
+    let alive = true;
+    const near = [-1, 0, 1, 2, 3].map((d) => deck[(idx + d + deck.length) % deck.length]).filter(Boolean);
+    signPaths(near.map((m) => m.preview_path || m.storage_path)).then((map) => {
+      if (!alive) return;
+      setUrls((u) => ({ ...u, ...map }));
+      near.forEach((m) => { const u = map[m.preview_path || m.storage_path]; if (u) { const im = new Image(); im.src = u; } });
+    });
+    return () => { alive = false; };
+  }, [deck, idx]);
+
+  const go = useCallback((d) => {
+    setIdx((i) => { setPrev(i); return (i + d + deck.length) % deck.length; });
+  }, [deck.length]);
+
+  // 자동 전환
+  useEffect(() => {
+    if (paused || deck.length <= 1) return;
+    const t = setTimeout(() => go(1), sec * 1000);
+    return () => clearTimeout(t);
+  }, [idx, paused, deck.length, sec, go]);
+
+  // 전체화면 + 키보드
+  useEffect(() => {
+    enterFullscreen(rootRef.current);
+    const onKey = (e) => {
+      if (e.key === "Escape") { exitFullscreen(); nav("/gallery"); }
+      if (e.key === "ArrowRight") go(1);
+      if (e.key === "ArrowLeft") go(-1);
+      if (e.key === " ") { e.preventDefault(); setPaused((p) => !p); }
+      if (e.key.toLowerCase() === "f") setFrame((f) => !f);
+    };
+    window.addEventListener("keydown", onKey);
+    document.body.style.overflow = "hidden";
+    return () => { window.removeEventListener("keydown", onKey); document.body.style.overflow = ""; exitFullscreen(); };
+  }, [go, nav]);
+
+  // UI 5초 자동 숨김
+  const poke = useCallback(() => {
+    setUi(true);
+    clearTimeout(hideTimer.current);
+    hideTimer.current = setTimeout(() => setUi(false), 5000);
+  }, []);
+  useEffect(() => { poke(); return () => clearTimeout(hideTimer.current); }, [poke]);
+
+  // Wake Lock 미지원 안내 (1회)
+  useEffect(() => {
+    if (!wakeSupported && deck.length) {
+      toast("이 기기에서는 화면 자동 잠금 설정을 확인해주세요.", "info");
+    }
+  }, [wakeSupported, deck.length, toast]);
+
+  const save = (k, v, set) => { set(v); lsSet(k, v); };
+
+  if (!items) return <div className="fixed inset-0 bg-black flex items-center justify-center"><Spinner label="사진을 불러오는 중…" /></div>;
+  if (!deck.length) {
+    return (
+      <div className="fixed inset-0 z-[100] bg-black flex flex-col items-center justify-center gap-4 text-white p-6 text-center">
+        <p>{source === "favorite" ? "❤️ 즐겨찾기한 사진이 없어요." : "표시할 사진이 없어요."}</p>
+        <Btn variant="ghost" className="tap-lg" onClick={() => nav("/gallery")}>갤러리로 돌아가기</Btn>
+      </div>
+    );
+  }
+
+  const cur = deck[idx];
+  const prevM = prev != null ? deck[prev] : null;
+  const curUrl = urls[cur.preview_path || cur.storage_path];
+  const prevUrl = prevM ? urls[prevM.preview_path || prevM.storage_path] : null;
+  const fit = fill ? "object-cover" : "object-contain";
+  const when = fmtDot(cur.captured_at || cur.uploaded_at);
+  const dp = dPlus(cur.captured_at || cur.uploaded_at);
+
+  return (
+    <Portal>
+      <div ref={rootRef} className="fixed inset-0 z-[100] bg-black overflow-hidden"
+        onMouseMove={poke} onTouchStart={poke} onClick={poke} role="region" aria-label="슬라이드쇼">
+
+        {prevUrl && <img key={"p" + prev} src={prevUrl} alt="" className={`absolute inset-0 w-full h-full ${fit}`} />}
+        <img key={"c" + idx} src={curUrl || undefined} alt={cur.caption || "사진"}
+          className={`absolute inset-0 w-full h-full ${fit} fx-${effect}`} />
+
+        {/* 액자 모드: 날짜 + 캡션만 */}
+        {frame ? (
+          <div className="absolute bottom-0 inset-x-0 p-6 pb-10 text-center bg-gradient-to-t from-black/60 to-transparent pointer-events-none">
+            {cur.caption && <p className="text-white/90 text-lg mb-1 drop-shadow">{cur.caption}</p>}
+            <p className="text-white/80 text-sm tracking-wide">{[BABY.name, dp].filter(Boolean).join(" · ")}</p>
+            <p className="text-white/50 text-xs mt-0.5">{when}</p>
+          </div>
+        ) : (
+          <div className={`absolute bottom-0 inset-x-0 p-5 pb-6 bg-gradient-to-t from-black/70 to-transparent text-white pointer-events-none ${ui ? "ui-show" : "ui-hide"}`}>
+            {cur.caption && <p className="text-lg font-medium drop-shadow mb-0.5">{cur.caption}</p>}
+            <p className="text-xs text-white/60">{[BABY.name, when].filter(Boolean).join(" · ")} &nbsp;·&nbsp; {idx + 1} / {deck.length}</p>
+          </div>
+        )}
+
+        {/* 컨트롤 (액자 모드에서는 터치 후 잠깐만) */}
+        <div className={`absolute inset-0 pointer-events-none ${ui ? "ui-show" : "ui-hide"}`}>
+          <div className="absolute top-0 inset-x-0 flex items-center justify-between p-3 pointer-events-auto"
+            style={{ paddingTop: "calc(env(safe-area-inset-top) + 0.75rem)" }}>
+            <button onClick={() => setFrame((f) => !f)} aria-pressed={frame}
+              className={`rounded-full px-4 h-11 text-sm font-medium ${frame ? "bg-violet-400 text-white" : "bg-black/40 text-white/90"}`}>
+              🖼 액자 모드
+            </button>
+            <div className="flex gap-2">
+              {!frame && (
+                <button onClick={() => setSettings((s) => !s)} aria-label="설정"
+                  className="w-11 h-11 rounded-full bg-black/40 text-white text-xl">⚙</button>
+              )}
+              <button onClick={() => { exitFullscreen(); nav("/gallery"); }} aria-label="슬라이드쇼 종료"
+                className="w-11 h-11 rounded-full bg-black/40 text-white text-2xl">×</button>
+            </div>
+          </div>
+
+          <button onClick={() => go(-1)} aria-label="이전"
+            className="absolute left-3 top-1/2 -translate-y-1/2 w-14 h-14 rounded-full bg-black/30 text-white text-3xl pointer-events-auto">‹</button>
+          <button onClick={() => go(1)} aria-label="다음"
+            className="absolute right-3 top-1/2 -translate-y-1/2 w-14 h-14 rounded-full bg-black/30 text-white text-3xl pointer-events-auto">›</button>
+
+          {/* 액자 모드에서는 하단 날짜/캡션과 겹치지 않도록 컨트롤을 위로 올린다 */}
+          <div className="absolute bottom-0 inset-x-0 flex justify-center pointer-events-none"
+            style={{ paddingBottom: frame ? "calc(env(safe-area-inset-bottom) + 7rem)" : "calc(env(safe-area-inset-bottom) + 1.5rem)" }}>
+            <button onClick={() => setPaused((p) => !p)} aria-label={paused ? "재생" : "일시정지"}
+              className="w-14 h-14 rounded-full bg-black/40 text-white text-2xl pointer-events-auto">{paused ? "▶" : "⏸"}</button>
+          </div>
+        </div>
+
+        {/* 설정 패널 */}
+        {settings && !frame && (
+          <div className="absolute inset-x-0 bottom-0 z-30 bg-slate-900/95 text-white p-5 space-y-4 rounded-t-3xl max-h-[70vh] overflow-y-auto"
+            style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 1.5rem)" }} onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="font-bold">슬라이드쇼 설정</h3>
+              <button onClick={() => setSettings(false)} className="w-10 h-10 text-2xl">×</button>
+            </div>
+            <Opt label="사진 선택" items={albumId ? [...SOURCES, { id: "album", label: "이 앨범" }] : SOURCES}
+              value={source} onChange={(v) => save("toto-ss-source", v, setSource)} />
+            <Opt label="전환 시간" items={INTERVALS.map((s) => ({ id: s, label: `${s}초` }))}
+              value={sec} onChange={(v) => save("toto-ss-sec", v, setSec)} />
+            <Opt label="순서" items={ORDERS} value={order} onChange={(v) => save("toto-ss-order", v, setOrder)} />
+            <Opt label="전환 효과" items={EFFECTS} value={effect} onChange={(v) => save("toto-ss-effect", v, setEffect)} />
+            <Opt label="화면 맞춤" items={[{ id: false, label: "전체 보기" }, { id: true, label: "채우기" }]}
+              value={fill} onChange={(v) => save("toto-ss-fill", v, setFill)} />
+            <p className="text-xs text-white/40">
+              {wakeSupported ? "✅ 재생 중에는 화면이 꺼지지 않습니다." : "⚠️ 이 기기에서는 화면 자동 잠금 설정을 확인해주세요."}
+            </p>
+          </div>
+        )}
+      </div>
+    </Portal>
+  );
+};
+
+const Opt = ({ label, items, value, onChange }) => (
+  <div>
+    <p className="text-xs text-white/50 mb-1.5">{label}</p>
+    <div className="flex flex-wrap gap-1.5">
+      {items.map((o) => (
+        <button key={String(o.id)} onClick={() => onChange(o.id)} aria-pressed={value === o.id}
+          className={`px-3.5 py-2 rounded-full text-sm ${value === o.id ? "bg-violet-400 text-white" : "bg-white/10 text-white/70"}`}>{o.label}</button>
+      ))}
+    </div>
+  </div>
+);
+
+/* ==========================================================================
+   14. 업로드 (드래그&드롭 · 다중 · 원본 보존 · 3단계 생성 · EXIF)
+   ========================================================================== */
+let _exifr = null;
+const loadExifr = () => {
+  if (window.exifr) return Promise.resolve(window.exifr);
+  if (_exifr) return _exifr;
+  _exifr = new Promise((resolve) => {
+    const s = document.createElement("script");
+    s.src = "https://cdn.jsdelivr.net/npm/exifr@7.1.3/dist/full.umd.js";
+    s.onload = () => resolve(window.exifr || null);
+    s.onerror = () => resolve(null);
+    document.head.appendChild(s);
+  });
+  return _exifr;
+};
+
+/* 원본은 절대 건드리지 않고, 리사이즈본만 새로 만든다 */
+const makeVariant = (file, maxSide, quality) => new Promise((resolve, reject) => {
+  const url = URL.createObjectURL(file);
+  const img = new Image();
+  img.onload = () => {
+    URL.revokeObjectURL(url);
+    const w = img.naturalWidth, h = img.naturalHeight;
+    const scale = Math.min(1, maxSide / Math.max(w, h));
+    const cw = Math.max(1, Math.round(w * scale)), ch = Math.max(1, Math.round(h * scale));
+    const c = document.createElement("canvas");
+    c.width = cw; c.height = ch;
+    const ctx = c.getContext("2d");
+    ctx.drawImage(img, 0, 0, cw, ch);
+    c.toBlob((b) => (b ? resolve({ blob: b, width: w, height: h }) : reject(new Error("변환 실패"))), "image/jpeg", quality);
+  };
+  img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("이미지를 읽을 수 없어요")); };
+  img.src = url;
+});
+
+const Upload = ({ nav }) => {
+  const { user, perm } = useAuth();
+  const toast = useToast();
+  const { albums } = useAlbums();
+  const [files, setFiles] = useState([]);
+  const [albumId, setAlbumId] = useState("");
+  const [caption, setCaption] = useState("");
+  const [done, setDone] = useState(0);
+  const [running, setRunning] = useState(false);
+  const [failed, setFailed] = useState([]);
+  const [drag, setDrag] = useState(false);
+  const inputRef = useRef(null);
+
+  if (perm.upload !== 1) return <Denied nav={nav} />;
+
+  const addFiles = (fl) => {
+    const arr = [...fl].filter((f) => /^(image|video)\//.test(f.type));
+    if (arr.length === 0) { toast("사진 또는 영상만 올릴 수 있어요.", "error"); return; }
+    setFiles((p) => [...p, ...arr]);
+  };
+
+  const upload = async () => {
+    if (!files.length || !user) return;
+    setRunning(true); setDone(0); setFailed([]);
+    const now = new Date();
+    const yy = now.getFullYear(), mm = pad2(now.getMonth() + 1);
+    const fails = [];
+
+    for (let i = 0; i < files.length; i++) {
+      const f = files[i];
+      try {
+        const isVideo = /^video\//.test(f.type);
+        const uid = (crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2) + Date.now()).replace(/-/g, "").slice(0, 16);
+        const ext = (f.name.split(".").pop() || (isVideo ? "mp4" : "jpg")).toLowerCase().slice(0, 5);
+        const base = `${yy}/${mm}/${uid}`;
+        const origPath = `${base}_o.${ext}`;
+
+        // EXIF 촬영일 (없으면 파일 수정일 → 업로드일)
+        let capturedAt = null;
+        if (!isVideo) {
+          try {
+            const ex = await loadExifr();
+            if (ex) {
+              const tags = await ex.parse(f, { pick: ["DateTimeOriginal", "CreateDate"] }).catch(() => null);
+              capturedAt = (tags && (tags.DateTimeOriginal || tags.CreateDate)) || null;
+            }
+          } catch (e) { /* EXIF 없으면 무시 */ }
+        }
+        if (!capturedAt && f.lastModified) capturedAt = new Date(f.lastModified);
+
+        // 1) 원본 업로드 — 재인코딩 없이 그대로
+        const up1 = await sb.storage.from(BUCKET).upload(origPath, f, { contentType: f.type, upsert: false });
+        if (up1.error) throw up1.error;
+
+        // 2) 감상용 / 썸네일 (실패해도 원본은 이미 안전)
+        let previewPath = null, thumbPath = null, width = null, height = null;
+        if (!isVideo) {
+          try {
+            const pv = await makeVariant(f, 1600, 0.88);
+            width = pv.width; height = pv.height;
+            previewPath = `${base}_p.jpg`;
+            const r = await sb.storage.from(BUCKET).upload(previewPath, pv.blob, { contentType: "image/jpeg" });
+            if (r.error) previewPath = null;
+
+            const th = await makeVariant(f, 400, 0.8);
+            thumbPath = `${base}_t.jpg`;
+            const r2 = await sb.storage.from(BUCKET).upload(thumbPath, th.blob, { contentType: "image/jpeg" });
+            if (r2.error) thumbPath = null;
+          } catch (e) {
+            // HEIC 등 브라우저가 못 여는 형식 → 원본만 사용
+            previewPath = null; thumbPath = null;
+          }
+        }
+
+        const { error: dbErr } = await sb.from("media").insert({
+          album_id: albumId || null,
+          storage_path: origPath, preview_path: previewPath, thumb_path: thumbPath,
+          type: isVideo ? "video" : "image",
+          mime: f.type, width, height, bytes: f.size,
+          captured_at: capturedAt ? new Date(capturedAt).toISOString() : new Date().toISOString(),
+          uploaded_by: user.id,
+          caption: caption.trim() || null,
+        });
+        if (dbErr) throw dbErr;
+        setDone(i + 1);
+      } catch (e) {
+        fails.push(`${f.name}: ${errMsg(e)}`);
+        setDone(i + 1);
+      }
+    }
+
+    setRunning(false);
+    setFailed(fails);
+    if (fails.length === 0) {
+      toast(`${files.length}장 업로드 완료! 🎉`, "success");
+      setFiles([]); setCaption("");
+      nav("/gallery");
+    } else {
+      toast(`${files.length - fails.length}장 성공 · ${fails.length}장 실패`, "error");
+    }
+  };
+
+  const pct = files.length ? Math.round((done / files.length) * 100) : 0;
+
+  return (
+    <div className="p-4 pb-safe space-y-4">
+      <h1 className="text-xl font-bold text-slate-800 dark:text-white">📷 사진 올리기</h1>
+
+      <div
+        onDragOver={(e) => { e.preventDefault(); setDrag(true); }}
+        onDragLeave={() => setDrag(false)}
+        onDrop={(e) => { e.preventDefault(); setDrag(false); addFiles(e.dataTransfer.files); }}
+        onClick={() => inputRef.current && inputRef.current.click()}
+        className={`border-2 border-dashed rounded-2xl p-8 text-center cursor-pointer transition ${
+          drag ? "border-teal-400 bg-teal-50 dark:bg-teal-900/20" : "border-slate-300 dark:border-slate-600"}`}>
+        <div className="text-4xl mb-2">📁</div>
+        <p className="text-sm text-slate-600 dark:text-slate-300 font-medium">사진을 여기에 끌어다 놓거나 눌러서 선택</p>
+        <p className="text-xs text-slate-400 mt-1">여러 장 한 번에 선택할 수 있어요 · 원본 그대로 보관됩니다</p>
+      </div>
+      <input ref={inputRef} type="file" accept="image/*,video/*" multiple className="hidden"
+        onChange={(e) => { addFiles(e.target.files); e.target.value = ""; }} />
+
+      {files.length > 0 && (
+        <>
+          <Card className="p-4 space-y-3">
+            <p className="text-sm font-medium text-slate-700 dark:text-slate-200">선택한 파일 {files.length}개</p>
+            <div className="flex gap-1.5 overflow-x-auto no-scrollbar">
+              {files.slice(0, 12).map((f, i) => (
+                <div key={i} className="shrink-0 w-16 h-16 rounded-lg bg-slate-100 dark:bg-slate-700 flex items-center justify-center text-xs text-slate-400 overflow-hidden">
+                  {/^image\//.test(f.type) ? <img src={URL.createObjectURL(f)} alt="" className="w-full h-full object-cover" /> : "🎬"}
+                </div>
+              ))}
+              {files.length > 12 && <div className="shrink-0 w-16 h-16 rounded-lg bg-slate-100 dark:bg-slate-700 flex items-center justify-center text-xs text-slate-500">+{files.length - 12}</div>}
+            </div>
+            <button onClick={() => setFiles([])} className="text-xs text-slate-400">전체 지우기</button>
+          </Card>
+
+          <Card className="p-4 space-y-3">
+            <div>
+              <label className="text-xs text-slate-500 mb-1 block">앨범 (선택)</label>
+              <select className={inputCls} value={albumId} onChange={(e) => setAlbumId(e.target.value)}>
+                <option value="">앨범 없음</option>
+                {(albums || []).map((a) => <option key={a.id} value={a.id}>{a.emoji} {a.title}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs text-slate-500 mb-1 block">설명 (선택 · 전체에 적용)</label>
+              <input className={inputCls} value={caption} onChange={(e) => setCaption(e.target.value)} placeholder="예: 첫 나들이 🌸" />
+            </div>
+          </Card>
+
+          {running && (
+            <Card className="p-4 space-y-2">
+              <p className="text-sm font-medium text-slate-700 dark:text-slate-200">{done} / {files.length}</p>
+              <div className="h-2.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+                <div className="h-full bg-teal-500 transition-all duration-300" style={{ width: `${pct}%` }} />
+              </div>
+              <p className="text-xs text-slate-400">원본을 그대로 보관하고 감상용·썸네일을 만드는 중이에요.</p>
+            </Card>
+          )}
+
+          {failed.length > 0 && (
+            <Card className="p-4 bg-rose-50 dark:bg-rose-900/20">
+              <p className="text-sm font-medium text-rose-600 dark:text-rose-300 mb-1">실패한 파일</p>
+              {failed.slice(0, 5).map((f, i) => <p key={i} className="text-xs text-rose-500 break-all">{f}</p>)}
+            </Card>
+          )}
+
+          <Btn onClick={upload} disabled={running} className="w-full tap-lg text-base">
+            {running ? `업로드 중… ${pct}%` : `⬆️ ${files.length}장 올리기`}
+          </Btn>
+        </>
+      )}
+    </div>
+  );
+};
+
+/* ==========================================================================
+   15. 앨범
+   ========================================================================== */
+const Albums = ({ nav }) => {
+  const { perm } = useAuth();
+  const { albums, reload } = useAlbums();
+  const [counts, setCounts] = useState({});
+  const [covers, setCovers] = useState({});
+  const toast = useToast();
+  const [creating, setCreating] = useState(false);
+  const [title, setTitle] = useState("");
+  const [emoji, setEmoji] = useState("📁");
+
+  useEffect(() => {
+    if (!albums) return;
+    let alive = true;
+    (async () => {
+      const { data } = await sb.from("media").select("id, album_id, thumb_path, preview_path, storage_path, captured_at")
+        .order("captured_at", { ascending: false }).limit(1500);
+      if (!alive || !data) return;
+      const c = {}, cv = {};
+      data.forEach((m) => {
+        if (!m.album_id) return;
+        c[m.album_id] = (c[m.album_id] || 0) + 1;
+        if (!cv[m.album_id]) cv[m.album_id] = m.thumb_path || m.preview_path || m.storage_path;
+      });
+      setCounts(c);
+      const map = await signPaths(Object.values(cv));
+      if (alive) setCovers(Object.fromEntries(Object.entries(cv).map(([k, v]) => [k, map[v]])));
+    })();
+    return () => { alive = false; };
+  }, [albums]);
+
+  const create = async () => {
+    if (!title.trim()) { toast("앨범 이름을 입력해주세요.", "error"); return; }
+    const { error } = await sb.from("albums").insert({ title: title.trim(), emoji: emoji || "📁" });
+    if (error) { toast(errMsg(error), "error"); return; }
+    toast("앨범을 만들었어요.", "success");
+    setTitle(""); setCreating(false); reload();
+  };
+
+  return (
+    <div className="p-4 pb-safe space-y-4">
+      <div className="flex items-center justify-between">
+        <h1 className="text-xl font-bold text-slate-800 dark:text-white">📚 앨범</h1>
+        {perm.albums === 1 && (
+          <button onClick={() => setCreating((c) => !c)} className="text-sm text-teal-600 dark:text-teal-400">＋ 새 앨범</button>
+        )}
+      </div>
+
+      {creating && perm.albums === 1 && (
+        <Card className="p-4 space-y-3">
+          <div className="flex gap-2">
+            <input className={inputCls + " w-20 text-center"} value={emoji} onChange={(e) => setEmoji(e.target.value)} maxLength={4} aria-label="이모지" />
+            <input className={inputCls + " flex-1"} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="앨범 이름 (예: 첫 크리스마스)" />
+          </div>
+          <Btn onClick={create} className="w-full tap-lg">만들기</Btn>
+        </Card>
+      )}
+
+      {!albums ? <Spinner /> : albums.length === 0 ? (
+        <Card className="p-10 text-center text-sm text-slate-400">아직 앨범이 없어요.</Card>
+      ) : (
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          {albums.map((a) => (
+            <button key={a.id} onClick={() => nav(`/gallery/album/${a.id}`)}
+              className="text-left rounded-2xl overflow-hidden bg-white dark:bg-slate-800 shadow-sm active:scale-[.98] transition">
+              <div className="aspect-square bg-slate-100 dark:bg-slate-700 flex items-center justify-center text-4xl overflow-hidden">
+                {covers[a.id] ? <img src={covers[a.id]} alt="" className="w-full h-full object-cover" /> : a.emoji}
+              </div>
+              <div className="p-2.5">
+                <p className="text-sm font-bold text-slate-700 dark:text-slate-200 truncate">{a.emoji} {a.title}</p>
+                <p className="text-xs text-slate-400">{counts[a.id] || 0}장</p>
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+/* ==========================================================================
+   16. 가족 관리 (관리자 전용)
+   ========================================================================== */
+const Users = ({ nav }) => {
+  const { isAdmin, user } = useAuth();
+  const toast = useToast();
+  const [rows, setRows] = useState(null);
+
+  const load = useCallback(async () => {
+    const { data, error } = await sb.from("profiles").select("*").order("created_at");
+    if (error) { toast(errMsg(error), "error"); setRows([]); return; }
+    setRows(data || []);
+  }, [toast]);
+  useEffect(() => { if (isAdmin) load(); }, [isAdmin, load]);
+
+  if (!isAdmin) return <Denied nav={nav} />;
+
+  const setRole = async (id, role) => {
+    const { error } = await sb.from("profiles").update({ role }).eq("id", id);
+    if (error) { toast(errMsg(error), "error"); return; }
+    toast("권한을 변경했어요.", "success"); load();
+  };
+  const setApproved = async (id, approved) => {
+    const { error } = await sb.from("profiles").update({ approved }).eq("id", id);
+    if (error) { toast(errMsg(error), "error"); return; }
+    toast(approved ? "승인했어요." : "승인을 해제했어요.", "success"); load();
+  };
+
+  return (
+    <div className="p-4 pb-safe space-y-3">
+      <h1 className="text-xl font-bold text-slate-800 dark:text-white">👥 가족 관리</h1>
+      <p className="text-xs text-slate-400">가입한 가족을 승인하고 권한을 정할 수 있어요.</p>
+      {!rows ? <Spinner /> : rows.map((r) => {
+        const self = user && r.id === user.id;
+        return (
+          <Card key={r.id} className="p-4 space-y-3">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <p className="font-bold text-slate-800 dark:text-white truncate">
+                  {r.display_name || "이름 없음"} {self && <span className="text-xs text-teal-500">(나)</span>}
+                </p>
+                <p className="text-xs text-slate-400 truncate">{r.email}</p>
+              </div>
+              <button onClick={() => setApproved(r.id, !r.approved)} disabled={self}
+                className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-medium disabled:opacity-40 ${
+                  r.approved ? "bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300" : "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"}`}>
+                {r.approved ? "✅ 승인됨" : "⏳ 승인대기"}
+              </button>
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {Object.keys(PERM).map((role) => (
+                <button key={role} onClick={() => setRole(r.id, role)} disabled={self && r.role === "admin"}
+                  className={`px-3 py-1.5 rounded-full text-xs font-medium disabled:opacity-40 ${
+                    r.role === role ? "bg-teal-500 text-white" : "bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300"}`}>
+                  {ROLE_LABEL[role]}
+                </button>
+              ))}
+            </div>
+            <p className="text-[11px] text-slate-400">{ROLE_DESC[r.role] || ""}</p>
+          </Card>
+        );
+      })}
+    </div>
+  );
+};
+
+/* ==========================================================================
+   17. 내 계정 / 접근 거부
+   ========================================================================== */
+const Me = ({ dark, setDark }) => {
+  const { profile, role, signOut, refreshProfile } = useAuth();
+  const toast = useToast();
+  const [name, setName] = useState((profile && profile.display_name) || "");
+  const save = async () => {
+    const { error } = await sb.from("profiles").update({ display_name: name.trim() }).eq("id", profile.id);
+    if (error) { toast(errMsg(error), "error"); return; }
+    toast("저장했어요.", "success"); refreshProfile();
+  };
+  return (
+    <div className="p-4 pb-safe space-y-4">
+      <h1 className="text-xl font-bold text-slate-800 dark:text-white">👤 내 계정</h1>
+      <Card className="p-4 space-y-3">
+        <div>
+          <label className="text-xs text-slate-500 mb-1 block">이름</label>
+          <input className={inputCls} value={name} onChange={(e) => setName(e.target.value)} />
+        </div>
+        <p className="text-xs text-slate-400">{(profile && profile.email) || ""} · {ROLE_LABEL[role]}</p>
+        <Btn onClick={save} className="w-full tap-lg">저장</Btn>
+      </Card>
+      <Card className="p-4 flex items-center justify-between">
+        <span className="text-sm text-slate-600 dark:text-slate-300">🌙 어두운 화면</span>
+        <button onClick={() => setDark(!dark)} aria-pressed={dark}
+          className={`w-14 h-8 rounded-full transition ${dark ? "bg-teal-500" : "bg-slate-300"}`}>
+          <span className={`block w-6 h-6 bg-white rounded-full transition-transform ${dark ? "translate-x-7" : "translate-x-1"}`} />
+        </button>
+      </Card>
+      <Btn variant="ghost" className="w-full tap-lg" onClick={signOut}>로그아웃</Btn>
+    </div>
+  );
+};
+
+const Denied = ({ nav }) => (
+  <div className="p-6 flex flex-col items-center justify-center gap-4 text-center" style={{ minHeight: "60vh" }}>
+    <div className="text-5xl">🔒</div>
+    <p className="text-slate-600 dark:text-slate-300">이 화면에 접근할 권한이 없어요.</p>
+    <Btn className="tap-lg" onClick={() => nav("/gallery")}>갤러리로 가기</Btn>
+  </div>
+);
+
+/* ==========================================================================
+   18. 조부모용 초간단 첫 화면 (gallery_only)
+   ========================================================================== */
+const SimpleHome = ({ nav }) => {
+  const { profile } = useAuth();
+  return (
+    <div className="p-6 flex flex-col items-center justify-center gap-6" style={{ minHeight: "70vh" }}>
+      <div className="text-center">
+        <div className="text-7xl mb-3">👶</div>
+        <h1 className="text-3xl font-bold text-slate-800 dark:text-white">{BABY.name}</h1>
+        <p className="text-base text-slate-500 mt-2">
+          {(profile && profile.display_name) || ""}님, 반가워요
+        </p>
+      </div>
+      <div className="w-full max-w-xs space-y-3">
+        <Btn className="w-full text-xl py-5 rounded-2xl" onClick={() => nav("/gallery")}>📸 사진 보기</Btn>
+        <Btn variant="lavender" className="w-full text-xl py-5 rounded-2xl" onClick={() => nav("/slideshow")}>▶ 슬라이드쇼</Btn>
+      </div>
+      <p className="text-xs text-slate-400 text-center leading-relaxed">
+        슬라이드쇼를 켜두면 사진이 자동으로 넘어가요.<br />태블릿을 세워두면 디지털 액자가 됩니다 🖼
+      </p>
+    </div>
+  );
+};
+
+/* ==========================================================================
+   19. 앱 셸
+   ========================================================================== */
+const Header = ({ nav }) => (
+  <header className="shrink-0 bg-white/95 dark:bg-slate-800/95 backdrop-blur border-b border-slate-100 dark:border-slate-700"
+    style={{ paddingTop: "env(safe-area-inset-top)" }}>
+    <div className="max-w-3xl mx-auto flex items-center justify-between px-4 py-3">
+      <button onClick={() => nav("/gallery")} className="flex items-center gap-2">
+        <span className="text-2xl">👶</span>
+        <span className="font-bold text-slate-800 dark:text-white">{BABY.name}</span>
+      </button>
+      <button onClick={() => nav("/me")} aria-label="내 계정" className="w-10 h-10 rounded-full bg-slate-100 dark:bg-slate-700 text-lg">👤</button>
+    </div>
+  </header>
+);
+
+const Shell = () => {
+  const { perm, role, approved, profileLoaded, profile } = useAuth();
+  const [dark, setDark] = useDarkMode();
+  const [path, nav] = useHashRoute();
+  const [filter, setFilter] = useState("all");
+
+  // gallery_only 는 첫 진입 시 초간단 홈으로
+  useEffect(() => {
+    if (!location.hash) nav(role === "gallery_only" ? "/home" : "/gallery");
+  }, [role, nav]);
+
+  if (!profileLoaded) return <div className="min-h-dvh bg-warm flex items-center justify-center"><Spinner /></div>;
+  if (!profile) return <PendingScreen />;
+  if (!approved) return <PendingScreen />;
+
+  // ── 라우트 권한 가드: 메뉴 숨김이 아니라 실제 차단 ──────────────────────
+  const base = routeBase(path);
+  const need = ROUTE_PERM[base];
+  const allowed = base === "/home" ? true : (need ? perm[need] === 1 : true);
+  const effective = allowed ? path : "/gallery";
+  const eBase = routeBase(effective);
+
+  // 앨범 상세: /gallery/album/:id
+  const parts = effective.split("/");
+  const albumId = parts[2] === "album" ? parts[3] : null;
+
+  // 슬라이드쇼/액자는 전체화면 — 셸 없이 단독 렌더
+  if (eBase === "/slideshow") return <Slideshow nav={nav} albumId={albumId} frameMode={false} />;
+  if (eBase === "/frame") return <Slideshow nav={nav} albumId={albumId} frameMode={true} />;
+
+  const navs = [
+    { id: "/gallery", icon: "📸", label: "갤러리", show: true },
+    { id: "/albums", icon: "📚", label: "앨범", show: true },
+    { id: "/upload", icon: "＋", label: "올리기", show: perm.upload === 1 },
+    { id: "/users", icon: "👥", label: "가족", show: perm.users === 1 },
+    { id: "/me", icon: "👤", label: "내 계정", show: true },
+  ].filter((n) => n.show);
+
+  return (
+    <div className="app-shell bg-warm">
+      <Header nav={nav} />
+      <main className="app-main">
+        <div className="max-w-3xl mx-auto">
+          {eBase === "/home" && <SimpleHome nav={nav} />}
+          {eBase === "/gallery" && (
+            <Gallery nav={nav} filter={albumId ? "album" : filter} setFilter={setFilter} albumId={albumId} />
+          )}
+          {eBase === "/albums" && <Albums nav={nav} />}
+          {eBase === "/upload" && <Upload nav={nav} />}
+          {eBase === "/users" && <Users nav={nav} />}
+          {eBase === "/me" && <Me dark={dark} setDark={setDark} />}
+        </div>
+      </main>
+      <nav className="shrink-0 bg-white/95 dark:bg-slate-800/95 backdrop-blur border-t border-slate-100 dark:border-slate-700 nav-safe" aria-label="주요 메뉴">
+        <div className="max-w-3xl mx-auto flex">
+          {navs.map((n) => {
+            const active = eBase === n.id;
+            return (
+              <button key={n.id} onClick={() => nav(n.id)} aria-current={active ? "page" : undefined}
+                className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 tap-lg justify-center ${active ? "text-teal-500" : "text-slate-400"}`}>
+                <span className="text-xl" aria-hidden="true">{n.icon}</span>
+                <span className="text-[11px] font-medium">{n.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </nav>
+    </div>
+  );
+};
+
+/* ==========================================================================
+   20. 루트
+   ========================================================================== */
+const Root = () => {
+  const { session, profileLoaded } = useAuth();
+  if (session === undefined) return <div className="min-h-dvh bg-warm flex items-center justify-center"><Spinner label="" /></div>;
+  if (!session) return <AuthScreen />;
+  if (!profileLoaded) return <div className="min-h-dvh bg-warm flex items-center justify-center"><Spinner /></div>;
+  return <Shell />;
+};
+
+const App = () => {
+  if (!CONFIGURED) return <SetupScreen />;
+  return (
+    <ToastProvider>
+      <ConfirmProvider>
+        <AuthProvider>
+          <Root />
+        </AuthProvider>
+      </ConfirmProvider>
+    </ToastProvider>
+  );
+};
+
+class ErrorBoundary extends React.Component {
+  constructor(p) { super(p); this.state = { err: null }; }
+  static getDerivedStateFromError(err) { return { err }; }
+  componentDidCatch(err) { if (window.__showFatal) window.__showFatal((err && err.stack) || String(err)); }
+  render() { return this.state.err ? null : this.props.children; }
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(
+  <ErrorBoundary><App /></ErrorBoundary>
+);
+
+/* PWA 서비스워커 */
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => navigator.serviceWorker.register("./sw.js").catch(() => {}));
+}
+</script>
+</body>
+</html>
