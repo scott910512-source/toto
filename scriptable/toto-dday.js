@@ -106,14 +106,15 @@ function roundedRectPath(x, y, w, h, r) {
   return p;
 }
 
-/* 크기별 타이포 — 아이패드는 large/extraLarge 가 훨씬 크므로 글씨도 키운다
-   (iPad 위젯 실제 크기(pt): small 141 · medium 305×141 · large 305×305 ·
-    extraLarge 634×305 — extraLarge 는 아이패드에만 있음) */
+/* 크기별 타이포 — 숫자를 최대한 크게.
+   가로로 긴 위젯(medium / extraLarge)은 [큰 숫자 | 설명] 가로 배치로 바꿔서
+   높이를 숫자에 전부 몰아준다. (iPad 위젯 pt: small 141 · medium 305x141 ·
+   large 305x305 · extraLarge 634x305) */
 const SIZING = {
-  small:      { pad: 14, head: 13, big: 40, sub: 12.5, det: 0,  foot: 9.5,  bar: 112, barH: 6 },
-  medium:     { pad: 18, head: 15, big: 52, sub: 16,   det: 12, foot: 11,   bar: 252, barH: 7 },
-  large:      { pad: 24, head: 19, big: 92, sub: 24,   det: 16, foot: 13,   bar: 252, barH: 10 },
-  extraLarge: { pad: 30, head: 23, big: 124, sub: 30,  det: 19, foot: 15,   bar: 560, barH: 12 },
+  small:      { pad: 12, wide: false, head: 17, big: 56,  sub: 15, det: 0,  foot: 0,  bar: 0,   barH: 0 },
+  medium:     { pad: 14, wide: true,  head: 20, big: 78,  sub: 19, det: 14, foot: 12, bar: 0,   barH: 0 },
+  large:      { pad: 20, wide: false, head: 30, big: 128, sub: 30, det: 19, foot: 14, bar: 250, barH: 10 },
+  extraLarge: { pad: 26, wide: true,  head: 40, big: 190, sub: 42, det: 26, foot: 18, bar: 300, barH: 13 },
 };
 
 function buildWidget(size) {
@@ -130,67 +131,118 @@ function buildWidget(size) {
   w.url = BABY.appUrl;
   w.setPadding(z.pad, z.pad + 2, z.pad, z.pad + 2);
 
-  // 상단: 🍼 또또 ······ 임신 중
-  const head = w.addStack();
-  head.centerAlignContent();
-  const icon = head.addText("🍼");
-  icon.font = Font.systemFont(z.head);
-  head.addSpacer(6);
-  const name = head.addText(BABY.name);
-  name.font = Font.semiboldSystemFont(z.head);
-  name.textColor = C.white;
-  if (size !== "small") {
-    head.addSpacer();
-    const badge = head.addText(s.mode === "pregnant" ? "임신 중" : "육아 중");
-    badge.font = Font.systemFont(Math.max(11, z.head - 3));
-    badge.textColor = C.faint;
+  const bigText = (host) => {
+    const t = host.addText(s.big);
+    t.font = Font.boldSystemFont(z.big);
+    t.textColor = C.white;
+    t.minimumScaleFactor = 0.45;
+    t.lineLimit = 1;
+    return t;
+  };
+  const nameRow = (host, big) => {
+    const r = host.addStack();
+    r.centerAlignContent();
+    const i = r.addText("🍼");
+    i.font = Font.systemFont(z.head);
+    r.addSpacer(6);
+    const n = r.addText(BABY.name);
+    n.font = Font.boldSystemFont(z.head);
+    n.textColor = C.white;
+    n.lineLimit = 1;
+    n.minimumScaleFactor = 0.6;
+    if (big) {
+      r.addSpacer();
+      const b = r.addText(s.mode === "pregnant" ? "임신 중" : "육아 중");
+      b.font = Font.systemFont(Math.max(11, z.head * 0.5));
+      b.textColor = C.faint;
+    }
+    return r;
+  };
+
+  if (z.wide) {
+    // ── 가로 배치: [ 큰 숫자 ][ 이름/부제/상세 ] ──
+    const row = w.addStack();
+    row.centerAlignContent();
+
+    const left = row.addStack();
+    left.layoutVertically();
+    left.centerAlignContent();
+    bigText(left);
+
+    row.addSpacer(size === "extraLarge" ? 28 : 14);
+
+    const right = row.addStack();
+    right.layoutVertically();
+    nameRow(right, false);
+    right.addSpacer(size === "extraLarge" ? 8 : 3);
+    const sub = right.addText(s.sub);
+    sub.font = Font.mediumSystemFont(z.sub);
+    sub.textColor = C.soft;
+    sub.lineLimit = 1;
+    sub.minimumScaleFactor = 0.6;
+    if (z.det && s.detail) {
+      const det = right.addText(s.detail);
+      det.font = Font.systemFont(z.det);
+      det.textColor = C.faint;
+      det.lineLimit = 1;
+      det.minimumScaleFactor = 0.7;
+    }
+    if (z.bar) {
+      right.addSpacer(10);
+      const bar = right.addImage(progressBar(s.progress, z.bar * 3, z.barH * 3));
+      bar.imageSize = new Size(z.bar, z.barH);
+      bar.cornerRadius = z.barH / 2;
+    }
+    if (z.foot) {
+      right.addSpacer(6);
+      const f = right.addText(s.foot + (s.progressLabel ? "  ·  " + s.progressLabel : ""));
+      f.font = Font.systemFont(z.foot);
+      f.textColor = C.faint;
+      f.lineLimit = 1;
+      f.minimumScaleFactor = 0.7;
+    }
+    row.addSpacer();
+    return w;
   }
 
-  w.addSpacer(size === "small" ? 4 : 8);
-
-  // 큰 숫자
-  const big = w.addText(s.big);
-  big.font = Font.boldSystemFont(z.big);
-  big.textColor = C.white;
-  big.minimumScaleFactor = 0.5;
-  big.lineLimit = 1;
-
-  // 부제
+  // ── 세로 배치 (small / large) ──
+  nameRow(w, size !== "small");
+  w.addSpacer(size === "small" ? 2 : 6);
+  bigText(w);
   const sub = w.addText(s.sub);
   sub.font = Font.mediumSystemFont(z.sub);
   sub.textColor = C.soft;
   sub.lineLimit = 1;
-  sub.minimumScaleFactor = 0.7;
-
+  sub.minimumScaleFactor = 0.6;
   if (z.det && s.detail) {
     const det = w.addText(s.detail);
     det.font = Font.systemFont(z.det);
     det.textColor = C.faint;
     det.lineLimit = 1;
   }
-
-  w.addSpacer();
-
-  // 진행 막대
-  const bar = w.addImage(progressBar(s.progress, z.bar * 3, z.barH * 3));
-  bar.imageSize = new Size(z.bar, z.barH);
-  bar.cornerRadius = z.barH / 2;
-
-  w.addSpacer(size === "small" ? 5 : 8);
-
-  const foot = w.addStack();
-  const f1 = foot.addText(s.foot);
-  f1.font = Font.systemFont(z.foot);
-  f1.textColor = C.faint;
-  f1.lineLimit = 1;
-  if (s.progressLabel) {
-    foot.addSpacer();
-    const f2 = foot.addText(s.progressLabel);
-    f2.font = Font.systemFont(z.foot);
-    f2.textColor = C.faint;
-    f2.lineLimit = 1;
+  if (z.bar) {
+    w.addSpacer();
+    const bar = w.addImage(progressBar(s.progress, z.bar * 3, z.barH * 3));
+    bar.imageSize = new Size(z.bar, z.barH);
+    bar.cornerRadius = z.barH / 2;
+  } else {
+    w.addSpacer();
   }
-
+  if (z.foot) {
+    w.addSpacer(7);
+    const foot = w.addStack();
+    const f1 = foot.addText(s.foot);
+    f1.font = Font.systemFont(z.foot);
+    f1.textColor = C.faint;
+    f1.lineLimit = 1;
+    if (s.progressLabel) {
+      foot.addSpacer();
+      const f2 = foot.addText(s.progressLabel);
+      f2.font = Font.systemFont(z.foot);
+      f2.textColor = C.faint;
+      f2.lineLimit = 1;
+    }
+  }
   return w;
 }
 

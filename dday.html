@@ -27,27 +27,27 @@
   @keyframes drift1{to{transform:translate(18vmin,12vmin) scale(1.15)}}
   @keyframes drift2{to{transform:translate(-14vmin,-10vmin) scale(1.1)}}
 
-  .wrap{position:relative;text-align:center;width:100%;max-width:1400px;padding:4vmin}
+  .wrap{position:relative;text-align:center;width:100%;max-width:1600px;padding:2vmin}
 
-  .name{display:flex;align-items:center;justify-content:center;gap:.4em;
-    font-size:clamp(20px,4.2vmin,52px);font-weight:600;letter-spacing:-.01em;
-    text-shadow:0 2px 24px rgba(0,0,0,.18)}
-  .badge{font-size:.52em;font-weight:500;opacity:.62;border:1px solid rgba(255,255,255,.45);
-    border-radius:999px;padding:.25em .8em;margin-left:.3em}
+  .name{display:flex;align-items:center;justify-content:center;gap:.35em;
+    font-size:clamp(34px,8.5vmin,130px);font-weight:800;letter-spacing:-.02em;
+    text-shadow:0 3px 30px rgba(0,0,0,.2)}
+  .badge{font-size:.34em;font-weight:500;opacity:.6;border:1px solid rgba(255,255,255,.4);
+    border-radius:999px;padding:.3em .9em;margin-left:.25em;letter-spacing:0}
 
-  .big{font-size:clamp(90px,34vmin,440px);font-weight:800;line-height:.92;letter-spacing:-.045em;
-    margin:2vmin 0 1vmin;text-shadow:0 8px 60px rgba(0,0,0,.22);
+  .big{font-size:clamp(150px,52vmin,760px);font-weight:800;line-height:.86;letter-spacing:-.055em;
+    margin:1vmin 0 .5vmin;text-shadow:0 10px 70px rgba(0,0,0,.24);
     font-variant-numeric:tabular-nums}
 
-  .sub{font-size:clamp(20px,5.4vmin,74px);font-weight:300;opacity:.95;letter-spacing:-.01em}
-  .det{font-size:clamp(14px,2.7vmin,32px);opacity:.62;margin-top:1.4vmin;font-weight:400}
+  .sub{font-size:clamp(26px,8vmin,120px);font-weight:300;opacity:.96;letter-spacing:-.015em}
+  .det{font-size:clamp(15px,3.4vmin,44px);opacity:.6;margin-top:1.2vmin;font-weight:400}
 
-  .barwrap{margin:4.5vmin auto 0;max-width:min(78%,900px)}
+  .barwrap{margin:3.5vmin auto 0;max-width:min(82%,1100px)}
   .bar{height:clamp(6px,1.1vmin,14px);border-radius:999px;background:rgba(255,255,255,.26);overflow:hidden}
   .bar i{display:block;height:100%;background:#fff;border-radius:999px;
     transition:width 1s cubic-bezier(.22,.61,.36,1);box-shadow:0 0 20px rgba(255,255,255,.55)}
-  .barft{display:flex;justify-content:space-between;margin-top:1.4vmin;
-    font-size:clamp(11px,2vmin,22px);opacity:.55}
+  .barft{display:flex;justify-content:space-between;margin-top:1.2vmin;
+    font-size:clamp(12px,2.4vmin,30px);opacity:.5}
 
   /* 터치하면 잠깐 나오는 컨트롤 */
   .ctl{position:fixed;top:calc(env(safe-area-inset-top) + 16px);right:16px;display:flex;gap:8px;
@@ -62,8 +62,9 @@
   .hint.on{opacity:.45}
 
   @media (orientation:portrait){
-    .big{font-size:clamp(80px,26vmin,340px)}
-    .sub{font-size:clamp(18px,4.4vmin,52px)}
+    .big{font-size:clamp(120px,40vmin,560px)}
+    .sub{font-size:clamp(22px,6.5vmin,90px)}
+    .name{font-size:clamp(28px,7vmin,100px)}
   }
 </style>
 </head>
