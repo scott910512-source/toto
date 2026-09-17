@@ -15,7 +15,7 @@ window.SUPABASE_URL = "https://cuxcxzqfcnofmuusxsvo.supabase.co";
 
 // ↓↓↓ 여기에 anon public 키를 붙여넣으세요 (eyJ... 로 시작하는 긴 문자열)
 //     Supabase 대시보드 → Project Settings → API Keys → anon / public
-window.SUPABASE_ANON_KEY = "https://cuxcxzqfcnofmuusxsvo.supabase.co/rest/v1/";
+window.SUPABASE_ANON_KEY = "sb_publishable_WlMyDul_E3NJqsD1PmUSGA_wtqjeJAT";
 
 /* 아기 정보 (액자 모드에서 "또또 · D+132" 표시에 사용) */
 window.BABY_INFO = {
