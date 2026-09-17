@@ -11,8 +11,11 @@
    1) App Store 에서 Scriptable 설치 (무료)
    2) Scriptable 앱 → 우측 상단 + → 이 파일 내용 전체 붙여넣기
    3) 이름을 "또또 D-day" 로 저장
-   4) 홈화면 빈 곳 길게 누르기 → + → Scriptable → 위젯 크기 선택 → 추가
-      ※ 아이패드는 제일 큰 것(가로로 긴 extraLarge)을 고르면 시원하게 보입니다
+   4) ★ 크게 보려면 반드시 [홈화면] 에 추가하세요.
+      홈화면 빈 곳 길게 누르기 → 왼쪽 위 + → Scriptable →
+      좌우로 밀어서 [제일 큰 것] 선택 → 위젯 추가
+      · 아이패드: 가로로 아주 긴 것(extraLarge)이 제일 큽니다
+      · 잠금화면 위젯은 iOS 가 크기를 고정해서 못 키웁니다(작게 나오는 게 정상)
    5) 추가된 위젯 길게 누르기 → "위젯 편집" → Script = 또또 D-day
       (Run Script 로 두면 탭했을 때 앱이 열립니다)
    =========================================================================== */
@@ -104,6 +107,52 @@ function roundedRectPath(x, y, w, h, r) {
   const p = new Path();
   p.addRoundedRect(new Rect(x, y, w, h), r, r);
   return p;
+}
+
+/* ── 잠금화면 위젯 (accessory*) ─────────────────────────────────────────────
+   iOS 가 크기를 고정하고 색도 단색으로 강제하므로, 여기서는 배경/색을 쓰지 않고
+   글자만 최대한 크게 넣는다. 크게 보고 싶으면 홈화면 위젯을 쓰세요. */
+function buildAccessory(size) {
+  const s = computeState();
+  const w = new ListWidget();
+  w.url = BABY.appUrl;
+  w.setPadding(0, 0, 0, 0);
+
+  if (size === "accessoryInline") {
+    // 시계 위 한 줄 — 아이콘+텍스트만 가능
+    w.addText(`🍼 ${BABY.name} ${s.big} · ${s.sub}`);
+    return w;
+  }
+
+  if (size === "accessoryCircular") {
+    // 원형 — 숫자만
+    const st = w.addStack();
+    st.layoutVertically();
+    st.centerAlignContent();
+    const n = st.addText(s.big.replace("D", ""));   // "-88"
+    n.font = Font.boldSystemFont(20);
+    n.centerAlignText();
+    n.minimumScaleFactor = 0.5;
+    n.lineLimit = 1;
+    const l = st.addText("또또");
+    l.font = Font.systemFont(9);
+    l.centerAlignText();
+    return w;
+  }
+
+  // accessoryRectangular — 잠금화면에서 제일 큰 것 (약 160x72pt)
+  const t1 = w.addText(`🍼 ${BABY.name}`);
+  t1.font = Font.semiboldSystemFont(12);
+  t1.lineLimit = 1;
+  const t2 = w.addText(s.big);
+  t2.font = Font.boldSystemFont(30);
+  t2.lineLimit = 1;
+  t2.minimumScaleFactor = 0.5;
+  const t3 = w.addText(s.sub);
+  t3.font = Font.systemFont(11);
+  t3.lineLimit = 1;
+  t3.minimumScaleFactor = 0.7;
+  return w;
 }
 
 /* 크기별 타이포 — 숫자를 최대한 크게.
@@ -248,7 +297,8 @@ function buildWidget(size) {
 
 // ── 실행 ────────────────────────────────────────────────────────────────────
 const family = config.widgetFamily || "medium";
-const widget = buildWidget(family);
+const isAccessory = String(family).indexOf("accessory") === 0;   // 잠금화면 위젯
+const widget = isAccessory ? buildAccessory(family) : buildWidget(family);
 
 if (config.runsInWidget) {
   Script.setWidget(widget);
