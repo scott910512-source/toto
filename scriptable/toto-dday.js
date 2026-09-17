@@ -12,6 +12,7 @@
    2) Scriptable 앱 → 우측 상단 + → 이 파일 내용 전체 붙여넣기
    3) 이름을 "또또 D-day" 로 저장
    4) 홈화면 빈 곳 길게 누르기 → + → Scriptable → 위젯 크기 선택 → 추가
+      ※ 아이패드는 제일 큰 것(가로로 긴 extraLarge)을 고르면 시원하게 보입니다
    5) 추가된 위젯 길게 누르기 → "위젯 편집" → Script = 또또 D-day
       (Run Script 로 두면 탭했을 때 앱이 열립니다)
    =========================================================================== */
@@ -105,8 +106,19 @@ function roundedRectPath(x, y, w, h, r) {
   return p;
 }
 
+/* 크기별 타이포 — 아이패드는 large/extraLarge 가 훨씬 크므로 글씨도 키운다
+   (iPad 위젯 실제 크기(pt): small 141 · medium 305×141 · large 305×305 ·
+    extraLarge 634×305 — extraLarge 는 아이패드에만 있음) */
+const SIZING = {
+  small:      { pad: 14, head: 13, big: 40, sub: 12.5, det: 0,  foot: 9.5,  bar: 112, barH: 6 },
+  medium:     { pad: 18, head: 15, big: 52, sub: 16,   det: 12, foot: 11,   bar: 252, barH: 7 },
+  large:      { pad: 24, head: 19, big: 92, sub: 24,   det: 16, foot: 13,   bar: 252, barH: 10 },
+  extraLarge: { pad: 30, head: 23, big: 124, sub: 30,  det: 19, foot: 15,   bar: 560, barH: 12 },
+};
+
 function buildWidget(size) {
   const s = computeState();
+  const z = SIZING[size] || SIZING.medium;
   const w = new ListWidget();
 
   const g = new LinearGradient();
@@ -116,45 +128,43 @@ function buildWidget(size) {
   g.endPoint = new Point(1, 1);
   w.backgroundGradient = g;
   w.url = BABY.appUrl;
+  w.setPadding(z.pad, z.pad + 2, z.pad, z.pad + 2);
 
-  const small = size === "small";
-  w.setPadding(small ? 14 : 18, small ? 14 : 20, small ? 14 : 18, small ? 14 : 20);
-
-  // 상단: 🍼 또또
+  // 상단: 🍼 또또 ······ 임신 중
   const head = w.addStack();
   head.centerAlignContent();
   const icon = head.addText("🍼");
-  icon.font = Font.systemFont(small ? 13 : 15);
-  head.addSpacer(5);
+  icon.font = Font.systemFont(z.head);
+  head.addSpacer(6);
   const name = head.addText(BABY.name);
-  name.font = Font.semiboldSystemFont(small ? 13 : 15);
+  name.font = Font.semiboldSystemFont(z.head);
   name.textColor = C.white;
-  if (!small) {
+  if (size !== "small") {
     head.addSpacer();
     const badge = head.addText(s.mode === "pregnant" ? "임신 중" : "육아 중");
-    badge.font = Font.systemFont(11);
+    badge.font = Font.systemFont(Math.max(11, z.head - 3));
     badge.textColor = C.faint;
   }
 
-  w.addSpacer(small ? 6 : 10);
+  w.addSpacer(size === "small" ? 4 : 8);
 
   // 큰 숫자
   const big = w.addText(s.big);
-  big.font = Font.boldSystemFont(small ? 38 : size === "large" ? 62 : 46);
+  big.font = Font.boldSystemFont(z.big);
   big.textColor = C.white;
-  big.minimumScaleFactor = 0.6;
+  big.minimumScaleFactor = 0.5;
   big.lineLimit = 1;
 
   // 부제
   const sub = w.addText(s.sub);
-  sub.font = Font.mediumSystemFont(small ? 12 : 15);
+  sub.font = Font.mediumSystemFont(z.sub);
   sub.textColor = C.soft;
   sub.lineLimit = 1;
   sub.minimumScaleFactor = 0.7;
 
-  if (!small && s.detail) {
+  if (z.det && s.detail) {
     const det = w.addText(s.detail);
-    det.font = Font.systemFont(12);
+    det.font = Font.systemFont(z.det);
     det.textColor = C.faint;
     det.lineLimit = 1;
   }
@@ -162,22 +172,21 @@ function buildWidget(size) {
   w.addSpacer();
 
   // 진행 막대
-  const barW = small ? 110 : size === "large" ? 300 : 250;
-  const bar = w.addImage(progressBar(s.progress, barW * 3, 18));
-  bar.imageSize = new Size(barW, 6);
-  bar.cornerRadius = 3;
+  const bar = w.addImage(progressBar(s.progress, z.bar * 3, z.barH * 3));
+  bar.imageSize = new Size(z.bar, z.barH);
+  bar.cornerRadius = z.barH / 2;
 
-  w.addSpacer(small ? 5 : 7);
+  w.addSpacer(size === "small" ? 5 : 8);
 
   const foot = w.addStack();
   const f1 = foot.addText(s.foot);
-  f1.font = Font.systemFont(small ? 9.5 : 11);
+  f1.font = Font.systemFont(z.foot);
   f1.textColor = C.faint;
   f1.lineLimit = 1;
   if (s.progressLabel) {
     foot.addSpacer();
     const f2 = foot.addText(s.progressLabel);
-    f2.font = Font.systemFont(small ? 9.5 : 11);
+    f2.font = Font.systemFont(z.foot);
     f2.textColor = C.faint;
     f2.lineLimit = 1;
   }
@@ -194,7 +203,7 @@ if (config.runsInWidget) {
 } else {
   // 앱에서 직접 실행하면 미리보기
   if (family === "small") await widget.presentSmall();
-  else if (family === "large") await widget.presentLarge();
+  else if (family === "large" || family === "extraLarge") await widget.presentLarge();
   else await widget.presentMedium();
 }
 Script.complete();

@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+<meta name="theme-color" content="#7dd3c0" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="또또 D-day" />
+<title>또또 D-day</title>
+<link rel="apple-touch-icon" href="./apple-touch-icon.png" />
+<link rel="icon" href="./icon-192.png" />
+<style>
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;margin:0;padding:0}
+  html,body{height:100%;overflow:hidden}
+  body{
+    background:linear-gradient(135deg,#7dd3c0 0%,#8fc9d4 45%,#a78bfa 100%);
+    color:#fff;font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Noto Sans KR",sans-serif;
+    display:flex;align-items:center;justify-content:center;
+    -webkit-user-select:none;user-select:none;
+    padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  }
+  /* 은은하게 움직이는 빛 — 오래 켜둬도 번인 완화 */
+  .glow{position:fixed;border-radius:50%;filter:blur(80px);opacity:.35;pointer-events:none}
+  .g1{width:60vmin;height:60vmin;background:#fff;top:-10vmin;left:-10vmin;animation:drift1 34s ease-in-out infinite alternate}
+  .g2{width:50vmin;height:50vmin;background:#ffd9ec;bottom:-12vmin;right:-8vmin;animation:drift2 41s ease-in-out infinite alternate}
+  @keyframes drift1{to{transform:translate(18vmin,12vmin) scale(1.15)}}
+  @keyframes drift2{to{transform:translate(-14vmin,-10vmin) scale(1.1)}}
+
+  .wrap{position:relative;text-align:center;width:100%;max-width:1400px;padding:4vmin}
+
+  .name{display:flex;align-items:center;justify-content:center;gap:.4em;
+    font-size:clamp(20px,4.2vmin,52px);font-weight:600;letter-spacing:-.01em;
+    text-shadow:0 2px 24px rgba(0,0,0,.18)}
+  .badge{font-size:.52em;font-weight:500;opacity:.62;border:1px solid rgba(255,255,255,.45);
+    border-radius:999px;padding:.25em .8em;margin-left:.3em}
+
+  .big{font-size:clamp(90px,34vmin,440px);font-weight:800;line-height:.92;letter-spacing:-.045em;
+    margin:2vmin 0 1vmin;text-shadow:0 8px 60px rgba(0,0,0,.22);
+    font-variant-numeric:tabular-nums}
+
+  .sub{font-size:clamp(20px,5.4vmin,74px);font-weight:300;opacity:.95;letter-spacing:-.01em}
+  .det{font-size:clamp(14px,2.7vmin,32px);opacity:.62;margin-top:1.4vmin;font-weight:400}
+
+  .barwrap{margin:4.5vmin auto 0;max-width:min(78%,900px)}
+  .bar{height:clamp(6px,1.1vmin,14px);border-radius:999px;background:rgba(255,255,255,.26);overflow:hidden}
+  .bar i{display:block;height:100%;background:#fff;border-radius:999px;
+    transition:width 1s cubic-bezier(.22,.61,.36,1);box-shadow:0 0 20px rgba(255,255,255,.55)}
+  .barft{display:flex;justify-content:space-between;margin-top:1.4vmin;
+    font-size:clamp(11px,2vmin,22px);opacity:.55}
+
+  /* 터치하면 잠깐 나오는 컨트롤 */
+  .ctl{position:fixed;top:calc(env(safe-area-inset-top) + 16px);right:16px;display:flex;gap:8px;
+    opacity:0;transition:opacity .4s ease;pointer-events:none}
+  .ctl.on{opacity:1;pointer-events:auto}
+  .ctl a,.ctl button{display:flex;align-items:center;justify-content:center;
+    min-width:46px;height:46px;padding:0 14px;border:1px solid rgba(255,255,255,.3);
+    border-radius:999px;background:rgba(0,0,0,.18);color:#fff;font-size:14px;font-weight:500;
+    text-decoration:none;cursor:pointer;backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
+  .hint{position:fixed;bottom:calc(env(safe-area-inset-bottom) + 16px);left:0;right:0;text-align:center;
+    font-size:clamp(11px,1.7vmin,16px);opacity:0;transition:opacity .4s}
+  .hint.on{opacity:.45}
+
+  @media (orientation:portrait){
+    .big{font-size:clamp(80px,26vmin,340px)}
+    .sub{font-size:clamp(18px,4.4vmin,52px)}
+  }
+</style>
+</head>
+<body>
+<div class="glow g1"></div><div class="glow g2"></div>
+
+<div class="wrap">
+  <div class="name"><span>🍼</span><span id="babyName">또또</span><span class="badge" id="badge">임신 중</span></div>
+  <div class="big" id="big">D-88</div>
+  <div class="sub" id="sub">임신 27주 3일</div>
+  <div class="det" id="det">출산까지 88일</div>
+  <div class="barwrap">
+    <div class="bar"><i id="barFill" style="width:0%"></i></div>
+    <div class="barft"><span id="footL">2026.12.14 예정</span><span id="footR">69%</span></div>
+  </div>
+</div>
+
+<div class="ctl" id="ctl">
+  <a href="./app.html">📖 앱 열기</a>
+  <button id="btnFs" title="전체화면">⛶</button>
+</div>
+<div class="hint" id="hint">화면을 한 번 터치하면 메뉴가 나와요 · 재생 중에는 화면이 꺼지지 않습니다</div>
+
+<script>
+/* ===========================================================================
+   또또 D-day — 아이패드에 세워두는 전체화면 카운터
+   출산예정일/생일만 바꾸면 됩니다. 인터넷 없어도 동작합니다.
+   =========================================================================== */
+var BABY = {
+  name: "또또",
+  dueDate: "2026-12-14",   // 출산 예정일
+  birthDate: "",           // 태어나면 "2026-12-14" 처럼 채우세요 → 자동으로 D+ 전환
+};
+
+var $ = function (id) { return document.getElementById(id); };
+var midnight = function (d) { return new Date(d.getFullYear(), d.getMonth(), d.getDate()); };
+var daysBetween = function (a, b) { return Math.round((midnight(b) - midnight(a)) / 86400000); };
+
+function computeState() {
+  var today = new Date();
+
+  if (BABY.birthDate) {
+    var born = new Date(BABY.birthDate + "T00:00:00");
+    var days = daysBetween(born, today);
+    if (days >= 0) {
+      var weeks = Math.floor(days / 7);
+      var months = Math.floor(days / 30.44);
+      return {
+        badge: "육아 중",
+        big: "D+" + days,
+        sub: "생후 " + days + "일",
+        det: days === 0 ? "오늘 태어났어요 🎉"
+           : months >= 1 ? weeks + "주 · 약 " + months + "개월"
+           : weeks + "주 " + (days % 7) + "일",
+        footL: BABY.birthDate.replace(/-/g, ".") + " 출생",
+        footR: days === 365 ? "첫 생일 🎂" : days < 365 ? "첫 생일까지 " + (365 - days) + "일" : "",
+        progress: Math.min(1, days / 365),
+      };
+    }
+  }
+
+  if (BABY.dueDate) {
+    var due = new Date(BABY.dueDate + "T00:00:00");
+    var left = daysBetween(today, due);
+    var gaDays = 280 - left;
+    var w = Math.floor(gaDays / 7), d = gaDays % 7;
+    return {
+      badge: "임신 중",
+      big: left > 0 ? "D-" + left : left === 0 ? "D-DAY" : "D+" + (-left),
+      sub: gaDays > 0 ? "임신 " + w + "주 " + d + "일" : "곧 만나요",
+      det: left > 0 ? "출산까지 " + left + "일"
+         : left === 0 ? "오늘이 예정일이에요 🎉"
+         : "예정일 " + (-left) + "일 지났어요",
+      footL: BABY.dueDate.replace(/-/g, ".") + " 예정",
+      footR: Math.min(100, Math.round((gaDays / 280) * 100)) + "%",
+      progress: Math.max(0, Math.min(1, gaDays / 280)),
+    };
+  }
+  return { badge: "", big: "—", sub: "날짜를 설정하세요", det: "", footL: "", footR: "", progress: 0 };
+}
+
+function render() {
+  var s = computeState();
+  $("babyName").textContent = BABY.name;
+  $("badge").textContent = s.badge;
+  $("big").textContent = s.big;
+  $("sub").textContent = s.sub;
+  $("det").textContent = s.det;
+  $("footL").textContent = s.footL;
+  $("footR").textContent = s.footR;
+  $("barFill").style.width = (s.progress * 100).toFixed(1) + "%";
+  document.title = s.big + " · " + BABY.name;
+}
+render();
+
+/* 자정이 지나면 자동으로 하루 넘김 */
+function scheduleMidnight() {
+  var n = new Date();
+  var next = new Date(n.getFullYear(), n.getMonth(), n.getDate() + 1, 0, 0, 5);
+  setTimeout(function () { render(); scheduleMidnight(); }, next - n);
+}
+scheduleMidnight();
+// 화면을 다시 켰을 때도 갱신
+document.addEventListener("visibilitychange", function () {
+  if (document.visibilityState === "visible") { render(); acquire(); }
+});
+
+/* 화면 꺼짐 방지 — 세워두고 쓰라고 만든 화면이라 */
+var lock = null;
+function acquire() {
+  if (!("wakeLock" in navigator) || document.visibilityState !== "visible" || lock) return;
+  navigator.wakeLock.request("screen").then(function (l) {
+    lock = l;
+    if (l.addEventListener) l.addEventListener("release", function () { lock = null; });
+  }).catch(function () { lock = null; });
+}
+// 사용자 조작 이후에 요청해야 허용됨
+["click", "touchstart", "keydown"].forEach(function (ev) {
+  document.addEventListener(ev, acquire, { once: false });
+});
+acquire();
+
+/* 터치하면 컨트롤 잠깐 표시 */
+var t;
+function poke() {
+  $("ctl").classList.add("on"); $("hint").classList.add("on");
+  clearTimeout(t);
+  t = setTimeout(function () { $("ctl").classList.remove("on"); $("hint").classList.remove("on"); }, 4000);
+}
+["click", "touchstart", "mousemove"].forEach(function (ev) { document.addEventListener(ev, poke); });
+poke();
+
+$("btnFs").addEventListener("click", function (e) {
+  e.stopPropagation();
+  try {
+    if (document.fullscreenElement) document.exitFullscreen();
+    else if (document.documentElement.requestFullscreen) document.documentElement.requestFullscreen();
+    else if (document.documentElement.webkitRequestFullscreen) document.documentElement.webkitRequestFullscreen();
+  } catch (err) { /* iPhone Safari 는 미지원 — 홈화면에 추가하면 전체화면 */ }
+});
+</script>
+</body>
+</html>
