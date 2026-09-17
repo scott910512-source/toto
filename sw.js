@@ -3,7 +3,7 @@
    - CDN/폰트(타 출처): 캐시 우선 → 빠른 로딩, 백그라운드 갱신
    - Firebase Auth/Firestore: 캐시하지 않음(실시간/인증)
    업데이트 배포 시 CACHE 버전을 올리면 이전 캐시가 정리됩니다. */
-const CACHE = "babybook-v16";
+const CACHE = "babybook-v17";
 const SHELL = [
   "./baby-care.html",
   "./gallery.html",
@@ -43,7 +43,7 @@ self.addEventListener("fetch", (e) => {
     e.respondWith(
       fetch(req)
         .then((res) => { const c = res.clone(); caches.open(CACHE).then((ca) => ca.put(req, c)).catch(() => {}); return res; })
-        .catch(() => caches.match(req).then((hit) => hit || caches.match("./baby-care.html")))
+        .catch(() => caches.match(req).then((hit) => hit || caches.match("./app.html")))
     );
   } else {
     // CDN/폰트: 캐시 우선 + 백그라운드 갱신
