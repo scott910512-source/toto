@@ -3695,10 +3695,21 @@
     };
     const backupJSON = async () => {
       try {
-        const recs = await fetchAllRecords();
-        const data = { exportedAt: new Date().toISOString(), baby, records: recs };
-        download(JSON.stringify(data, null, 2), `아기수첩_백업_${ymd(new Date())}.json`, "application/json");
-        toast("JSON 백업을 저장했어요.", "success");
+        toast("사진까지 모으는 중… 잠시만요.", "info");
+        const [recs, photoSnap, userSnap] = await Promise.all([
+          fetchAllRecords(),
+          COL.photos().limit(3000).get(),
+          COL.users().get().catch(() => ({ docs: [] })),
+        ]);
+        // 사진 원본(base64)까지 포함해야 다른 곳으로 옮길 수 있음
+        const photos = photoSnap.docs.map((d) => ({ id: d.id, ...d.data() }))
+          .sort((a, b) => toDate(a.createdAt) - toDate(b.createdAt));
+        const users = userSnap.docs.map((d) => ({ uid: d.id, ...d.data() }));
+        const data = { exportedAt: new Date().toISOString(), version: 2, baby, records: recs, photos, users };
+        const json = JSON.stringify(data, null, 2);
+        download(json, `아기수첩_백업_${ymd(new Date())}.json`, "application/json");
+        const mb = (json.length / 1048576).toFixed(1);
+        toast(`백업 완료 · 기록 ${recs.length}건 · 사진 ${photos.length}장 (${mb}MB)`, "success");
       } catch (e) { toast(errMsg(e), "error"); }
     };
     const printSummary = async () => {
