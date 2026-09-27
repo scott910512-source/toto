@@ -230,6 +230,161 @@ test.describe("더보기 · 주소 기억", () => {
   });
 });
 
+test.describe("실행취소 · 잘못 눌렀을 때", () => {
+  test("24) 빠른 기저귀 기록에 실행취소가 뜨고, 누르면 지워진다", async ({ page }) => {
+    const { errors } = await open(page, { role: "admin" });
+    await go(page, "#/dashboard", 900);
+    await page.getByRole("button", { name: /소변/ }).first().click();
+    await page.waitForTimeout(900);
+
+    const alert = page.getByRole("alert").filter({ hasText: "기저귀 기록 추가" });
+    await expect(alert).toBeVisible();
+    const undo = alert.getByRole("button", { name: "실행취소" });
+    await expect(undo).toBeVisible();
+
+    await undo.click();
+    await page.waitForTimeout(900);
+    const c = (await calls(page)) as Array<{ op: string; t?: string }>;
+    expect(c.some((x) => x.op === "insert" && x.t === "records")).toBe(true);
+    expect(c.some((x) => x.op === "delete" && x.t === "records")).toBe(true);
+    expect(errors).toEqual([]);
+  });
+
+  test("25) 그냥 저장한 기록에는 실행취소가 없다 (모든 토스트에 붙지 않는다)", async ({ page }) => {
+    await open(page, { role: "admin" });
+    await go(page, "#/dashboard", 900);
+    await page.getByRole("button", { name: /메모/ }).first().click();
+    await page.waitForTimeout(700);
+    await page.getByRole("textbox").last().fill("오늘 태동이 심했어");
+    await page.getByRole("button", { name: /저장/ }).last().click();
+    await page.waitForTimeout(900);
+    const alert = page.getByRole("alert").filter({ hasText: "메모를 저장했어요" });
+    await expect(alert).toBeVisible();
+    await expect(alert.getByRole("button", { name: "실행취소" })).toHaveCount(0);
+  });
+});
+
+test.describe("한 화면에 너무 많던 것들", () => {
+  test("26) 출산 전에는 임신·건강·다이어리가 앞에 오고 나머지는 접혀 있다", async ({ page }) => {
+    await open(page, { role: "admin", dueDate: "2026-12-14", birthDate: "" });
+    await go(page, "#/records", 1200);
+    const tablist = page.getByRole("tablist", { name: "육아 기록 종류" });
+    await expect(tablist).toContainText("임신");
+    await expect(tablist).toContainText("다이어리");
+    await expect(tablist).not.toContainText("유축");      // 접혀 있다
+
+    // 접힌 것도 사라진 게 아니라 '＋ 다른 기록' 안에 있다
+    await page.getByRole("button", { name: /다른 기록/ }).click();
+    await page.waitForTimeout(700);
+    const dlg = page.getByRole("dialog");
+    for (const label of ["수유", "수면", "기저귀", "유축", "이유식", "투약", "성장"]) {
+      await expect(dlg).toContainText(label);
+    }
+  });
+
+  test("27) 태어난 뒤에는 수유·수면·기저귀가 앞에 온다", async ({ page }) => {
+    await open(page, { role: "admin", dueDate: "2026-08-12", birthDate: "2026-08-10" });
+    await go(page, "#/records", 1200);
+    const tablist = page.getByRole("tablist", { name: "육아 기록 종류" });
+    await expect(tablist).toContainText("수유");
+    await expect(tablist).toContainText("수면");
+    await expect(tablist).toContainText("기저귀");
+  });
+
+  test("28) 주소로 들어온 기록 종류는 접혀 있어도 앞줄에 보인다", async ({ page }) => {
+    await open(page, { role: "admin" });
+    await go(page, "#/records/pump", 1200);
+    await expect(page.getByRole("tab", { selected: true })).toContainText("유축");
+  });
+
+  test("29) 갤러리 조건은 접혀 있고, 펼치면 전부 그대로 있다", async ({ page }) => {
+    await open(page, { role: "admin", photos: 3, privatePhotos: 0 });
+    await go(page, "#/gallery", 1500);
+    await expect(page.getByLabel("시작 날짜")).toHaveCount(0);   // 접혀 있다
+
+    await page.getByRole("button", { name: /^필터/ }).click();
+    await page.waitForTimeout(500);
+    await expect(page.getByLabel("시작 날짜")).toBeVisible();
+    await expect(page.getByLabel("끝 날짜")).toBeVisible();
+    await expect(page.getByLabel("업로더별 보기")).toBeVisible();
+    const body = await page.locator("body").innerText();
+    expect(body).toContain("최신순");
+    expect(body).toContain("월별 보기");
+  });
+
+  test("30) 조건을 걸면 필터 버튼에 개수가 표시된다", async ({ page }) => {
+    await open(page, { role: "admin", photos: 3, privatePhotos: 0 });
+    await go(page, "#/gallery", 1500);
+    await page.getByRole("button", { name: /^필터/ }).click();
+    await page.waitForTimeout(400);
+    await page.getByLabel("시작 날짜").fill("2026-01-01");
+    await page.waitForTimeout(400);
+    await expect(page.getByRole("button", { name: /필터 \(1개 적용됨\)/ })).toBeVisible();
+  });
+});
+
+test.describe("키보드·스크린리더", () => {
+  test("31) 모달은 제목과 연결되고 ESC 로 닫힌다", async ({ page }) => {
+    await open(page, { role: "admin" });
+    await go(page, "#/records", 1200);
+    await page.getByRole("button", { name: /다른 기록/ }).click();
+    await page.waitForTimeout(700);
+
+    const dlg = page.getByRole("dialog");
+    await expect(dlg).toHaveAttribute("aria-labelledby", "modal-title");
+    await expect(page.locator("#modal-title")).toHaveText("다른 기록");
+
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(600);
+    await expect(dlg).toHaveCount(0);
+  });
+
+  test("32) Tab 을 계속 눌러도 초점이 모달 밖으로 새지 않는다", async ({ page }) => {
+    await open(page, { role: "admin" });
+    await go(page, "#/records", 1200);
+    await page.getByRole("button", { name: /다른 기록/ }).click();
+    await page.waitForTimeout(800);
+
+    for (let i = 0; i < 14; i++) {
+      await page.keyboard.press("Tab");
+      const inside = await page.evaluate(() => {
+        const dlg = document.querySelector('[role="dialog"]');
+        return !!(dlg && document.activeElement && dlg.contains(document.activeElement));
+      });
+      expect(inside).toBe(true);
+    }
+  });
+
+  test("33) 닫으면 열었던 버튼으로 초점이 돌아온다", async ({ page }) => {
+    await open(page, { role: "admin" });
+    await go(page, "#/records", 1200);
+    const opener = page.getByRole("button", { name: /다른 기록/ });
+    await opener.click();
+    await page.waitForTimeout(800);
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(600);
+    const txt = await page.evaluate(() => (document.activeElement as HTMLElement | null)?.innerText || "");
+    expect(txt).toContain("다른 기록");
+  });
+
+  test("34) 작은 글씨가 12px 아래로 내려가지 않는다", async ({ page }) => {
+    await open(page, { role: "admin", photos: 2, privatePhotos: 0 });
+    const tooSmall = await page.evaluate(() => {
+      const out: string[] = [];
+      document.querySelectorAll("body *").forEach((el) => {
+        const e = el as HTMLElement;
+        if (!e.offsetParent && e.tagName !== "BODY") return;
+        if (!e.textContent || !e.textContent.trim()) return;
+        if (e.children.length) return;                   // 글자를 직접 담은 것만
+        const px = parseFloat(getComputedStyle(e).fontSize);
+        if (px && px < 12) out.push(px + "px · " + e.textContent.trim().slice(0, 20));
+      });
+      return out;
+    });
+    expect(tooSmall).toEqual([]);
+  });
+});
+
 test.describe("PWA", () => {
   test("18) manifest 가 세로로 고정돼 있지 않다 (액자 모드가 가로를 쓴다)", async ({ page }) => {
     const res = await page.request.get("/manifest.webmanifest");

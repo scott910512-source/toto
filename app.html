@@ -902,10 +902,16 @@
   const useToast = () => useContext(ToastCtx);
   const ToastProvider = ({ children }) => {
     const [toasts, setToasts] = useState([]);
-    const push = useCallback((msg, type = "info") => {
+    /* push("저장했어요", "success")
+       push("기저귀 기록 추가", "success", { undo: () => 지우기 })
+         → 8초 동안 "실행취소" 버튼이 함께 뜬다.
+           한 손으로 쓰다가 잘못 눌렀을 때 되돌릴 수 있게. */
+    const push = useCallback((msg, type = "info", opts = {}) => {
       const id = Date.now() + Math.random();
-      setToasts((t) => [...t, { id, msg, type }]);
-      setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 3200);
+      const ms = opts.ms || (opts.undo ? 8000 : 3200);
+      const drop = () => setToasts((t) => t.filter((x) => x.id !== id));
+      setToasts((t) => [...t, { id, msg, type, undo: opts.undo, drop }]);
+      setTimeout(drop, ms);
     }, []);
     return (
       <ToastCtx.Provider value={push}>
@@ -914,8 +920,15 @@
           <div className="fixed left-1/2 -translate-x-1/2 z-[120] flex flex-col gap-2 w-[92%] max-w-[400px]" style={{ top: "calc(env(safe-area-inset-top) + 1rem)" }} aria-live="assertive">
             {toasts.map((t) => (
               <div key={t.id} role="alert"
-                className={`fade-in px-4 py-3 rounded-xl shadow-lg text-sm text-white ${t.type === "error" ? "bg-rose-500" : t.type === "success" ? "bg-teal-500" : "bg-slate-700"}`}>
-                {t.msg}
+                className={`fade-in flex items-center gap-3 px-4 py-3 rounded-xl shadow-lg text-sm text-white ${t.type === "error" ? "bg-rose-500" : t.type === "success" ? "bg-teal-500" : "bg-slate-700"}`}>
+                <span className="flex-1 min-w-0">{t.msg}</span>
+                {t.undo && (
+                  <button type="button"
+                    onClick={() => { t.drop(); try { t.undo(); } catch (e) { console.error(e); } }}
+                    className="shrink-0 -my-1 px-3 py-2 rounded-lg bg-white/25 font-bold whitespace-nowrap">
+                    실행취소
+                  </button>
+                )}
               </div>
             ))}
           </div>
@@ -970,24 +983,62 @@
     (ReactDOM.createPortal ? ReactDOM.createPortal(children, document.body) : children);
 
   // 모달 셸
-  const Modal = ({ open, onClose, children, title, full }) => {
+  /* 초점이 모달 안에 머물게 한다.
+     · 열면 모달 안 첫 요소로 초점을 옮긴다 (스크린리더가 제목부터 읽는다)
+     · Tab 이 모달 밖으로 새지 않는다
+     · 닫으면 열기 전에 보던 버튼으로 초점을 되돌린다 */
+  const useFocusTrap = (open, onClose) => {
+    const ref = useRef(null);
     useEffect(() => {
       if (!open) return;
-      const onKey = (e) => e.key === "Escape" && onClose();
-      window.addEventListener("keydown", onKey);
+      const prev = document.activeElement;
+      const SEL = 'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
+      const focusables = () => {
+        const box = ref.current;
+        return Array.from(box ? box.querySelectorAll(SEL) : [])
+          .filter((el) => el.offsetParent !== null || el === document.activeElement);
+      };
+      const t = setTimeout(() => {
+        const f = focusables();
+        const target = f[0] || ref.current;
+        if (target && target.focus) target.focus({ preventScroll: true });
+      }, 60);
+      const onKey = (e) => {
+        if (e.key === "Escape") { e.preventDefault(); onClose(); return; }
+        if (e.key !== "Tab") return;
+        const f = focusables();
+        if (!f.length) { e.preventDefault(); return; }
+        const first = f[0], last = f[f.length - 1];
+        if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+      };
+      window.addEventListener("keydown", onKey, true);
       document.body.style.overflow = "hidden";
-      return () => { window.removeEventListener("keydown", onKey); document.body.style.overflow = ""; };
+      return () => {
+        clearTimeout(t);
+        window.removeEventListener("keydown", onKey, true);
+        document.body.style.overflow = "";
+        // 열기 전 버튼이 사라졌을 수도 있으니 조용히 넘어간다
+        if (prev && prev.focus) { try { prev.focus({ preventScroll: true }); } catch (e) { /* 무시 */ } }
+      };
     }, [open]);
+    return ref;
+  };
+
+  const Modal = ({ open, onClose, children, title, full }) => {
+    const boxRef = useFocusTrap(open, onClose);
     if (!open) return null;
     return (
       <Portal>
         <div className="fixed inset-0 z-[80] bg-black/60 flex items-end sm:items-center justify-center fade-in"
-          onClick={onClose} role="dialog" aria-modal="true" aria-label={title || "대화상자"}>
-          <div onClick={(e) => e.stopPropagation()}
-            className={`slide-up bg-white dark:bg-slate-800 w-full ${full ? "h-full max-w-[430px]" : "max-w-[420px] rounded-t-3xl sm:rounded-3xl max-h-[92vh]"} overflow-y-auto`}>
+          onClick={onClose}>
+          <div ref={boxRef} tabIndex={-1} onClick={(e) => e.stopPropagation()}
+            role="dialog" aria-modal="true"
+            {...(title ? { "aria-labelledby": "modal-title" } : { "aria-label": "대화상자" })}
+            className={`slide-up bg-white dark:bg-slate-800 w-full outline-none ${full ? "h-full max-w-[430px]" : "max-w-[420px] rounded-t-3xl sm:rounded-3xl max-h-[92vh]"} overflow-y-auto`}>
             {title && (
               <div className="sticky top-0 bg-white dark:bg-slate-800 px-5 py-4 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between z-10">
-                <h2 className="text-lg font-bold text-slate-800 dark:text-white">{title}</h2>
+                <h2 id="modal-title" className="text-lg font-bold text-slate-800 dark:text-white">{title}</h2>
                 <button onClick={onClose} aria-label="닫기" className="text-2xl text-slate-400 hover:text-slate-600 w-9 h-9">×</button>
               </div>
             )}
@@ -1025,7 +1076,7 @@
 
   // 의료 면책 배너 (육아 전문가 검토 #1)
   const MedicalDisclaimer = () => (
-    <div className="text-[11px] leading-relaxed text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 rounded-xl p-3">
+    <div className="text-[12px] leading-relaxed text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 rounded-xl p-3">
       ⚠️ 이 앱은 <b>의료 진단 도구가 아닙니다.</b> 기록·참고용이며, 모든 의학적 판단은 반드시 의료진과 상담하세요.
     </div>
   );
@@ -1193,6 +1244,20 @@
     });
   };
   const deleteRecord = (id) => COL.records().doc(id).delete();
+
+  /* 한 번 누르면 바로 저장되는 기록(기저귀·직전수유 반복·수면 시작)은
+     잘못 누르기 쉽다. 저장 후 8초 동안 "실행취소" 를 띄워, 누르면 지운다.
+     확인창을 앞에 세우면 빠른 기록의 의미가 없으므로 뒤에 두었다. */
+  const addRecordUndoable = async (type, data, user, profile, toast, msg) => {
+    const ref = await addRecord(type, data, user, profile);
+    const id = ref && ref.id;
+    toast(msg, "success", id ? {
+      undo: async () => {
+        try { await deleteRecord(id); toast("되돌렸어요.", "info"); }
+        catch (e) { toast("되돌리지 못했어요: " + errMsg(e), "error"); }
+      },
+    } : undefined);
+  };
   const updateRecordAt = (id, date) => COL.records().doc(id).update({ at: date });
 
   /* ========================================================================
@@ -1285,7 +1350,7 @@
                     onChange={(e) => setInvite(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6))}
                     placeholder="______" maxLength={6} autoCapitalize="characters" autoCorrect="off" />
                 </Field>
-                <div className="text-[11px] leading-relaxed bg-teal-50 dark:bg-teal-900/20 rounded-xl p-3 text-slate-600 dark:text-slate-300 -mt-1">
+                <div className="text-[12px] leading-relaxed bg-teal-50 dark:bg-teal-900/20 rounded-xl p-3 text-slate-600 dark:text-slate-300 -mt-1">
                   {invite.length === 6 ? (
                     <><b className="text-teal-600 dark:text-teal-400">가족으로 합류합니다.</b><br />
                     초대한 분이 승인하면 사진과 기록을 볼 수 있어요.</>
@@ -1412,7 +1477,7 @@
             <span className="text-2xl" aria-hidden="true">🍼</span>
             <div className="min-w-0">
               <p className="font-bold text-slate-800 dark:text-white leading-tight truncate">{baby.name}</p>
-              <p className="text-[11px] text-slate-400 leading-tight">아기수첩</p>
+              <p className="text-[12px] text-slate-400 leading-tight">아기수첩</p>
             </div>
           </div>
           <div className="flex items-center gap-1">
@@ -1483,9 +1548,9 @@
             <div className="grid grid-cols-3 gap-2 text-center">
               {[["🍼 수유", r7.f + "회", r30.f + "회"], ["😴 수면", r7.sl + "h", r30.sl + "h"], ["👶 기저귀", r7.dp + "회", r30.dp + "회"]].map(([l, a, b]) => (
                 <div key={l} className="bg-slate-50 dark:bg-slate-700/40 rounded-xl py-2">
-                  <p className="text-[11px] text-slate-400">{l}</p>
+                  <p className="text-[12px] text-slate-400">{l}</p>
                   <p className="text-sm font-bold text-teal-600">{a}</p>
-                  <p className="text-[10px] text-slate-400">월 {b}</p>
+                  <p className="text-[12px] text-slate-400">월 {b}</p>
                 </div>
               ))}
             </div>
@@ -1505,14 +1570,14 @@
               <ResponsiveContainer>
                 <BarChart data={hourly} margin={{ top: 5, right: 5, left: -24, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                  <XAxis dataKey="h" tick={{ fontSize: 8 }} interval={2} />
-                  <YAxis tick={{ fontSize: 10 }} allowDecimals={false} />
+                  <XAxis dataKey="h" tick={{ fontSize: 12 }} interval={2} />
+                  <YAxis tick={{ fontSize: 12 }} allowDecimals={false} />
                   <Tooltip />
                   <Bar dataKey="수유" fill="#14b8a6" radius={[3, 3, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
-            <p className="text-[10px] text-slate-400">자주 먹는 시간대를 파악해 수유 리듬을 잡아보세요.</p>
+            <p className="text-[12px] text-slate-400">자주 먹는 시간대를 파악해 수유 리듬을 잡아보세요.</p>
           </div>
         </div>
       </Modal>
@@ -1539,14 +1604,14 @@
     // 홈 빠른 입력
     const quickDiaper = async (t) => {
       setQbusy(true);
-      try { await addRecord("diaper", { diaperType: t, color: null, at: TS() }, user, profile); toast("기저귀 기록 추가", "success"); }
+      try { await addRecordUndoable("diaper", { diaperType: t, color: null, at: TS() }, user, profile, toast, "기저귀 기록 추가"); }
       catch (e) { toast(errMsg(e), "error"); } finally { setQbusy(false); }
     };
     const quickRepeatFeed = async () => {
       const lf = feedings && feedings[0];
       if (!lf) { go("records", "feeding"); return; }
       setQbusy(true);
-      try { await addRecord("feeding", { kind: lf.kind, side: lf.side || null, amount: lf.amount || null, durationMin: lf.durationMin || null, at: TS() }, user, profile); toast("직전 수유와 동일하게 기록", "success"); }
+      try { await addRecordUndoable("feeding", { kind: lf.kind, side: lf.side || null, amount: lf.amount || null, durationMin: lf.durationMin || null, at: TS() }, user, profile, toast, "직전 수유와 동일하게 기록"); }
       catch (e) { toast(errMsg(e), "error"); } finally { setQbusy(false); }
     };
 
@@ -1628,7 +1693,7 @@
               <Card className="p-3 text-center active:scale-95 transition">
                 <div className="text-2xl" aria-hidden="true">{s.icon}</div>
                 <p className="text-lg font-bold text-slate-800 dark:text-white mt-1">{s.n}<span className="text-xs font-normal text-slate-400 ml-0.5">{s.unit}</span></p>
-                <p className="text-[11px] text-slate-400">{s.label}</p>
+                <p className="text-[12px] text-slate-400">{s.label}</p>
               </Card>
             </button>
           ))}
@@ -1639,16 +1704,16 @@
           <p className="text-xs font-semibold text-slate-400 mb-2 px-1">⚡ 빠른 입력</p>
           <div className="grid grid-cols-4 gap-2">
             <button disabled={qbusy} onClick={() => quickDiaper("pee")} className="flex flex-col items-center gap-1 py-2.5 rounded-xl bg-sky-50 dark:bg-sky-900/30 active:scale-95 transition disabled:opacity-50">
-              <span className="text-xl">💧</span><span className="text-[11px] text-slate-600 dark:text-slate-300">소변</span>
+              <span className="text-xl">💧</span><span className="text-[12px] text-slate-600 dark:text-slate-300">소변</span>
             </button>
             <button disabled={qbusy} onClick={() => quickDiaper("poo")} className="flex flex-col items-center gap-1 py-2.5 rounded-xl bg-amber-50 dark:bg-amber-900/30 active:scale-95 transition disabled:opacity-50">
-              <span className="text-xl">💩</span><span className="text-[11px] text-slate-600 dark:text-slate-300">대변</span>
+              <span className="text-xl">💩</span><span className="text-[12px] text-slate-600 dark:text-slate-300">대변</span>
             </button>
             <button disabled={qbusy} onClick={quickRepeatFeed} className="flex flex-col items-center gap-1 py-2.5 rounded-xl bg-teal-50 dark:bg-teal-900/30 active:scale-95 transition disabled:opacity-50">
-              <span className="text-xl">🔁</span><span className="text-[11px] text-slate-600 dark:text-slate-300">수유반복</span>
+              <span className="text-xl">🔁</span><span className="text-[12px] text-slate-600 dark:text-slate-300">수유반복</span>
             </button>
             <button onClick={() => setMemoOpen(true)} className="flex flex-col items-center gap-1 py-2.5 rounded-xl bg-violet-50 dark:bg-violet-900/30 active:scale-95 transition">
-              <span className="text-xl">📝</span><span className="text-[11px] text-slate-600 dark:text-slate-300">메모</span>
+              <span className="text-xl">📝</span><span className="text-[12px] text-slate-600 dark:text-slate-300">메모</span>
             </button>
           </div>
         </Card>
@@ -1698,18 +1763,18 @@
             <button onClick={() => setStatsOpen(true)} className="text-xs text-teal-600 dark:text-teal-400">📊 상세 통계 ›</button>
           </div>
           <div className="grid grid-cols-3 gap-2 my-3 text-center">
-            <div><p className="text-lg font-bold text-teal-500">{avg("수유").toFixed(1)}</p><p className="text-[11px] text-slate-400">하루 평균 수유</p></div>
-            <div><p className="text-lg font-bold text-violet-500">{avg("수면").toFixed(1)}h</p><p className="text-[11px] text-slate-400">하루 평균 수면</p></div>
-            <div><p className="text-lg font-bold text-amber-500">{avg("기저귀").toFixed(1)}</p><p className="text-[11px] text-slate-400">하루 평균 기저귀</p></div>
+            <div><p className="text-lg font-bold text-teal-500">{avg("수유").toFixed(1)}</p><p className="text-[12px] text-slate-400">하루 평균 수유</p></div>
+            <div><p className="text-lg font-bold text-violet-500">{avg("수면").toFixed(1)}h</p><p className="text-[12px] text-slate-400">하루 평균 수면</p></div>
+            <div><p className="text-lg font-bold text-amber-500">{avg("기저귀").toFixed(1)}</p><p className="text-[12px] text-slate-400">하루 평균 기저귀</p></div>
           </div>
           <div style={{ width: "100%", height: 160 }}>
             <ResponsiveContainer>
               <BarChart data={weekly} margin={{ top: 5, right: 5, left: -22, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                <XAxis dataKey="day" tick={{ fontSize: 11 }} />
-                <YAxis tick={{ fontSize: 11 }} />
+                <XAxis dataKey="day" tick={{ fontSize: 12 }} />
+                <YAxis tick={{ fontSize: 12 }} />
                 <Tooltip />
-                <Legend wrapperStyle={{ fontSize: 11 }} />
+                <Legend wrapperStyle={{ fontSize: 12 }} />
                 <Bar dataKey="수유" fill="#14b8a6" radius={[4, 4, 0, 0]} />
                 <Bar dataKey="기저귀" fill="#f59e0b" radius={[4, 4, 0, 0]} />
               </BarChart>
@@ -1756,7 +1821,7 @@
                 <li key={r.type + "_" + r.id} className="flex items-center gap-3 px-2 py-2.5 text-sm">
                   <span className="text-lg" aria-hidden="true">{iconOf(r)}</span>
                   <span className="flex-1 text-slate-700 dark:text-slate-200 truncate"><b>{r.creatorName}</b>님 · {labelOf(r)}</span>
-                  <span className="text-[11px] text-slate-400 whitespace-nowrap">{ago(r.createdAt || r.at)}</span>
+                  <span className="text-[12px] text-slate-400 whitespace-nowrap">{ago(r.createdAt || r.at)}</span>
                 </li>
               ))}
             </ul>
@@ -1827,7 +1892,7 @@
           <Card className={`p-4 text-center ${overdue ? "ring-2 ring-amber-400" : ""}`}>
             <p className="text-sm text-slate-500 dark:text-slate-400">마지막 수유 경과</p>
             <p className={`text-2xl font-bold ${overdue ? "text-amber-500" : "text-teal-500"}`}>{hm(elapsedMin)}</p>
-            <p className="text-[11px] text-slate-400">{kindLabel[last.kind]}{last.amount ? ` ${units.fmtVol(last.amount)}` : ""} · {fmtTime(last.at)}</p>
+            <p className="text-[12px] text-slate-400">{kindLabel[last.kind]}{last.amount ? ` ${units.fmtVol(last.amount)}` : ""} · {fmtTime(last.at)}</p>
             {overdue && <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">⚠️ 3시간 초과 — 수유 시간을 확인해주세요</p>}
             <Btn variant="ghost" onClick={repeatLast} disabled={busy} className="w-full mt-3 text-sm py-2.5">🔁 직전과 동일하게 한 번 더</Btn>
           </Card>
@@ -1840,7 +1905,7 @@
             <div>
               <ChipGroup label="수유 위치" value={side} onChange={setSide}
                 options={[{ value: "left", label: "왼쪽" }, { value: "right", label: "오른쪽" }, { value: "both", label: "양쪽" }]} />
-              {suggestSide && <p className="text-[11px] text-teal-500 mt-1">💡 지난번 {lastBreast.side === "left" ? "왼쪽" : lastBreast.side === "right" ? "오른쪽" : "양쪽"} → 이번엔 <b>{suggestSide === "left" ? "왼쪽" : "오른쪽"}</b> 추천</p>}
+              {suggestSide && <p className="text-[12px] text-teal-500 mt-1">💡 지난번 {lastBreast.side === "left" ? "왼쪽" : lastBreast.side === "right" ? "오른쪽" : "양쪽"} → 이번엔 <b>{suggestSide === "left" ? "왼쪽" : "오른쪽"}</b> 추천</p>}
             </div>
           )}
           <div className="grid grid-cols-2 gap-3">
@@ -1892,7 +1957,7 @@
 
     const start = async () => {
       setBusy(true);
-      try { await addRecord("sleep", { naptype: napKind, start: TS(), end: null, at: TS() }, user, profile); toast("수면을 시작했어요 😴", "success"); }
+      try { await addRecordUndoable("sleep", { naptype: napKind, start: TS(), end: null, at: TS() }, user, profile, toast, "수면을 시작했어요 😴"); }
       catch (e) { toast(errMsg(e), "error"); } finally { setBusy(false); }
     };
     const stop = async () => {
@@ -1983,10 +2048,10 @@
             <ResponsiveContainer>
               <BarChart data={chartData} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                <XAxis dataKey="day" tick={{ fontSize: 11 }} />
-                <YAxis tick={{ fontSize: 11 }} />
+                <XAxis dataKey="day" tick={{ fontSize: 12 }} />
+                <YAxis tick={{ fontSize: 12 }} />
                 <Tooltip formatter={(v) => [`${v}시간`, "수면"]} />
-                <ReferenceLine y={14} stroke="#34d399" strokeDasharray="4 4" label={{ value: "권장 14h", fontSize: 9, fill: "#34d399" }} />
+                <ReferenceLine y={14} stroke="#34d399" strokeDasharray="4 4" label={{ value: "권장 14h", fontSize: 12, fill: "#34d399" }} />
                 <Bar dataKey="hours" fill="#a78bfa" radius={[6, 6, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
@@ -2065,10 +2130,10 @@
             <ResponsiveContainer>
               <BarChart data={trend} margin={{ top: 5, right: 5, left: -24, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                <XAxis dataKey="day" tick={{ fontSize: 11 }} />
-                <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
+                <XAxis dataKey="day" tick={{ fontSize: 12 }} />
+                <YAxis tick={{ fontSize: 12 }} allowDecimals={false} />
                 <Tooltip />
-                <Legend wrapperStyle={{ fontSize: 11 }} />
+                <Legend wrapperStyle={{ fontSize: 12 }} />
                 <Bar dataKey="소변" fill="#38bdf8" radius={[3, 3, 0, 0]} />
                 <Bar dataKey="대변" fill="#d97706" radius={[3, 3, 0, 0]} />
                 <Bar dataKey="총합" fill="#a78bfa" radius={[3, 3, 0, 0]} />
@@ -2109,7 +2174,7 @@
               </div>
             ))}
           </div>
-          <p className="text-[10px] text-slate-400 mt-2">참고용입니다. 이상 색상이 지속되면 소아과 상담을 권장해요.</p>
+          <p className="text-[12px] text-slate-400 mt-2">참고용입니다. 이상 색상이 지속되면 소아과 상담을 권장해요.</p>
         </Card>
 
         <RecordList items={items} render={(r) => (
@@ -2248,13 +2313,13 @@
                   {(pct < 3 || pct > 97) && <span className="text-amber-600"> · 소아과 상담 권장</span>}
                 </p>
               )}
-              <p className="text-[11px] text-slate-400 mb-2">회색 곡선: WHO 3/50/97 백분위(참고용) · 점선: 우리 아기</p>
+              <p className="text-[12px] text-slate-400 mb-2">회색 곡선: WHO 3/50/97 백분위(참고용) · 점선: 우리 아기</p>
               <div style={{ width: "100%", height: 220 }}>
                 <ResponsiveContainer>
                   <LineChart data={chartData} margin={{ top: 5, right: 8, left: -20, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                    <XAxis dataKey="m" type="number" domain={[0, 24]} ticks={[0, 3, 6, 9, 12, 18, 24]} tick={{ fontSize: 10 }} label={{ value: "개월", position: "insideBottomRight", fontSize: 9, offset: -2 }} />
-                    <YAxis tick={{ fontSize: 11 }} domain={["auto", "auto"]} />
+                    <XAxis dataKey="m" type="number" domain={[0, 24]} ticks={[0, 3, 6, 9, 12, 18, 24]} tick={{ fontSize: 12 }} label={{ value: "개월", position: "insideBottomRight", fontSize: 12, offset: -2 }} />
+                    <YAxis tick={{ fontSize: 12 }} domain={["auto", "auto"]} />
                     <Tooltip formatter={(v, n) => [v + unit, ({ p3: "3백분위", p50: "50백분위", p97: "97백분위", baby: "우리아기" })[n] || n]} labelFormatter={(l) => `${l}개월`} />
                     <Line type="monotone" dataKey="p97" stroke="#cbd5e1" strokeWidth={1} dot={false} connectNulls />
                     <Line type="monotone" dataKey="p50" stroke="#94a3b8" strokeWidth={1} strokeDasharray="4 3" dot={false} connectNulls />
@@ -2275,8 +2340,8 @@
               <ResponsiveContainer>
                 <LineChart data={simpleData} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                  <XAxis dataKey="date" tick={{ fontSize: 10 }} />
-                  <YAxis tick={{ fontSize: 11 }} domain={["auto", "auto"]} />
+                  <XAxis dataKey="date" tick={{ fontSize: 12 }} />
+                  <YAxis tick={{ fontSize: 12 }} domain={["auto", "auto"]} />
                   <Tooltip />
                   <Line type="monotone" dataKey={metric} stroke="#14b8a6" strokeWidth={2} dot={{ r: 3 }} connectNulls />
                 </LineChart>
@@ -2374,10 +2439,10 @@
               <ResponsiveContainer>
                 <LineChart data={[...items].filter((r) => r.temp).reverse().map((r) => ({ date: fmtDate(r.at), temp: r.temp }))} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                  <XAxis dataKey="date" tick={{ fontSize: 10 }} />
-                  <YAxis domain={[35, 40]} tick={{ fontSize: 11 }} />
+                  <XAxis dataKey="date" tick={{ fontSize: 12 }} />
+                  <YAxis domain={[35, 40]} tick={{ fontSize: 12 }} />
                   <Tooltip />
-                  <ReferenceLine y={38} stroke="#f43f5e" strokeDasharray="4 4" label={{ value: "발열 38℃", fontSize: 9, fill: "#f43f5e" }} />
+                  <ReferenceLine y={38} stroke="#f43f5e" strokeDasharray="4 4" label={{ value: "발열 38℃", fontSize: 12, fill: "#f43f5e" }} />
                   <ReferenceLine y={37.5} stroke="#f59e0b" strokeDasharray="4 4" />
                   <Line type="monotone" dataKey="temp" stroke="#14b8a6" strokeWidth={2} dot={{ r: 3 }} />
                 </LineChart>
@@ -2389,7 +2454,7 @@
         {/* 예방접종 체크리스트 */}
         <Card className="p-4">
           <h3 className="font-bold text-slate-800 dark:text-white mb-1">예방접종 체크리스트</h3>
-          <p className="text-[11px] text-slate-400 mb-3">질병관리청 표준예방접종일정 기준 (참고용)</p>
+          <p className="text-[12px] text-slate-400 mb-3">질병관리청 표준예방접종일정 기준 (참고용)</p>
           <div className="space-y-3">
             {VACCINES.map((g) => (
               <div key={g.age}>
@@ -2657,8 +2722,8 @@
                   : <div className={`h-24 flex items-center justify-center text-3xl ${r ? "bg-teal-50 dark:bg-teal-900/20" : "bg-slate-50 dark:bg-slate-700/40"}`}>{sl.icon}</div>}
                 <div className="p-2">
                   <p className="text-sm font-bold text-slate-700 dark:text-slate-200 truncate">{sl.title}</p>
-                  {r ? <p className="text-[11px] text-teal-500">{fmtDate(r.at)}{ageAt(r.at) != null ? ` · 생후 ${ageAt(r.at)}일` : ""}</p>
-                    : <p className="text-[11px] text-slate-400">기록하기 ›</p>}
+                  {r ? <p className="text-[12px] text-teal-500">{fmtDate(r.at)}{ageAt(r.at) != null ? ` · 생후 ${ageAt(r.at)}일` : ""}</p>
+                    : <p className="text-[12px] text-slate-400">기록하기 ›</p>}
                 </div>
               </button>
             );
@@ -2674,7 +2739,7 @@
             {free.map((r) => (
               <button key={r.id} onClick={() => setEntry({ slot: null, record: r })} className="text-left rounded-2xl border border-slate-100 dark:border-slate-700 overflow-hidden active:scale-[.98]">
                 {r.image ? <img src={r.image} alt="" className="w-full h-24 object-cover" /> : <div className="h-24 flex items-center justify-center text-3xl bg-slate-50 dark:bg-slate-700/40">🎉</div>}
-                <div className="p-2"><p className="text-sm font-bold text-slate-700 dark:text-slate-200 truncate">{r.title}</p><p className="text-[11px] text-teal-500">{fmtDate(r.at)}</p></div>
+                <div className="p-2"><p className="text-sm font-bold text-slate-700 dark:text-slate-200 truncate">{r.title}</p><p className="text-[12px] text-teal-500">{fmtDate(r.at)}</p></div>
               </button>
             ))}
           </div>
@@ -2773,7 +2838,7 @@
                     {r.fl != null && <span>FL {r.fl}mm</span>}
                     {r.fhr != null && <span>심박 {r.fhr}bpm</span>}
                     {r.afi != null && <span>AFI {r.afi}</span>}
-                    {r.efw != null && <span className="col-span-3">추정체중 {r.efw}g <span className="text-[11px] text-amber-500">(±15~20% 오차)</span></span>}
+                    {r.efw != null && <span className="col-span-3">추정체중 {r.efw}g <span className="text-[12px] text-amber-500">(±15~20% 오차)</span></span>}
                   </div>
                   {fc && !fc.ok && <p className="text-xs text-rose-500 mt-2">{fc.msg}</p>}
                   {r.note && <p className="text-sm text-slate-500 dark:text-slate-400 mt-2 border-t border-slate-100 dark:border-slate-700 pt-2">{r.note}</p>}
@@ -2900,7 +2965,7 @@
               <li key={r.id} className="flex items-center gap-2 px-2 py-3">
                 <div className="flex-1 min-w-0">
                   <p className="text-sm text-slate-700 dark:text-slate-200 truncate">{render(r)}</p>
-                  <p className="text-[11px] text-slate-400">{fmtDateTime(r.at)} · {r.creatorName}</p>
+                  <p className="text-[12px] text-slate-400">{fmtDateTime(r.at)} · {r.creatorName}</p>
                 </div>
                 {mine && (
                   <button onClick={() => setEditing({ ...r, at: toLocalInput(r.at),
@@ -2934,29 +2999,68 @@
   /* ========================================================================
      16. 육아 기록 탭 (서브탭 라우팅)
      ======================================================================== */
+  /* 기록 종류는 11개나 된다. 전부 한 줄에 펼치면 세 줄로 접히고,
+     지금 시기에 쓸 일 없는 것까지 섞여 무엇을 눌러야 할지 알기 어려웠다.
+     그래서 시기에 맞는 3~4개만 앞에 두고, 나머지는 '＋ 다른 기록' 안에 넣었다.
+     — 기능은 하나도 없애지 않았다. 주소(#/records/pump)도 그대로 동작한다. */
+  const REC_ALL = [
+    { id: "feeding", label: "🍼 수유" }, { id: "sleep", label: "😴 수면" },
+    { id: "diaper", label: "👶 기저귀" }, { id: "pump", label: "🤱 유축" },
+    { id: "solid", label: "🥣 이유식" }, { id: "med", label: "💊 투약" },
+    { id: "growth", label: "📏 성장" }, { id: "health", label: "🩺 건강" },
+    { id: "milestone", label: "📖 다이어리" }, { id: "prenatal", label: "🔬 임신" },
+    { id: "activity", label: "📜 활동로그", adminOnly: true },
+  ];
+  const REC_PRIMARY_BORN = ["feeding", "sleep", "diaper"];
+  const REC_PRIMARY_PREGNANT = ["prenatal", "health", "milestone"];
+
   const Records = ({ sub, setSub, openUpload }) => {
     const { isAdmin } = useAuth();
-    const tabs = [
-      { id: "feeding", label: "🍼 수유" }, { id: "sleep", label: "😴 수면" },
-      { id: "diaper", label: "👶 기저귀" }, { id: "pump", label: "🤱 유축" },
-      { id: "solid", label: "🥣 이유식" }, { id: "med", label: "💊 투약" },
-      { id: "growth", label: "📏 성장" }, { id: "health", label: "🩺 건강" },
-      { id: "milestone", label: "📖 다이어리" }, { id: "prenatal", label: "🔬 임신" },
-      ...(isAdmin ? [{ id: "activity", label: "📜 활동로그" }] : []),
-    ];
-    // 관리자만 보던 활동로그 탭을 비관리자가 선택 못 하도록 보정
-    const cur = (sub === "activity" && !isAdmin) ? "feeding" : sub;
+    const baby = useBaby();
+    const born = !!(baby && baby.birthDate);
+    const [moreOpen, setMoreOpen] = useState(false);
+
+    const all = REC_ALL.filter((t) => !t.adminOnly || isAdmin);
+    const primaryIds = born ? REC_PRIMARY_BORN : REC_PRIMARY_PREGNANT;
+    // 관리자만 보던 활동로그를 비관리자가 주소로 열지 못하게 보정
+    const cur = (!sub || (sub === "activity" && !isAdmin)) ? primaryIds[0] : sub;
+    // 지금 보고 있는 것이 '다른 기록' 쪽이면 앞줄에 함께 보여준다
+    const shownIds = primaryIds.includes(cur) ? primaryIds : [...primaryIds, cur];
+    const tabs = shownIds.map((id) => all.find((t) => t.id === id)).filter(Boolean);
+    const rest = all.filter((t) => !shownIds.includes(t.id));
+
     return (
       <div className="p-4 space-y-4 pb-safe">
         <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="육아 기록 종류">
           {tabs.map((t) => (
             <button key={t.id} role="tab" aria-selected={cur === t.id} onClick={() => setSub(t.id)}
-              className={`whitespace-nowrap px-3 py-1.5 rounded-full text-sm font-medium transition ${cur === t.id
+              className={`whitespace-nowrap px-3.5 py-2 rounded-full text-sm font-medium transition ${cur === t.id
                 ? "bg-teal-500 text-white" : "bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-300 border border-slate-200 dark:border-slate-700"}`}>
               {t.label}
             </button>
           ))}
+          {rest.length > 0 && (
+            <button onClick={() => setMoreOpen(true)} aria-haspopup="dialog"
+              className="whitespace-nowrap px-3.5 py-2 rounded-full text-sm font-medium bg-white dark:bg-slate-800 text-teal-600 dark:text-teal-400 border border-dashed border-teal-300 dark:border-teal-600">
+              ＋ 다른 기록
+            </button>
+          )}
         </div>
+
+        <Modal open={moreOpen} onClose={() => setMoreOpen(false)} title="다른 기록">
+          <div className="grid grid-cols-2 gap-2">
+            {rest.map((t) => (
+              <button key={t.id} onClick={() => { setSub(t.id); setMoreOpen(false); }}
+                className="py-4 rounded-2xl bg-slate-50 dark:bg-slate-700 text-base font-medium text-slate-700 dark:text-slate-200">
+                {t.label}
+              </button>
+            ))}
+          </div>
+          <p className="text-[12px] text-slate-400 mt-3">
+            {born ? "태어난 뒤 자주 쓰는 수유·수면·기저귀를 앞에 두었어요." : "출산 전에 자주 쓰는 임신·건강·다이어리를 앞에 두었어요."}
+          </p>
+        </Modal>
+
         {cur === "feeding" && <FeedingTracker />}
         {cur === "sleep" && <SleepTracker />}
         {cur === "diaper" && <DiaperTracker />}
@@ -3219,7 +3323,7 @@
               <p className="text-sm">사진 촬영</p>
             </button>
           </div>
-          <p className="text-[11px] text-slate-400 text-center">최대 5장까지 업로드할 수 있어요</p>
+          <p className="text-[12px] text-slate-400 text-center">최대 5장까지 업로드할 수 있어요</p>
 
           {previews.length > 0 && (
             <div className="grid grid-cols-3 gap-2">
@@ -3238,7 +3342,7 @@
           <ChipGroup label="공개 범위" value={vis} onChange={setVis}
             options={[{ value: "public", label: "🌐 전체공개" }, { value: "private", label: "🔒 나만보기" }]} />
           <AlbumPicker value={albumId} onChange={setAlbumId} />
-          <p className="text-[11px] text-slate-400 -mt-1">나만보기는 본인과 관리자(엄마·아빠)만 볼 수 있어요.</p>
+          <p className="text-[12px] text-slate-400 -mt-1">나만보기는 본인과 관리자(엄마·아빠)만 볼 수 있어요.</p>
 
           {/* 함께한 사람 (인물 태그) */}
           <div>
@@ -3273,11 +3377,11 @@
           <Field label="장소 / 지역">
             <input className={inputCls} value={place} onChange={(e) => setPlace(e.target.value)} placeholder="예: 서울 할머니댁, 제주 여행" />
           </Field>
-          {gps && <p className="text-[11px] text-teal-500">📍 사진에서 위치 좌표를 찾았어요 ({gps.lat}, {gps.lng}) — 지도 검색에 활용됩니다</p>}
+          {gps && <p className="text-[12px] text-teal-500">📍 사진에서 위치 좌표를 찾았어요 ({gps.lat}, {gps.lng}) — 지도 검색에 활용됩니다</p>}
 
           {/* 촬영 시각 (EXIF 우선, 수정 가능) */}
           <DateTimeField value={takenAt} onChange={setTakenAt} label="촬영 시각" />
-          <p className="text-[11px] text-slate-400">여러 장은 각 사진의 촬영정보(EXIF)가 있으면 자동 적용돼요.</p>
+          <p className="text-[12px] text-slate-400">여러 장은 각 사진의 촬영정보(EXIF)가 있으면 자동 적용돼요.</p>
 
           {progress && (
             <div>
@@ -3344,16 +3448,16 @@
     const liked = isLikedBy(photo, uid);
     return (
       <div className="relative group">
-        {isPrivate(photo) && <span className="absolute top-1 left-1 z-10 text-[10px] bg-black/55 text-white rounded-full px-1.5 py-0.5" title="나만보기">🔒</span>}
+        {isPrivate(photo) && <span className="absolute top-1 left-1 z-10 text-[12px] bg-black/55 text-white rounded-full px-1.5 py-0.5" title="나만보기">🔒</span>}
         <button onClick={onOpen} className="block w-full" aria-label={`${photo.uploaderName}님의 사진 열기`}>
           <img src={photo.url} alt={photo.caption || `${photo.uploaderName}님이 올린 사진`} loading="lazy"
             className="w-full aspect-square object-cover rounded-xl bg-slate-100 dark:bg-slate-700" />
         </button>
         <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/60 to-transparent rounded-b-xl p-2 flex items-end justify-between">
-          <span className="text-[10px] text-white/90 truncate">{photo.uploaderName}</span>
+          <span className="text-[12px] text-white/90 truncate">{photo.uploaderName}</span>
           <div className="flex items-center gap-2">
             <button onClick={() => toggleLike(photo, uid)} aria-label={liked ? "좋아요 취소" : "좋아요"} className="text-sm flex items-center gap-0.5 text-white">
-              <span aria-hidden="true">{liked ? "❤️" : "🤍"}</span><span className="text-[10px]">{likeCountOf(photo)}</span>
+              <span aria-hidden="true">{liked ? "❤️" : "🤍"}</span><span className="text-[12px]">{likeCountOf(photo)}</span>
             </button>
             <button onClick={() => toggleSave(photo, uid)} aria-label={saved ? "저장 취소" : "저장"} className="text-base text-white">{saved ? "🔖" : "🏷️"}</button>
           </div>
@@ -3528,6 +3632,7 @@
     const [detail, setDetail] = useState(null); // index
     const [showSlide, setShowSlide] = useState(false);
     const [grouped, setGrouped] = useState(false); // 월별 묶어보기
+    const [filterOpen, setFilterOpen] = useState(false); // 조건은 접어둔다
     const [albumView, setAlbumView] = useState(false);   // 앨범 목록 보기
     const [album, setAlbum] = useState(undefined);       // undefined=전체, null=앨범없음, {..}=특정앨범
     const { saved } = useMySaved(user.uid);
@@ -3577,6 +3682,14 @@
 
     const cats = [{ v: "all", l: "전체" }, { v: "baby", l: "아기사진" }, { v: "milestone", l: "성장기록" }];
 
+    /* 조건을 접어두면 뭐가 걸려 있는지 잊는다. 개수를 버튼에 붙여 보여준다. */
+    const activeCount =
+      (cat !== "all" ? 1 : 0) + (from ? 1 : 0) + (to ? 1 : 0) +
+      (sort !== "recent" ? 1 : 0) + (uploader !== "all" ? 1 : 0) + (grouped ? 1 : 0);
+    const resetFilters = () => {
+      setCat("all"); setFrom(""); setTo(""); setSort("recent"); setUploader("all"); setGrouped(false);
+    };
+
     return (
       <div className="p-4 space-y-3 pb-safe">
         {/* 앨범 목록 화면 */}
@@ -3599,48 +3712,67 @@
         )}
 
         {!albumView && <>
-        {/* 검색 */}
+        {/* 검색 · 앨범 · 필터.
+            조건이 여섯 줄이나 펼쳐져 있어 사진이 화면 밖으로 밀려나 있었다.
+            자주 쓰는 셋만 남기고 나머지는 '필터' 안으로 접었다. */}
         <div className="flex gap-2">
           <input className={inputCls + " flex-1"} value={q} onChange={(e) => setQ(e.target.value)}
             placeholder="🔍 사람·장소·설명 검색" aria-label="사진 검색" />
-          <button onClick={() => setAlbumView(true)} aria-label="앨범 보기"
-            className="whitespace-nowrap px-3 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 text-sm font-medium">📚 앨범</button>
-          <button onClick={() => setShowSlide(true)} aria-label="슬라이드쇼 시작"
-            className="whitespace-nowrap px-3 rounded-xl bg-violet-400 text-white text-sm font-medium">▶ 슬라이드쇼</button>
-        </div>
-        {/* 날짜 범위 */}
-        <div className="flex items-center gap-2 text-xs text-slate-500">
-          <input type="date" className={inputCls + " py-2 text-sm"} value={from} onChange={(e) => setFrom(e.target.value)} aria-label="시작 날짜" />
-          <span>~</span>
-          <input type="date" className={inputCls + " py-2 text-sm"} value={to} onChange={(e) => setTo(e.target.value)} aria-label="끝 날짜" />
-          {(from || to || q) && <button onClick={() => { setFrom(""); setTo(""); setQ(""); }} className="whitespace-nowrap text-slate-400">초기화</button>}
-        </div>
-
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex gap-1.5 overflow-x-auto no-scrollbar" role="tablist" aria-label="카테고리 필터">
-            {cats.map((c) => (
-              <button key={c.v} role="tab" aria-selected={cat === c.v} onClick={() => setCat(c.v)}
-                className={`whitespace-nowrap px-3 py-1.5 rounded-full text-xs font-medium ${cat === c.v ? "bg-teal-500 text-white" : "bg-white dark:bg-slate-800 text-slate-500 border border-slate-200 dark:border-slate-700"}`}>{c.l}</button>
-            ))}
-          </div>
-          <button onClick={() => setSort(sort === "recent" ? "likes" : "recent")}
-            className="whitespace-nowrap text-xs text-slate-500 dark:text-slate-300 px-2 py-1.5">
-            {sort === "recent" ? "최신순 ↓" : "좋아요순 ❤️"}
+          <button onClick={() => setFilterOpen((v) => !v)} aria-expanded={filterOpen}
+            aria-label={`필터${activeCount ? ` (${activeCount}개 적용됨)` : ""}`}
+            className={`whitespace-nowrap px-3.5 rounded-xl text-sm font-medium border ${activeCount
+              ? "bg-teal-500 border-teal-500 text-white"
+              : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300"}`}>
+            필터{activeCount ? ` ${activeCount}` : ""}
           </button>
         </div>
-
-        {/* 관리자: 업로더별 보기 */}
-        {isAdmin && uploaders.length > 0 && (
-          <select value={uploader} onChange={(e) => setUploader(e.target.value)} aria-label="업로더별 보기"
-            className={inputCls + " py-2 text-sm"}>
-            <option value="all">👥 전체 업로더</option>
-            {uploaders.map(([uid, nm]) => <option key={uid} value={uid}>{nm}</option>)}
-          </select>
-        )}
-
-        <div className="flex justify-end">
-          <button onClick={() => setGrouped((g) => !g)} className="text-xs text-slate-500 dark:text-slate-300 px-2 py-1">{grouped ? "전체 보기" : "📅 월별 보기"}</button>
+        <div className="flex gap-2">
+          <button onClick={() => setAlbumView(true)} aria-label="앨범 보기"
+            className="flex-1 py-2.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 text-sm font-medium">📚 앨범</button>
+          <button onClick={() => setShowSlide(true)} aria-label="슬라이드쇼 시작"
+            className="flex-1 py-2.5 rounded-xl bg-violet-400 text-white text-sm font-medium">▶ 슬라이드쇼</button>
         </div>
+
+        {filterOpen && (
+          <Card className="p-3 space-y-3 fade-in">
+            <div className="flex gap-1.5 overflow-x-auto no-scrollbar" role="tablist" aria-label="카테고리 필터">
+              {cats.map((c) => (
+                <button key={c.v} role="tab" aria-selected={cat === c.v} onClick={() => setCat(c.v)}
+                  className={`whitespace-nowrap px-3 py-2 rounded-full text-[12px] font-medium ${cat === c.v ? "bg-teal-500 text-white" : "bg-white dark:bg-slate-700 text-slate-500 dark:text-slate-300 border border-slate-200 dark:border-slate-600"}`}>{c.l}</button>
+              ))}
+            </div>
+
+            <div className="flex items-center gap-2">
+              <input type="date" className={inputCls + " py-2 text-sm"} value={from} onChange={(e) => setFrom(e.target.value)} aria-label="시작 날짜" />
+              <span className="text-slate-400">~</span>
+              <input type="date" className={inputCls + " py-2 text-sm"} value={to} onChange={(e) => setTo(e.target.value)} aria-label="끝 날짜" />
+            </div>
+
+            {isAdmin && uploaders.length > 0 && (
+              <select value={uploader} onChange={(e) => setUploader(e.target.value)} aria-label="업로더별 보기"
+                className={inputCls + " py-2 text-sm"}>
+                <option value="all">👥 전체 업로더</option>
+                {uploaders.map(([uid, nm]) => <option key={uid} value={uid}>{nm}</option>)}
+              </select>
+            )}
+
+            <div className="flex items-center gap-2">
+              <button onClick={() => setSort(sort === "recent" ? "likes" : "recent")}
+                className="flex-1 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-200 text-sm font-medium">
+                {sort === "recent" ? "최신순 ↓" : "좋아요순 ❤️"}
+              </button>
+              <button onClick={() => setGrouped((g) => !g)}
+                className="flex-1 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-200 text-sm font-medium">
+                {grouped ? "전체 보기" : "📅 월별 보기"}
+              </button>
+            </div>
+
+            {(activeCount > 0 || q) && (
+              <button onClick={() => { resetFilters(); setQ(""); }}
+                className="w-full py-2.5 rounded-xl text-sm text-slate-500 dark:text-slate-300">조건 모두 지우기</button>
+            )}
+          </Card>
+        )}
 
         {!photos ? <Spinner /> : list.length === 0 ? (
           <Card className="p-8 text-center text-sm text-slate-400">{q || from || to ? "검색 결과가 없어요." : <>아직 사진이 없어요.<br />아래 + 버튼으로 추가해보세요.</>}</Card>
@@ -4078,7 +4210,7 @@
             {canEdit && <Btn variant="lavender" onClick={() => setEditOpen(true)} className="flex-1 text-sm py-2.5">✏️ 수정</Btn>}
             {canEdit && <Btn variant="danger" onClick={remove} className="flex-1 text-sm py-2.5">🗑️ 삭제</Btn>}
           </div>
-          {!canEdit && <p className="text-[11px] text-slate-400 text-center">수정·삭제는 사진을 올린 사람 또는 관리자만 할 수 있어요.</p>}
+          {!canEdit && <p className="text-[12px] text-slate-400 text-center">수정·삭제는 사진을 올린 사람 또는 관리자만 할 수 있어요.</p>}
         </div>
         <EditPhotoModal open={editOpen} onClose={() => setEditOpen(false)} photo={p} />
       </div>
@@ -4287,12 +4419,12 @@
                     <div className="flex items-center justify-between mb-1 gap-2">
                       <h3 className="font-bold text-slate-800 dark:text-white truncate">{isPrivate(l) && "🔒 "}{l.title || "(제목 없음)"}</h3>
                       <div className="flex items-center gap-1 shrink-0">
-                        {l.reply && (isAdmin || l.createdBy === user.uid) && <span className="text-[10px] bg-violet-100 text-violet-600 dark:bg-violet-900/40 rounded-full px-1.5 py-0.5">💜 답장</span>}
+                        {l.reply && (isAdmin || l.createdBy === user.uid) && <span className="text-[12px] bg-violet-100 text-violet-600 dark:bg-violet-900/40 rounded-full px-1.5 py-0.5">💜 답장</span>}
                         {l.image && <span className="text-xs text-slate-300">🖼️</span>}
                       </div>
                     </div>
                     <p className="text-sm text-slate-500 dark:text-slate-300 line-clamp-2" style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{l.body}</p>
-                    <p className="text-[11px] text-slate-400 mt-2">💛 {l.creatorName} · {fmtDateTime(l.at)}{isPrivate(l) && " · 나만보기"}</p>
+                    <p className="text-[12px] text-slate-400 mt-2">💛 {l.creatorName} · {fmtDateTime(l.at)}{isPrivate(l) && " · 나만보기"}</p>
                   </div>
                 </button>
               </Card>
@@ -4306,13 +4438,13 @@
             <div className="space-y-3">
               {viewing.image && <img src={viewing.image} alt="첨부 이미지" className="w-full rounded-xl" />}
               <h3 className="text-lg font-bold text-slate-800 dark:text-white">{viewing.title || "(제목 없음)"}</h3>
-              <p className="text-[11px] text-slate-400">💛 {viewing.creatorName} · {fmtDateTime(viewing.at)}</p>
+              <p className="text-[12px] text-slate-400">💛 {viewing.creatorName} · {fmtDateTime(viewing.at)}</p>
               <p className="text-sm text-slate-700 dark:text-slate-200 whitespace-pre-wrap leading-relaxed">{viewing.body}</p>
 
               {/* 답장: 편지 작성자와 관리자만 볼 수 있음 */}
               {viewing.reply && (isAdmin || viewing.createdBy === user.uid) && (
                 <div className="bg-violet-50 dark:bg-violet-900/20 rounded-xl p-3">
-                  <p className="text-[11px] text-violet-500 mb-1">💜 {viewing.replyBy || "관리자"}의 답장 · {fmtDateTime(viewing.replyAt)}</p>
+                  <p className="text-[12px] text-violet-500 mb-1">💜 {viewing.replyBy || "관리자"}의 답장 · {fmtDateTime(viewing.replyAt)}</p>
                   <p className="text-sm text-slate-700 dark:text-slate-200 whitespace-pre-wrap">{viewing.reply}</p>
                 </div>
               )}
@@ -4384,7 +4516,7 @@
         <div className="space-y-4">
           <ChipGroup label="공개 범위" value={vis} onChange={setVis}
             options={[{ value: "private", label: "🔒 나만보기" }, { value: "public", label: "🌐 전체공개" }]} />
-          <p className="text-[11px] text-slate-400 -mt-1">나만보기는 본인과 관리자(엄마·아빠)만 볼 수 있어요.</p>
+          <p className="text-[12px] text-slate-400 -mt-1">나만보기는 본인과 관리자(엄마·아빠)만 볼 수 있어요.</p>
           <Field label="제목"><input className={inputCls} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="사랑하는 우리 아기에게" /></Field>
           <Field label="내용">
             <textarea className={inputCls} rows="7" value={body} onChange={(e) => setBody(e.target.value)} placeholder="오늘 너에게 하고 싶은 이야기를 적어보세요..." />
@@ -4429,10 +4561,10 @@
           return (
             <div key={m.id} className={`rounded-xl p-2 text-center border ${got ? "bg-amber-50 border-amber-200 dark:bg-amber-900/20 dark:border-amber-800" : "bg-slate-50 border-slate-100 dark:bg-slate-700/40 dark:border-slate-700"}`}>
               <div className="text-2xl" style={got ? {} : { filter: "grayscale(1)", opacity: 0.45 }}>{m.icon}</div>
-              <p className="text-[11px] font-medium text-slate-700 dark:text-slate-200 mt-0.5 leading-tight">{m.name}</p>
-              <p className="text-[10px] text-slate-400">{m.desc}</p>
+              <p className="text-[12px] font-medium text-slate-700 dark:text-slate-200 mt-0.5 leading-tight">{m.name}</p>
+              <p className="text-[12px] text-slate-400">{m.desc}</p>
               <div className="h-1 bg-slate-200 dark:bg-slate-600 rounded mt-1 overflow-hidden"><div className="h-full bg-amber-400" style={{ width: pct + "%" }} /></div>
-              <p className="text-[9px] text-slate-400 mt-0.5">{Math.min(val, m.goal)}/{m.goal}</p>
+              <p className="text-[12px] text-slate-400 mt-0.5">{Math.min(val, m.goal)}/{m.goal}</p>
             </div>
           );
         })}
@@ -4501,7 +4633,7 @@
             <h4 className="text-sm font-bold text-slate-700 dark:text-slate-200 mb-1">🗓️ 접속 기록 · 총 {(u.loginDays || []).length}일</h4>
             {recentDays.length === 0 ? <p className="text-xs text-slate-400">기록 없음</p> : (
               <div className="flex flex-wrap gap-1">
-                {recentDays.map((d) => <span key={d} className="text-[11px] bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300 rounded px-1.5 py-0.5">{d.slice(5)}</span>)}
+                {recentDays.map((d) => <span key={d} className="text-[12px] bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300 rounded px-1.5 py-0.5">{d.slice(5)}</span>)}
               </div>
             )}
           </div>
@@ -4514,12 +4646,12 @@
                   {[["feeding", "수유"], ["sleep", "수면"], ["diaper", "기저귀"], ["pump", "유축"], ["solid", "이유식"], ["med", "투약"], ["growth", "성장"], ["health", "건강"], ["milestone", "다이어리"], ["letter", "편지"]].map(([t, l]) => (
                     <div key={t} className="bg-slate-50 dark:bg-slate-700/40 rounded-lg py-1.5">
                       <p className="text-sm font-bold text-slate-700 dark:text-slate-200">{t === "letter" ? (u.letterCount || cnt("letter")) : cnt(t)}</p>
-                      <p className="text-[10px] text-slate-400">{l}</p>
+                      <p className="text-[12px] text-slate-400">{l}</p>
                     </div>
                   ))}
                   <div className="bg-slate-50 dark:bg-slate-700/40 rounded-lg py-1.5">
                     <p className="text-sm font-bold text-slate-700 dark:text-slate-200">{photoN}</p>
-                    <p className="text-[10px] text-slate-400">사진</p>
+                    <p className="text-[12px] text-slate-400">사진</p>
                   </div>
                 </div>
                 {/* 최근 활동 */}
@@ -4615,13 +4747,13 @@
       <Card className="p-4 space-y-3">
         <div>
           <h3 className="font-bold text-slate-800 dark:text-white">📱 D-day 위젯</h3>
-          <p className="text-[11px] text-slate-400 mt-0.5">
+          <p className="text-[12px] text-slate-400 mt-0.5">
             폰·태블릿 홈화면에 <b>{baby.name || "아기"}</b> D-day 를 띄웁니다. 우리 아기 날짜가 이미 채워져 있어요.
           </p>
         </div>
 
         {noDate && (
-          <p className="text-[11px] text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 rounded-xl p-2.5">
+          <p className="text-[12px] text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 rounded-xl p-2.5">
             ⚠️ 위쪽 <b>아기 정보</b>에서 출산예정일(또는 출생일)을 먼저 입력해주세요.
           </p>
         )}
@@ -4637,7 +4769,7 @@
           </Btn>
         </div>
 
-        <details className="text-[11px] text-slate-500 dark:text-slate-400">
+        <details className="text-[12px] text-slate-500 dark:text-slate-400">
           <summary className="cursor-pointer select-none py-1 text-teal-600 dark:text-teal-400">설치 방법 보기</summary>
           <ol className="list-decimal pl-4 space-y-1 mt-2 leading-relaxed">
             <li>App Store 에서 <b>Scriptable</b> 설치 (무료)</li>
@@ -4656,9 +4788,9 @@
 
         {open && (
           <div className="space-y-2">
-            <p className="text-[11px] text-slate-400">아래 상자를 길게 눌러 <b>전체 선택 → 복사</b> 하세요.</p>
+            <p className="text-[12px] text-slate-400">아래 상자를 길게 눌러 <b>전체 선택 → 복사</b> 하세요.</p>
             <textarea readOnly value={code} onFocus={(e) => e.target.select()}
-              className={inputCls + " font-mono text-[10px] leading-snug h-40"} />
+              className={inputCls + " font-mono text-[12px] leading-snug h-40"} />
             <button onClick={() => setOpen(false)} className="text-xs text-slate-400">닫기</button>
           </div>
         )}
@@ -4883,7 +5015,7 @@
         {isAdmin && show("backup") && (
           <Card className="p-4 space-y-3">
             <h3 className="font-bold text-slate-800 dark:text-white">데이터 내보내기</h3>
-            <p className="text-[11px] text-slate-400">소아과 진료·기록 보관용으로 내보낼 수 있어요.</p>
+            <p className="text-[12px] text-slate-400">소아과 진료·기록 보관용으로 내보낼 수 있어요.</p>
             <div className="grid grid-cols-3 gap-2">
               <Btn variant="ghost" onClick={exportCSV} className="text-sm py-2.5">📄 CSV</Btn>
               <Btn variant="ghost" onClick={printSummary} className="text-sm py-2.5">🖨️ 인쇄/PDF</Btn>
@@ -4903,7 +5035,7 @@
                 </div>
               </div>
             )}
-            {isAdmin && <p className="text-[11px] text-slate-400 mt-2">📥 가져오기 — 백업(JSON)을 이곳으로 되살립니다. 백업에는 사진 원본이 함께 담깁니다.</p>}
+            {isAdmin && <p className="text-[12px] text-slate-400 mt-2">📥 가져오기 — 백업(JSON)을 이곳으로 되살립니다. 백업에는 사진 원본이 함께 담깁니다.</p>}
           </Card>
         )}
         <ImportModal open={importOpen} onClose={() => setImportOpen(false)} />
@@ -4918,7 +5050,7 @@
             <span className="text-sm text-slate-600 dark:text-slate-300">앱 버전</span>
             <span className="text-sm font-bold text-teal-600 dark:text-teal-400">{APP_VERSION}</span>
           </div>
-          <p className="text-[11px] text-slate-400">화면이 예전 그대로면 아래 버튼을 눌러 저장된 화면을 지우고 새로 받아오세요.</p>
+          <p className="text-[12px] text-slate-400">화면이 예전 그대로면 아래 버튼을 눌러 저장된 화면을 지우고 새로 받아오세요.</p>
           <Btn variant="ghost" className="w-full text-sm py-2.5" onClick={async () => {
             try {
               if (window.caches) { const ks = await caches.keys(); await Promise.all(ks.map((k) => caches.delete(k))); }
@@ -4936,7 +5068,7 @@
         {isAdmin && show("family") && (
           <Card className="p-4 space-y-3">
             <div className="flex items-center justify-between">
-              <h3 className="font-bold text-slate-800 dark:text-white">계정 관리 <span className="text-[11px] font-normal text-slate-400">(총관리자=엄마·아빠)</span></h3>
+              <h3 className="font-bold text-slate-800 dark:text-white">계정 관리 <span className="text-[12px] font-normal text-slate-400">(총관리자=엄마·아빠)</span></h3>
               <Btn onClick={() => setAddOpen(true)} className="text-sm py-2 px-3">💌 가족 초대</Btn>
             </div>
             {!users ? <Spinner /> : (
@@ -4947,15 +5079,15 @@
                   <li key={u.uid} className={`border rounded-xl p-3 ${pending ? "border-amber-300 bg-amber-50/50 dark:bg-amber-900/20" : "border-slate-100 dark:border-slate-700"}`}>
                     <div className="flex items-center justify-between">
                       <div className="min-w-0">
-                        <p className="font-medium text-slate-800 dark:text-white truncate">{u.name} {u.uid === user.uid && <span className="text-[10px] text-teal-500">(나)</span>} {u.disabled && <span className="text-xs text-rose-400">(차단됨)</span>}</p>
+                        <p className="font-medium text-slate-800 dark:text-white truncate">{u.name} {u.uid === user.uid && <span className="text-[12px] text-teal-500">(나)</span>} {u.disabled && <span className="text-xs text-rose-400">(차단됨)</span>}</p>
                         <p className="text-xs text-slate-400 truncate">{u.email} <span className="text-slate-300">#{(u.uid || "").slice(-4)}</span></p>
                       </div>
                       <span className={`text-xs px-2 py-0.5 rounded-full whitespace-nowrap ${pending ? "bg-amber-200 text-amber-700" : u.role === "admin" ? "bg-violet-100 text-violet-600 dark:bg-violet-900/40" : u.role === "viewer" ? "bg-amber-100 text-amber-600 dark:bg-amber-900/40" : "bg-slate-100 text-slate-500 dark:bg-slate-700"}`}>{pending ? "승인대기" : roleLabel(u.role)}</span>
                     </div>
                     {/* 메달 현황 */}
                     <div className="flex items-center justify-between mt-1">
-                      <p className="text-[11px] text-slate-400">🏅 접속 {medalStats(u).login}일 · ✍️ 편지 {medalStats(u).letter}회 · {earnedMedals(u).map((m) => m.icon).join(" ") || "메달 없음"}</p>
-                      <button onClick={() => setStatusUser(u)} className="text-[11px] text-teal-600 dark:text-teal-400 whitespace-nowrap shrink-0">현황보기 ›</button>
+                      <p className="text-[12px] text-slate-400">🏅 접속 {medalStats(u).login}일 · ✍️ 편지 {medalStats(u).letter}회 · {earnedMedals(u).map((m) => m.icon).join(" ") || "메달 없음"}</p>
+                      <button onClick={() => setStatusUser(u)} className="text-[12px] text-teal-600 dark:text-teal-400 whitespace-nowrap shrink-0">현황보기 ›</button>
                     </div>
 
                     {pending ? (
@@ -4968,7 +5100,7 @@
                     ) : (
                       <>
                         <div className="mt-2">
-                          <span className="block text-[11px] text-slate-400 mb-1">등급</span>
+                          <span className="block text-[12px] text-slate-400 mb-1">등급</span>
                           {u.role === "admin" ? (
                             <span className="inline-block text-xs px-3 py-1.5 rounded-lg bg-violet-100 text-violet-600 dark:bg-violet-900/40">👑 관리자 (고정)</span>
                           ) : (
@@ -4998,7 +5130,7 @@
                 })}
               </ul>
             )}
-            <p className="text-[11px] text-slate-400 leading-relaxed">
+            <p className="text-[12px] text-slate-400 leading-relaxed">
               ※ 계정 <b>완전 삭제</b>와 Auth <b>disabled</b> 처리는 보안상 클라이언트 SDK에서 불가합니다.
               실제 비활성화/삭제는 Firebase 콘솔 또는 Admin SDK(서버)에서 수행하세요. 여기서는 앱 접근 차단용 플래그만 설정됩니다.
             </p>
@@ -5055,7 +5187,7 @@
             </ol>
           </div>
           <div className="bg-slate-900 dark:bg-slate-950 rounded-2xl p-4 text-center">
-            <p className="text-[11px] text-slate-400 mb-1.5">우리 가족 초대코드</p>
+            <p className="text-[12px] text-slate-400 mb-1.5">우리 가족 초대코드</p>
             <p className="text-3xl font-bold tracking-[0.35em] text-teal-300 pl-[0.35em]">{code || "······"}</p>
             <div className="flex gap-2 justify-center mt-3">
               <button onClick={() => code && copy(code)} disabled={!code}
@@ -5064,7 +5196,7 @@
                 className="text-xs px-3 py-1.5 rounded-lg bg-white/10 text-white/70 disabled:opacity-40">새로 만들기</button>
             </div>
           </div>
-          <p className="text-[11px] text-slate-400 leading-relaxed -mt-1">
+          <p className="text-[12px] text-slate-400 leading-relaxed -mt-1">
             이 코드를 넣고 가입해야 <b>우리 아기</b> 기록에 합류합니다.
             코드 없이 가입하면 그분의 <b>새 아기 수첩</b>이 따로 만들어져요.
           </p>
@@ -5075,7 +5207,7 @@
             </div>
           </Field>
           <Btn onClick={share} className="w-full">💌 초대 메시지 보내기</Btn>
-          <p className="text-[11px] text-slate-400 leading-relaxed">
+          <p className="text-[12px] text-slate-400 leading-relaxed">
             가족이 비밀번호를 직접 정하니 더 안전해요. 가입하면 <b>관람전용 · 승인대기</b> 상태로 시작하고,
             승인 전에는 사진이 한 장도 보이지 않습니다.
           </p>
@@ -5202,7 +5334,7 @@
               <button key={n.id} onClick={() => setTab(n.id)} aria-current={tab === n.id ? "page" : undefined}
                 className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 ${tab === n.id ? "text-teal-500" : "text-slate-400"}`}>
                 <span className="text-xl" aria-hidden="true">{n.icon}</span>
-                <span className="text-[10px] font-medium">{n.label}</span>
+                <span className="text-[12px] font-medium">{n.label}</span>
               </button>
             ))}
           </div>
@@ -5841,7 +5973,8 @@ Script.complete();
     const [uploadOpen, setUploadOpen] = useState(false);
     const [uploadCat, setUploadCat] = useState("baby");
 
-    const recSub = tab === "records" ? (sub || "feeding") : "feeding";
+    // 기본 하위탭은 Records 가 시기(출산 전/후)에 맞게 고른다
+    const recSub = tab === "records" ? sub : null;
     const setRecSub = (v) => nav("/records/" + v);
     const setTab = (t) => nav("/" + t);
     const go = (t, s2) => nav("/" + t + (s2 ? "/" + s2 : ""));
@@ -5939,7 +6072,7 @@ Script.complete();
           <div className="app-shell items-center justify-center text-center p-8 bg-warm overflow-y-auto" style={{ minHeight: "100vh" }}>
             <div className="text-5xl mb-3">🙏</div>
             <p className="font-bold text-slate-800 dark:text-white">일시적인 오류가 발생했어요</p>
-            <pre className="text-[11px] text-slate-400 mt-2 whitespace-pre-wrap max-w-full overflow-auto">{(this.state.err && (this.state.err.message || String(this.state.err)))}</pre>
+            <pre className="text-[12px] text-slate-400 mt-2 whitespace-pre-wrap max-w-full overflow-auto">{(this.state.err && (this.state.err.message || String(this.state.err)))}</pre>
             <button onClick={() => this.setState({ err: null })} className="mt-4 px-5 py-3 rounded-xl bg-teal-500 text-white">다시 시도</button>
             <button onClick={() => location.reload()} className="mt-2 px-5 py-2 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-sm">새로고침</button>
           </div>
