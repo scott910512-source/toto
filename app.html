@@ -401,7 +401,7 @@
   const hm = (mins) => `${Math.floor(mins / 60)}시간 ${Math.round(mins % 60)}분`;
 
   // 화면에 표시할 빌드 버전 — 폰이 최신인지 바로 확인할 수 있게
-  const APP_VERSION = "v23";
+  const APP_VERSION = "v24";
 
   /* ========================================================================
      1. Supabase 초기화 + Firestore 호환 계층
@@ -4502,6 +4502,94 @@
   /* ========================================================================
      23. 설정 탭 (관리자 계정 관리 + 아기 정보)
      ======================================================================== */
+  /* ========================================================================
+     D-day 위젯 — Scriptable 코드와 전체화면 링크를 우리 아기 값으로 만들어 준다
+     ======================================================================== */
+  const DdayWidgetCard = () => {
+    const baby = useBaby();
+    const toast = useToast();
+    const [open, setOpen] = useState(false);
+
+    const appUrl = location.origin + location.pathname;
+    const ddayUrl = appUrl.replace(/[^/]*$/, "dday.html")
+      + "?name=" + encodeURIComponent(baby.name || "아기")
+      + "&due=" + encodeURIComponent(baby.dueDate || "")
+      + "&birth=" + encodeURIComponent(baby.birthDate || "");
+
+    const code = useMemo(() => WIDGET_SRC
+      .split("__NAME__").join((baby.name || "아기").replace(/"/g, ""))
+      .split("__DUE__").join(baby.dueDate || "")
+      .split("__BIRTH__").join(baby.birthDate || "")
+      .split("__APPURL__").join(appUrl), [baby.name, baby.dueDate, baby.birthDate, appUrl]);
+
+    const copy = async (text, msg) => {
+      try {
+        await navigator.clipboard.writeText(text);
+        toast(msg, "success");
+      } catch (e) {
+        // 클립보드가 막힌 경우: 선택해서 직접 복사하도록 보여준다
+        setOpen(true);
+        toast("아래 상자를 길게 눌러 전체 선택 후 복사해주세요.", "info");
+      }
+    };
+
+    const noDate = !baby.dueDate && !baby.birthDate;
+
+    return (
+      <Card className="p-4 space-y-3">
+        <div>
+          <h3 className="font-bold text-slate-800 dark:text-white">📱 D-day 위젯</h3>
+          <p className="text-[11px] text-slate-400 mt-0.5">
+            폰·태블릿 홈화면에 <b>{baby.name || "아기"}</b> D-day 를 띄웁니다. 우리 아기 날짜가 이미 채워져 있어요.
+          </p>
+        </div>
+
+        {noDate && (
+          <p className="text-[11px] text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 rounded-xl p-2.5">
+            ⚠️ 위쪽 <b>아기 정보</b>에서 출산예정일(또는 출생일)을 먼저 입력해주세요.
+          </p>
+        )}
+
+        <div className="grid grid-cols-2 gap-2">
+          <Btn variant="lavender" className="text-sm py-2.5"
+            onClick={() => copy(code, "복사했어요! Scriptable 에 붙여넣으세요 📋")}>
+            📋 위젯 코드 복사
+          </Btn>
+          <Btn variant="ghost" className="text-sm py-2.5"
+            onClick={() => copy(ddayUrl, "링크를 복사했어요 🔗")}>
+            🔗 전체화면 링크
+          </Btn>
+        </div>
+
+        <details className="text-[11px] text-slate-500 dark:text-slate-400">
+          <summary className="cursor-pointer select-none py-1 text-teal-600 dark:text-teal-400">설치 방법 보기</summary>
+          <ol className="list-decimal pl-4 space-y-1 mt-2 leading-relaxed">
+            <li>App Store 에서 <b>Scriptable</b> 설치 (무료)</li>
+            <li>앱 열고 오른쪽 위 <b>＋</b> → 위에서 복사한 코드 <b>붙여넣기</b></li>
+            <li>왼쪽 위 ⚙️ → Name 에 <b>{(baby.name || "아기")} D-day</b> 입력 → Done</li>
+            <li><b>홈화면</b> 빈 곳 길게 누르기 → <b>＋</b> → Scriptable 검색</li>
+            <li>좌우로 밀어 <b>제일 큰 크기</b> 선택 → 위젯 추가</li>
+            <li>추가된 위젯 길게 누르기 → <b>위젯 편집</b> → Script 를 방금 만든 것으로</li>
+          </ol>
+          <p className="mt-2 text-slate-400">
+            · 잠금화면 위젯은 iOS 가 크기를 고정해서 작게 나옵니다. 크게 보려면 홈화면에 올리세요.<br />
+            · 아기가 태어나면 앱 <b>아기 정보</b>에 출생일을 넣고 코드를 다시 복사해 붙여넣으면 D+ 로 바뀝니다.<br />
+            · <b>전체화면 링크</b>는 Safari 로 열고 [공유 → 홈 화면에 추가] 하면 화면 전체를 D-day 가 채웁니다.
+          </p>
+        </details>
+
+        {open && (
+          <div className="space-y-2">
+            <p className="text-[11px] text-slate-400">아래 상자를 길게 눌러 <b>전체 선택 → 복사</b> 하세요.</p>
+            <textarea readOnly value={code} onFocus={(e) => e.target.select()}
+              className={inputCls + " font-mono text-[10px] leading-snug h-40"} />
+            <button onClick={() => setOpen(false)} className="text-xs text-slate-400">닫기</button>
+          </div>
+        )}
+      </Card>
+    );
+  };
+
   const Settings = () => {
     const { user, profile, isAdmin } = useAuth();
     const toast = useToast();
@@ -4674,6 +4762,9 @@
           </Card>
         )}
         <ImportModal open={importOpen} onClose={() => setImportOpen(false)} />
+
+        {/* D-day 위젯 — 가족 누구나 자기 폰에 올릴 수 있게 */}
+        <DdayWidgetCard />
 
         {/* 버전 / 강제 새로고침 — 폰에 옛 화면이 남아 있을 때 사용 */}
         <Card className="p-4 space-y-2">
@@ -5091,6 +5182,321 @@
       </Modal>
     );
   };
+
+  /* Scriptable 위젯 원본 (scriptable/toto-dday.js 에서 자동 생성).
+     __NAME__ 등 자리표시자를 우리 아기 값으로 바꿔서 복사해 준다. */
+  const WIDGET_SRC = `// Variables used by Scriptable.
+// These must be at the very top of the file. Do not edit.
+// icon-color: pink; icon-glyph: baby-carriage;
+/* ===========================================================================
+   또또 D-day 위젯 · Scriptable (iOS / iPadOS)
+   ---------------------------------------------------------------------------
+   아이패드·아이폰 홈화면에 또또 출산까지 남은 날을 띄웁니다.
+   태어난 뒤에는 birthDate 만 채우면 자동으로 "생후 N일 (D+N)" 로 바뀝니다.
+
+   [설치]
+   1) App Store 에서 Scriptable 설치 (무료)
+   2) Scriptable 앱 → 우측 상단 + → 이 파일 내용 전체 붙여넣기
+   3) 이름을 "또또 D-day" 로 저장
+   4) ★ 크게 보려면 반드시 [홈화면] 에 추가하세요.
+      홈화면 빈 곳 길게 누르기 → 왼쪽 위 + → Scriptable →
+      좌우로 밀어서 [제일 큰 것] 선택 → 위젯 추가
+      · 아이패드: 가로로 아주 긴 것(extraLarge)이 제일 큽니다
+      · 잠금화면 위젯은 iOS 가 크기를 고정해서 못 키웁니다(작게 나오는 게 정상)
+   5) 추가된 위젯 길게 누르기 → "위젯 편집" → Script = 또또 D-day
+      (Run Script 로 두면 탭했을 때 앱이 열립니다)
+   =========================================================================== */
+
+// ── 여기만 고치세요 (가족마다 자기 아기 날짜를 넣으면 됩니다) ──────────────
+const BABY = {
+  name: "__NAME__",
+  dueDate: "__DUE__",
+  birthDate: "__BIRTH__",
+  appUrl: "__APPURL__",
+};
+// ───────────────────────────────────────────────────────────────────────────
+
+const C = {
+  from: new Color("#7dd3c0"),
+  to: new Color("#a78bfa"),
+  white: new Color("#ffffff"),
+  soft: new Color("#ffffff", 0.72),
+  faint: new Color("#ffffff", 0.34),
+  track: new Color("#ffffff", 0.22),
+};
+
+/* 자정 기준으로 날짜 차이를 센다 (시각 때문에 하루 틀어지는 것 방지) */
+const midnight = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+const daysBetween = (a, b) => Math.round((midnight(b) - midnight(a)) / 86400000);
+
+function computeState() {
+  const today = new Date();
+
+  if (BABY.birthDate) {
+    const born = new Date(BABY.birthDate + "T00:00:00");
+    const days = daysBetween(born, today);
+    if (days >= 0) {
+      const weeks = Math.floor(days / 7);
+      const months = Math.floor(days / 30.44);
+      return {
+        mode: "born",
+        big: \`D+\${days}\`,
+        sub: \`생후 \${days}일\`,
+        detail: days === 0 ? "오늘 태어났어요 🎉"
+              : months >= 1 ? \`\${weeks}주 · 약 \${months}개월\`
+              : \`\${weeks}주 \${days % 7}일\`,
+        foot: \`\${BABY.birthDate.replace(/-/g, ".")} 출생\`,
+        progress: Math.min(1, days / 365),
+        progressLabel: days === 365 ? "첫 생일 🎂"
+                     : days < 365 ? \`첫 생일까지 \${365 - days}일\`
+                     : "",
+      };
+    }
+  }
+
+  if (BABY.dueDate) {
+    const due = new Date(BABY.dueDate + "T00:00:00");
+    const left = daysBetween(today, due);
+    const gaDays = 280 - left;               // 임신 주수 = 40주(280일) - 남은 일수
+    const w = Math.floor(gaDays / 7), d = gaDays % 7;
+    return {
+      mode: "pregnant",
+      big: left > 0 ? \`D-\${left}\` : left === 0 ? "D-DAY" : \`D+\${-left}\`,
+      sub: gaDays > 0 ? \`임신 \${w}주 \${d}일\` : "곧 만나요",
+      detail: left > 0 ? \`출산까지 \${left}일\` : left === 0 ? "오늘이 예정일이에요" : \`예정일 \${-left}일 지남\`,
+      foot: \`\${BABY.dueDate.replace(/-/g, ".")} 예정\`,
+      progress: Math.max(0, Math.min(1, gaDays / 280)),
+      progressLabel: \`\${Math.min(100, Math.round((gaDays / 280) * 100))}%\`,
+    };
+  }
+
+  return { mode: "unknown", big: "—", sub: "날짜를 설정하세요", detail: "", foot: "", progress: 0, progressLabel: "" };
+}
+
+/* 진행 막대를 이미지로 그린다 (Scriptable 에 프로그레스 뷰가 없어서) */
+function progressBar(ratio, width, height) {
+  const ctx = new DrawContext();
+  ctx.size = new Size(width, height);
+  ctx.opaque = false;
+  ctx.respectScreenScale = true;
+
+  const r = height / 2;
+  ctx.setFillColor(C.track);
+  ctx.fillPath(roundedRectPath(0, 0, width, height, r));
+
+  const w = Math.max(height, width * Math.max(0, Math.min(1, ratio)));
+  ctx.setFillColor(C.white);
+  ctx.fillPath(roundedRectPath(0, 0, w, height, r));
+
+  return ctx.getImage();
+}
+function roundedRectPath(x, y, w, h, r) {
+  const p = new Path();
+  p.addRoundedRect(new Rect(x, y, w, h), r, r);
+  return p;
+}
+
+/* ── 잠금화면 위젯 (accessory*) ─────────────────────────────────────────────
+   iOS 가 크기를 고정하고 색도 단색으로 강제하므로, 여기서는 배경/색을 쓰지 않고
+   글자만 최대한 크게 넣는다. 크게 보고 싶으면 홈화면 위젯을 쓰세요. */
+function buildAccessory(size) {
+  const s = computeState();
+  const w = new ListWidget();
+  w.url = BABY.appUrl;
+  w.setPadding(0, 0, 0, 0);
+
+  if (size === "accessoryInline") {
+    // 시계 위 한 줄 — 아이콘+텍스트만 가능
+    w.addText(\`🍼 \${BABY.name} \${s.big} · \${s.sub}\`);
+    return w;
+  }
+
+  if (size === "accessoryCircular") {
+    // 원형 — 숫자만
+    const st = w.addStack();
+    st.layoutVertically();
+    st.centerAlignContent();
+    const n = st.addText(s.big.replace("D", ""));   // "-88"
+    n.font = Font.boldSystemFont(20);
+    n.centerAlignText();
+    n.minimumScaleFactor = 0.5;
+    n.lineLimit = 1;
+    const l = st.addText("또또");
+    l.font = Font.systemFont(9);
+    l.centerAlignText();
+    return w;
+  }
+
+  // accessoryRectangular — 잠금화면에서 제일 큰 것 (약 160x72pt)
+  const t1 = w.addText(\`🍼 \${BABY.name}\`);
+  t1.font = Font.semiboldSystemFont(12);
+  t1.lineLimit = 1;
+  const t2 = w.addText(s.big);
+  t2.font = Font.boldSystemFont(30);
+  t2.lineLimit = 1;
+  t2.minimumScaleFactor = 0.5;
+  const t3 = w.addText(s.sub);
+  t3.font = Font.systemFont(11);
+  t3.lineLimit = 1;
+  t3.minimumScaleFactor = 0.7;
+  return w;
+}
+
+/* 크기별 타이포 — 숫자를 최대한 크게.
+   가로로 긴 위젯(medium / extraLarge)은 [큰 숫자 | 설명] 가로 배치로 바꿔서
+   높이를 숫자에 전부 몰아준다. (iPad 위젯 pt: small 141 · medium 305x141 ·
+   large 305x305 · extraLarge 634x305) */
+const SIZING = {
+  small:      { pad: 12, wide: false, head: 17, big: 56,  sub: 15, det: 0,  foot: 0,  bar: 0,   barH: 0 },
+  medium:     { pad: 14, wide: true,  head: 20, big: 78,  sub: 19, det: 14, foot: 12, bar: 0,   barH: 0 },
+  large:      { pad: 20, wide: false, head: 30, big: 128, sub: 30, det: 19, foot: 14, bar: 250, barH: 10 },
+  extraLarge: { pad: 26, wide: true,  head: 40, big: 190, sub: 42, det: 26, foot: 18, bar: 300, barH: 13 },
+};
+
+function buildWidget(size) {
+  const s = computeState();
+  const z = SIZING[size] || SIZING.medium;
+  const w = new ListWidget();
+
+  const g = new LinearGradient();
+  g.colors = [C.from, C.to];
+  g.locations = [0, 1];
+  g.startPoint = new Point(0, 0);
+  g.endPoint = new Point(1, 1);
+  w.backgroundGradient = g;
+  w.url = BABY.appUrl;
+  w.setPadding(z.pad, z.pad + 2, z.pad, z.pad + 2);
+
+  const bigText = (host) => {
+    const t = host.addText(s.big);
+    t.font = Font.boldSystemFont(z.big);
+    t.textColor = C.white;
+    t.minimumScaleFactor = 0.45;
+    t.lineLimit = 1;
+    return t;
+  };
+  const nameRow = (host, big) => {
+    const r = host.addStack();
+    r.centerAlignContent();
+    const i = r.addText("🍼");
+    i.font = Font.systemFont(z.head);
+    r.addSpacer(6);
+    const n = r.addText(BABY.name);
+    n.font = Font.boldSystemFont(z.head);
+    n.textColor = C.white;
+    n.lineLimit = 1;
+    n.minimumScaleFactor = 0.6;
+    if (big) {
+      r.addSpacer();
+      const b = r.addText(s.mode === "pregnant" ? "임신 중" : "육아 중");
+      b.font = Font.systemFont(Math.max(11, z.head * 0.5));
+      b.textColor = C.faint;
+    }
+    return r;
+  };
+
+  if (z.wide) {
+    // ── 가로 배치: [ 큰 숫자 ][ 이름/부제/상세 ] ──
+    const row = w.addStack();
+    row.centerAlignContent();
+
+    const left = row.addStack();
+    left.layoutVertically();
+    left.centerAlignContent();
+    bigText(left);
+
+    row.addSpacer(size === "extraLarge" ? 28 : 14);
+
+    const right = row.addStack();
+    right.layoutVertically();
+    nameRow(right, false);
+    right.addSpacer(size === "extraLarge" ? 8 : 3);
+    const sub = right.addText(s.sub);
+    sub.font = Font.mediumSystemFont(z.sub);
+    sub.textColor = C.soft;
+    sub.lineLimit = 1;
+    sub.minimumScaleFactor = 0.6;
+    if (z.det && s.detail) {
+      const det = right.addText(s.detail);
+      det.font = Font.systemFont(z.det);
+      det.textColor = C.faint;
+      det.lineLimit = 1;
+      det.minimumScaleFactor = 0.7;
+    }
+    if (z.bar) {
+      right.addSpacer(10);
+      const bar = right.addImage(progressBar(s.progress, z.bar * 3, z.barH * 3));
+      bar.imageSize = new Size(z.bar, z.barH);
+      bar.cornerRadius = z.barH / 2;
+    }
+    if (z.foot) {
+      right.addSpacer(6);
+      const f = right.addText(s.foot + (s.progressLabel ? "  ·  " + s.progressLabel : ""));
+      f.font = Font.systemFont(z.foot);
+      f.textColor = C.faint;
+      f.lineLimit = 1;
+      f.minimumScaleFactor = 0.7;
+    }
+    row.addSpacer();
+    return w;
+  }
+
+  // ── 세로 배치 (small / large) ──
+  nameRow(w, size !== "small");
+  w.addSpacer(size === "small" ? 2 : 6);
+  bigText(w);
+  const sub = w.addText(s.sub);
+  sub.font = Font.mediumSystemFont(z.sub);
+  sub.textColor = C.soft;
+  sub.lineLimit = 1;
+  sub.minimumScaleFactor = 0.6;
+  if (z.det && s.detail) {
+    const det = w.addText(s.detail);
+    det.font = Font.systemFont(z.det);
+    det.textColor = C.faint;
+    det.lineLimit = 1;
+  }
+  if (z.bar) {
+    w.addSpacer();
+    const bar = w.addImage(progressBar(s.progress, z.bar * 3, z.barH * 3));
+    bar.imageSize = new Size(z.bar, z.barH);
+    bar.cornerRadius = z.barH / 2;
+  } else {
+    w.addSpacer();
+  }
+  if (z.foot) {
+    w.addSpacer(7);
+    const foot = w.addStack();
+    const f1 = foot.addText(s.foot);
+    f1.font = Font.systemFont(z.foot);
+    f1.textColor = C.faint;
+    f1.lineLimit = 1;
+    if (s.progressLabel) {
+      foot.addSpacer();
+      const f2 = foot.addText(s.progressLabel);
+      f2.font = Font.systemFont(z.foot);
+      f2.textColor = C.faint;
+      f2.lineLimit = 1;
+    }
+  }
+  return w;
+}
+
+// ── 실행 ────────────────────────────────────────────────────────────────────
+const family = config.widgetFamily || "medium";
+const isAccessory = String(family).indexOf("accessory") === 0;   // 잠금화면 위젯
+const widget = isAccessory ? buildAccessory(family) : buildWidget(family);
+
+if (config.runsInWidget) {
+  Script.setWidget(widget);
+} else {
+  // 앱에서 직접 실행하면 미리보기
+  if (family === "small") await widget.presentSmall();
+  else if (family === "large" || family === "extraLarge") await widget.presentLarge();
+  else await widget.presentMedium();
+}
+Script.complete();
+`;
 
   /* ========================================================================
      25. 메인 앱 셸

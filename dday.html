@@ -93,11 +93,23 @@
    또또 D-day — 아이패드에 세워두는 전체화면 카운터
    출산예정일/생일만 바꾸면 됩니다. 인터넷 없어도 동작합니다.
    =========================================================================== */
+/* 주소 뒤에 ?name=콩이&due=2027-03-20&birth= 처럼 붙이면 그 값을 씁니다.
+   (앱 설정에서 "내 D-day 링크 복사" 를 누르면 자동으로 만들어집니다)
+   값이 없으면 아래 기본값을 사용합니다. */
 var BABY = {
   name: "또또",
   dueDate: "2026-12-14",   // 출산 예정일
   birthDate: "",           // 태어나면 "2026-12-14" 처럼 채우세요 → 자동으로 D+ 전환
 };
+(function () {
+  try {
+    var q = new URLSearchParams(location.search);
+    var ymd = /^\d{4}-\d{2}-\d{2}$/;
+    if (q.get("name")) BABY.name = q.get("name").slice(0, 20);
+    if (q.has("due"))   BABY.dueDate   = ymd.test(q.get("due"))   ? q.get("due")   : "";
+    if (q.has("birth")) BABY.birthDate = ymd.test(q.get("birth")) ? q.get("birth") : "";
+  } catch (e) { /* 파라미터가 이상하면 기본값 사용 */ }
+})();
 
 var $ = function (id) { return document.getElementById(id); };
 var midnight = function (d) { return new Date(d.getFullYear(), d.getMonth(), d.getDate()); };
