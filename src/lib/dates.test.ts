@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { babyAge, dday, isValidYmd, daysBetween, clampMinutes, toDate, ymd } from "./dates";
+import { babyAge, dday, isValidYmd, daysBetween, clampMinutes, toDate, ymd, isSameDay, fmtTime, fmtDate, fmtDateTime, ago } from "./dates";
 
 const D = (s: string) => new Date(`${s}T09:00:00`);
 
@@ -80,5 +80,53 @@ describe("toDate / ymd", () => {
     expect(toDate("")).toBeNull();
     expect(toDate(null)).toBeNull();
     expect(toDate("어쩌구")).toBeNull();
+  });
+});
+
+describe("화면에 찍히는 날짜·시간 글자", () => {
+  it("예전 Firestore Timestamp 객체도 받아준다 (오래된 백업 가져오기)", () => {
+    const stamp = { toDate: () => new Date("2026-05-01T10:00:00") };
+    expect(ymd(stamp)).toBe("2026-05-01");
+  });
+
+  it("{seconds} 형태도 받아준다", () => {
+    expect(ymd({ seconds: Math.floor(new Date("2026-05-01T10:00:00").getTime() / 1000) }))
+      .toBe("2026-05-01");
+  });
+
+  it("망가진 값은 null 로 (화면에 Invalid Date 가 찍히지 않게)", () => {
+    expect(toDate("어제")).toBeNull();
+    expect(toDate({})).toBeNull();
+    expect(toDate(new Date("x"))).toBeNull();
+    expect(fmtTime("어제")).toBe("-");
+    expect(fmtDate(null)).toBe("-");
+    expect(fmtDateTime(undefined)).toBe("-");
+  });
+
+  it("같은 날 판정은 시각을 보지 않는다", () => {
+    expect(isSameDay("2026-05-01T00:01:00", "2026-05-01T23:59:00")).toBe(true);
+    expect(isSameDay("2026-05-01T23:59:00", "2026-05-02T00:01:00")).toBe(false);
+  });
+
+  it("값이 없으면 같은 날이 아니다 (빈 기록끼리 묶이지 않게)", () => {
+    expect(isSameDay(null, null)).toBe(false);
+    expect(isSameDay(null, "2026-05-01")).toBe(false);
+  });
+
+  it("경과 시간을 분까지 보여준다", () => {
+    const now = new Date("2026-05-01T12:00:00");
+    expect(ago("2026-05-01T11:59:30", now)).toBe("방금 전");
+    expect(ago("2026-05-01T11:20:00", now)).toBe("40분 전");
+    expect(ago("2026-05-01T09:25:00", now)).toBe("2시간 35분 전");
+    expect(ago("2026-04-28T12:00:00", now)).toBe("3일 전");
+  });
+
+  it("기기 시계가 앞서 있어도 '-3분 전' 이 안 나온다", () => {
+    const now = new Date("2026-05-01T12:00:00");
+    expect(ago("2026-05-01T12:03:00", now)).toBe("방금 전");
+  });
+
+  it("값이 없으면 빈 문자열 (기록 없음 자리에 '-' 가 겹치지 않게)", () => {
+    expect(ago(null)).toBe("");
   });
 });

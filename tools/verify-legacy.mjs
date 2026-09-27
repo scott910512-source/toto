@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /* 현재 운영 중인 정적 HTML 들이 깨지지 않았는지 확인한다.
    Vite 로 옮기는 중에도 이 파일들이 실제 서비스이므로, CI 가 매번 검사한다. */
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, writeFileSync } from "node:fs";
+import { execSync } from "node:child_process";
 import { transform } from "@babel/standalone";
 
 const FILES = ["app.html", "dday.html", "gallery.html", "baby-care.html"];
@@ -16,6 +17,10 @@ const FORBIDDEN = [
   { re: /["']sb_secret_[A-Za-z0-9_-]{10,}["']/, why: "service_role(비밀) 키가 코드에 있음", files: null },
   // app.html 전용: 가입 직후 권한 덮어쓰기 (Supabase 는 DB 트리거가 정한다)
   { re: /role:\s*["']viewer["'],\s*approved:\s*false/, why: "가입 직후 권한 덮어쓰기", files: ["app.html"] },
+  // app.html 전용: src/ 에 있는 로직의 사본 (한 벌만 두기로 했다)
+  { re: /const toDate = \(v\) =>/, why: "toDate 사본 (vendor/toto-core.js 를 쓴다)", files: ["app.html"] },
+  { re: /const errMsg = \(e\) =>/, why: "errMsg 사본 (vendor/toto-core.js 를 쓴다)", files: ["app.html"] },
+  { re: /AUTH_ERRORS/, why: "쓰이지 않는 Firebase 오류코드 표", files: ["app.html"] },
   // app.html 전용: 프론트가 권한을 직접 쓰는 코드 (DB 트리거가 정해야 한다)
   { re: /upd\.(role|approved|disabled)\s*=/, why: "프론트에서 role/approved/disabled 를 씀", files: ["app.html"] },
   { re: /isAdminEmail\(\s*user\.email\s*\)\s*(\|\||\?)/, why: "이메일만으로 관리자 권한을 줌", files: ["app.html"] },
@@ -37,6 +42,8 @@ const REQUIRED = [
   { re: /useHashRoute/, why: "화면 주소 기억 (뒤로가기)", files: ["app.html"] },
   { re: /rpc\(["']toggle_like["']/, why: "좋아요를 DB 함수로 처리 (남의 사진에도 눌러야 한다)", files: ["app.html"] },
   { re: /rpc\(["']touch_login["']/, why: "접속일 기록을 DB 함수로 처리", files: ["app.html"] },
+  { re: /vendor\/toto-core\.js/, why: "공용 로직(vendor/toto-core.js) 불러오기", files: ["app.html"] },
+  { re: /window\.TotoCore/, why: "공용 로직을 실제로 사용", files: ["app.html"] },
 ];
 
 for (const f of FILES) {
@@ -89,6 +96,26 @@ if (existsSync("app.html") && existsSync("sw.js")) {
     console.error(`❌ 버전 불일치: app.html ${v[1]} ≠ sw.js ${c[1]} — 폰이 최신화되지 않습니다`);
     failed++;
   } else console.log(`✅ 버전 일치 ${v[1]}`);
+}
+
+/* vendor/toto-core.js 는 src/ 에서 빌드한 결과물인데 저장소에 커밋된다.
+   (Pages 가 브랜치를 그대로 내보내서 배포 시 빌드 단계가 없다)
+   소스를 고치고 빌드를 잊으면, 테스트는 통과하는데 가족이 보는 화면은
+   예전 코드가 돈다. 그 상황을 막기 위해 다시 빌드해 비교한다. */
+if (existsSync("vendor/toto-core.js") && existsSync("src/legacy-bridge.ts")) {
+  const before = readFileSync("vendor/toto-core.js", "utf8");
+  try {
+    execSync("npx vite build --config vite.core.config.ts", { stdio: "pipe" });
+    const after = readFileSync("vendor/toto-core.js", "utf8");
+    if (before !== after) {
+      writeFileSync("vendor/toto-core.js", before);   // 검사가 파일을 바꾸지 않게 되돌린다
+      console.error("❌ vendor/toto-core.js 가 src/ 와 어긋납니다 — npm run build:core 후 커밋하세요");
+      failed++;
+    } else console.log("✅ vendor/toto-core.js 가 src/ 와 일치");
+  } catch (e) {
+    console.error("❌ 공용 로직 빌드 실패: " + (e.stderr ? String(e.stderr).slice(0, 400) : e.message));
+    failed++;
+  }
 }
 
 if (failed) { console.error(`\n${failed}건 실패`); process.exit(1); }

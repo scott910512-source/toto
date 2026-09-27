@@ -17,7 +17,8 @@
     "verify": "node tools/verify-legacy.mjs",
     "e2e:prepare": "node tools/prepare-e2e-vendor.mjs",
     "fetch:tailwind": "node tools/fetch-tailwind.mjs",
-    "test:sql": "bash tools/sql-verify.sh"
+    "test:sql": "bash tools/sql-verify.sh",
+    "build:core": "vite build --config vite.core.config.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "2.45.4",

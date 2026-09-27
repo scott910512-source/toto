@@ -14,6 +14,10 @@ export type Seed = {
   privateOwner?: "me" | "other";
   /** 로그인한 사람의 이메일. ADMIN_EMAILS 와의 불일치를 재현할 때 쓴다 */
   email?: string;
+  /** 로그인하지 않은 상태로 시작 (로그인 화면을 보려면) */
+  loggedOut?: boolean;
+  /** 로그인 시 Supabase 가 돌려줄 오류 원문 (영어가 한국어로 바뀌는지 확인) */
+  signInError?: string;
 };
 
 export function stubScript(seed: Seed = {}): string {
@@ -21,6 +25,7 @@ export function stubScript(seed: Seed = {}): string {
     role: "admin", approved: true, babyName: "또또",
     dueDate: "2026-12-14", birthDate: "", records: 2, photos: 3,
     privatePhotos: 1, privateOwner: "me", email: "me@t.com",
+    loggedOut: false, signInError: "",
     ...seed,
   };
 
@@ -150,9 +155,15 @@ export function stubScript(seed: Seed = {}): string {
 
   window.supabase = { createClient: function () { return {
     auth: {
-      getSession: function () { return Promise.resolve({ data: { session: { user: { id: UID, email: SEED.email } } } }); },
+      getSession: function () {
+        return Promise.resolve({ data: { session: SEED.loggedOut ? null : { user: { id: UID, email: SEED.email } } } });
+      },
       onAuthStateChange: function () { return { data: { subscription: { unsubscribe: function () {} } } }; },
-      signInWithPassword: function (a) { window.__E2E.calls.push({ op: "signIn", args: a }); return Promise.resolve({ data: { user: { id: UID } }, error: null }); },
+      signInWithPassword: function (a) {
+        window.__E2E.calls.push({ op: "signIn", args: a });
+        if (SEED.signInError) return Promise.resolve({ data: null, error: { message: SEED.signInError } });
+        return Promise.resolve({ data: { user: { id: UID } }, error: null });
+      },
       signUp: function (a) { window.__E2E.calls.push({ op: "signUp", args: a }); return Promise.resolve({ data: { user: { id: UID }, session: {} }, error: null }); },
       resetPasswordForEmail: function () { return Promise.resolve({ error: null }); },
       signOut: function () { window.__E2E.calls.push({ op: "signOut" }); return Promise.resolve({ error: null }); }

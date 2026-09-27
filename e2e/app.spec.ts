@@ -485,6 +485,94 @@ test.describe("권한은 DB 가 정한다", () => {
   });
 });
 
+test.describe("공용 로직 한 벌 (vendor/toto-core.js)", () => {
+  test("45) 앱이 공용 로직을 실제로 불러 쓴다", async ({ page }) => {
+    const { errors } = await open(page, { role: "admin" });
+    const core = await page.evaluate(() => {
+      const c = (window as unknown as { TotoCore?: Record<string, unknown> }).TotoCore;
+      return c ? Object.keys(c).sort() : null;
+    });
+    expect(core).not.toBeNull();
+    // 화면이 쓰는 것들이 빠지지 않았는지
+    for (const k of ["toDate", "ymd", "fmtTime", "ago", "hm", "babyAge", "dday", "errMsg", "diagnoseConfig"]) {
+      expect(core).toContain(k);
+    }
+    expect(errors).toEqual([]);
+  });
+
+  test("46) 로그인 실패 메시지가 영어로 나오지 않는다", async ({ page }) => {
+    // 예전에는 Firebase 오류코드(e.code)로 찾는 표를 쓰고 있어서, Supabase 가
+    // 주는 "Invalid login credentials" 가 그대로 가족 화면에 떴다.
+    await open(page, { loggedOut: true, signInError: "Invalid login credentials" });
+    await page.getByLabel("이메일", { exact: true }).fill("a@b.com");
+    await page.getByLabel("비밀번호", { exact: true }).fill("wrongpw");
+    await page.getByRole("button", { name: /로그인/ }).last().click();
+    await page.waitForTimeout(1200);
+    const body = await page.locator("body").innerText();
+    expect(body).toContain("이메일 또는 비밀번호가 올바르지 않아요");
+    expect(body).not.toContain("Invalid login credentials");
+  });
+
+  test("47) 나이 계산이 자정 기준이라 오후에 봐도 하루가 안 틀어진다", async ({ page }) => {
+    await open(page, { role: "admin", birthDate: "2026-08-10", dueDate: "" });
+    const days = await page.evaluate(() => {
+      const c = (window as unknown as {
+        TotoCore: { babyAge: (b: unknown, n: Date) => { days?: number } };
+      }).TotoCore;
+      const baby = { birthDate: "2026-08-10", dueDate: "" };
+      // 같은 날의 아침과 밤은 같은 '생후 N일' 이어야 한다
+      return [
+        c.babyAge(baby, new Date("2026-09-27T06:00:00")).days,
+        c.babyAge(baby, new Date("2026-09-27T23:30:00")).days,
+      ];
+    });
+    expect(days[0]).toBe(days[1]);
+    expect(days[0]).toBe(48);
+  });
+
+  test("48) 24시간을 넘는 수면 값은 잘라서 보여준다", async ({ page }) => {
+    await open(page, { role: "admin" });
+    const out = await page.evaluate(() => {
+      const c = (window as unknown as { TotoCore: { hm: (m: number) => string } }).TotoCore;
+      return [c.hm(9999), c.hm(-5), c.hm(90)];
+    });
+    expect(out).toEqual(["24시간 0분", "0시간 0분", "1시간 30분"]);
+  });
+});
+
+test.describe("접속 설정이 잘못됐을 때", () => {
+  test("49) service_role 키를 넣으면 앱을 띄우지 않고 경고한다", async ({ page }) => {
+    await serveVendorLocally(page);
+    await page.route("**/supabase-config.js", (r) =>
+      r.fulfill({
+        contentType: "application/javascript",
+        body: `window.SUPABASE_URL="https://x.supabase.co";
+               window.SUPABASE_ANON_KEY="sb_secret_ABCDEFGHIJKLMNOP";
+               window.MEDIA_BUCKET="family-media";
+               window.supabase={createClient:function(){throw new Error("만들면 안 된다")}};`,
+      }));
+    await page.goto("/app.html", { waitUntil: "load" });
+    await page.waitForTimeout(2500);
+    const body = await page.locator("body").innerText();
+    expect(body).toContain("service_role");
+    expect(body).toContain("절대 넣지 마세요");
+  });
+
+  test("50) 키 자리에 주소를 넣으면 그렇다고 말해준다", async ({ page }) => {
+    await serveVendorLocally(page);
+    await page.route("**/supabase-config.js", (r) =>
+      r.fulfill({
+        contentType: "application/javascript",
+        body: `window.SUPABASE_URL="https://x.supabase.co";
+               window.SUPABASE_ANON_KEY="https://x.supabase.co";
+               window.supabase={createClient:function(){return {}}};`,
+      }));
+    await page.goto("/app.html", { waitUntil: "load" });
+    await page.waitForTimeout(2500);
+    expect(await page.locator("body").innerText()).toContain("키 자리에 주소를 넣으셨어요");
+  });
+});
+
 test.describe("PWA", () => {
   test("18) manifest 가 세로로 고정돼 있지 않다 (액자 모드가 가로를 쓴다)", async ({ page }) => {
     const res = await page.request.get("/manifest.webmanifest");
