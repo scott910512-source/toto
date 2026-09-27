@@ -232,7 +232,8 @@ test.describe("더보기 · 주소 기억", () => {
 
 test.describe("실행취소 · 잘못 눌렀을 때", () => {
   test("24) 빠른 기저귀 기록에 실행취소가 뜨고, 누르면 지워진다", async ({ page }) => {
-    const { errors } = await open(page, { role: "admin" });
+    // 기저귀 빠른 입력은 태어난 뒤 홈에 나온다
+    const { errors } = await open(page, { role: "admin", birthDate: "2026-08-10" });
     await go(page, "#/dashboard", 900);
     await page.getByRole("button", { name: /소변/ }).first().click();
     await page.waitForTimeout(900);
@@ -382,6 +383,62 @@ test.describe("키보드·스크린리더", () => {
       return out;
     });
     expect(tooSmall).toEqual([]);
+  });
+});
+
+test.describe("홈 — 시기에 맞는 것이 위에", () => {
+  test("35) 출산 전 홈은 D-day 와 초음파가 앞에 온다", async ({ page }) => {
+    const { errors } = await open(page, { role: "admin", dueDate: "2026-12-14", birthDate: "" });
+    const body = await page.locator("body").innerText();
+    expect(body).toMatch(/D-\d+/);
+    expect(body).toContain("최근 초음파");
+    // 아직 쓸 일 없는 것은 홈에서 빼 두었다
+    expect(body).not.toContain("오늘 타임라인");
+    expect(body).not.toContain("최근 7일 통계");
+    // 없어진 게 아니라는 안내는 남긴다
+    expect(body).toContain("태어난 뒤 홈에 나타나요");
+    expect(errors).toEqual([]);
+  });
+
+  test("36) 출산 전 홈에서 초음파 카드를 누르면 임신 기록으로 간다", async ({ page }) => {
+    await open(page, { role: "admin", birthDate: "" });
+    await page.getByRole("button", { name: /최근 초음파/ }).click();
+    await page.waitForTimeout(1200);
+    expect(await page.evaluate(() => location.hash)).toBe("#/records/prenatal");
+  });
+
+  test("37) 태어난 뒤 홈은 빠른 입력이 통계보다 위에 온다", async ({ page }) => {
+    const { errors } = await open(page, { role: "admin", birthDate: "2026-08-10" });
+    const order = await page.evaluate(() => {
+      const t = document.body.innerText;
+      return { quick: t.indexOf("빠른 입력"), today: t.indexOf("수유"), week: t.indexOf("최근 7일 통계") };
+    });
+    expect(order.quick).toBeGreaterThan(-1);
+    expect(order.week).toBeGreaterThan(order.quick);
+    expect(errors).toEqual([]);
+  });
+
+  test("38) 태어난 뒤 홈에 오늘 요약·타임라인·주간통계가 모두 있다", async ({ page }) => {
+    await open(page, { role: "admin", birthDate: "2026-08-10" });
+    const body = await page.locator("body").innerText();
+    expect(body).toContain("오늘 타임라인");
+    expect(body).toContain("최근 7일 통계");
+    expect(body).toContain("마지막 수유");
+  });
+});
+
+test.describe("말투 — 진단하지 않는다", () => {
+  test("39) 체온·심박 안내에 '정상/비정상' 판정이 없다", async ({ page }) => {
+    await open(page, { role: "admin", birthDate: "2026-08-10" });
+    await go(page, "#/records/health", 1500);
+    const body = await page.locator("body").innerText();
+    expect(body).not.toContain("비정상");
+    expect(body).toContain("수첩");            // 면책 안내가 보인다
+  });
+
+  test("40) 놀라게 하는 🚨 표시를 쓰지 않는다", async ({ page }) => {
+    const res = await page.request.get("/app.html");
+    expect(await res.text()).not.toContain("🚨");
   });
 });
 
