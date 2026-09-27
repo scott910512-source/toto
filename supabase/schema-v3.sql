@@ -14,6 +14,25 @@
 -- ============================================================================
 
 -- ────────────────────────────────────────────────────────────────────────────
+-- 0. 사전 점검 — 앞 단계가 안 돌았으면 여기서 친절하게 멈춘다
+--    (이 에러가 보이면 schema.sql → schema-v2.sql 을 먼저 실행하세요)
+-- ────────────────────────────────────────────────────────────────────────────
+do $preflight$
+declare missing text := '';
+begin
+  if to_regclass('public.profiles') is null then missing := missing || ' profiles'; end if;
+  if to_regclass('public.media')    is null then missing := missing || ' media';    end if;
+  if to_regclass('public.albums')   is null then missing := missing || ' albums';   end if;
+  if to_regclass('public.records')  is null then missing := missing || ' records';  end if;
+
+  if missing <> '' then
+    raise exception
+      '앞 단계가 아직 실행되지 않았습니다. 없는 테이블:% / 이 프로젝트에서 schema.sql → schema-v2.sql 을 먼저 실행한 뒤 이 파일을 실행하세요. 확인: select table_name from information_schema.tables where table_schema=''public'';',
+      missing;
+  end if;
+end $preflight$;
+
+-- ────────────────────────────────────────────────────────────────────────────
 -- 1. families — 가족(= 아기 한 명) 단위
 -- ────────────────────────────────────────────────────────────────────────────
 create table if not exists public.families (
