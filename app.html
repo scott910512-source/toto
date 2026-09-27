@@ -401,7 +401,7 @@
   const hm = (mins) => `${Math.floor(mins / 60)}시간 ${Math.round(mins % 60)}분`;
 
   // 화면에 표시할 빌드 버전 — 폰이 최신인지 바로 확인할 수 있게
-  const APP_VERSION = "v22";
+  const APP_VERSION = "v23";
 
   /* ========================================================================
      1. Supabase 초기화 + Firestore 호환 계층
@@ -680,31 +680,40 @@
   };
 
   /* ── settings (단일 행) ─────────────────────────────────────────────── */
+  /* 아기 정보는 가족(families)마다 따로 보관된다. RLS 가 내 가족 행만 돌려주므로
+     별도 조건 없이 첫 행을 쓰면 된다. */
+  let myFamilyId = null;
+  const loadFamily = async () => {
+    const { data } = await sb.from("families").select("*").limit(1).maybeSingle();
+    if (data) myFamilyId = data.id;
+    return data || null;
+  };
   const settingsHandle = () => ({
     onSnapshot: (cb, errCb) => watchSettings(cb, errCb),
     get: async () => {
-      const { data } = await sb.from("settings").select("*").eq("id", "baby").maybeSingle();
-      return { exists: !!data, data: () => (data ? data.data : null) };
+      const f = await loadFamily();
+      return { exists: !!f, data: () => (f ? f.baby : null) };
     },
     set: async (obj, opt) => {
-      const { data: cur } = await sb.from("settings").select("data").eq("id", "baby").maybeSingle();
-      const base = (opt && opt.merge && cur) ? cur.data || {} : {};
-      const { error } = await sb.from("settings")
-        .upsert({ id: "baby", data: { ...base, ...obj }, updated_at: new Date().toISOString() }, { onConflict: "id" });
+      const f = await loadFamily();
+      if (!f) throw new Error("가족 정보를 찾을 수 없어요. 다시 로그인해주세요.");
+      const base = (opt && opt.merge) ? (f.baby || {}) : {};
+      const { error } = await sb.from("families").update({ baby: { ...base, ...obj } }).eq("id", f.id);
       if (error) throw error;
     },
   });
   const watchSettings = (cb, errCb) => {
     let alive = true;
     const run = async () => {
-      const { data, error } = await sb.from("settings").select("*").eq("id", "baby").maybeSingle();
+      const { data, error } = await sb.from("families").select("*").limit(1).maybeSingle();
       if (!alive) return;
       if (error) { if (errCb) errCb(error); return; }
-      cb({ exists: !!data, data: () => (data ? data.data : null) });
+      if (data) myFamilyId = data.id;
+      cb({ exists: !!data, data: () => (data ? data.baby : null) });
     };
     run();
-    const ch = sb.channel(`wset${++chanSeq}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "settings" }, () => { if (alive) run(); })
+    const ch = sb.channel(`wfam${++chanSeq}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "families" }, () => { if (alive) run(); })
       .subscribe();
     return () => { alive = false; try { sb.removeChannel(ch); } catch (e) {} };
   };
@@ -765,8 +774,11 @@
       if (error) throw error;
       return { user: mapUser(data.user) };
     },
-    createUserWithEmailAndPassword: async (email, password) => {
-      const { data, error } = await sb.auth.signUp({ email: String(email).trim(), password });
+    createUserWithEmailAndPassword: async (email, password, meta) => {
+      const { data, error } = await sb.auth.signUp({
+        email: String(email).trim(), password,
+        options: meta ? { data: meta } : undefined,
+      });
       if (error) throw error;
       if (!data.user) throw new Error("가입은 됐지만 사용자 정보를 받지 못했어요.");
       return { user: mapUser(data.user), needsConfirm: !data.session };
@@ -1155,6 +1167,7 @@
     const [email, setEmail] = useState("");
     const [pw, setPw] = useState("");
     const [name, setName] = useState("");
+    const [invite, setInvite] = useState("");
     const [remember, setRemember] = useState(localStorage.getItem("baby-remember") !== "0");
     const [err, setErr] = useState("");
     const [busy, setBusy] = useState(false);
@@ -1182,7 +1195,9 @@
       try {
         if (mode === "signup") {
           if (!name.trim()) { setErr("닉네임을 입력해주세요."); setBusy(false); return; }
-          const cred = await auth.createUserWithEmailAndPassword(email.trim(), pw);
+          const cred = await auth.createUserWithEmailAndPassword(email.trim(), pw, {
+            display_name: name.trim(), invite_code: invite.trim().toUpperCase(),
+          });
           // 가입 즉시 관람전용 + 승인대기로 프로필 생성
           await COL.users().doc(cred.user.uid).set({
             email: email.trim(), name: name.trim(), role: "viewer", approved: false, disabled: false, createdAt: TS(),
@@ -1227,9 +1242,26 @@
           </div>
           <form onSubmit={submit} className="space-y-4">
             {mode === "signup" && (
-              <Field label="닉네임">
-                <input className={inputCls} value={name} onChange={(e) => setName(e.target.value)} placeholder="예: 이모, 삼촌" maxLength={20} />
-              </Field>
+              <>
+                <Field label="닉네임">
+                  <input className={inputCls} value={name} onChange={(e) => setName(e.target.value)} placeholder="예: 이모, 삼촌" maxLength={20} />
+                </Field>
+                <Field label="초대코드 (있는 경우에만)">
+                  <input className={inputCls + " tracking-[0.3em] uppercase text-center font-bold"} value={invite}
+                    onChange={(e) => setInvite(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6))}
+                    placeholder="______" maxLength={6} autoCapitalize="characters" autoCorrect="off" />
+                </Field>
+                <div className="text-[11px] leading-relaxed bg-teal-50 dark:bg-teal-900/20 rounded-xl p-3 text-slate-600 dark:text-slate-300 -mt-1">
+                  {invite.length === 6 ? (
+                    <><b className="text-teal-600 dark:text-teal-400">가족으로 합류합니다.</b><br />
+                    초대한 분이 승인하면 사진과 기록을 볼 수 있어요.</>
+                  ) : (
+                    <><b className="text-teal-600 dark:text-teal-400">우리 아기 수첩을 새로 만듭니다.</b><br />
+                    초대코드를 받으셨다면 위에 입력하세요. 비워두면 내 아기 전용 공간이 새로 생기고,
+                    다른 가족의 기록과는 완전히 분리됩니다.</>
+                  )}
+                </div>
+              </>
             )}
             <Field label="이메일">
               <input className={inputCls} type="email" autoComplete="username" inputMode="email"
@@ -1246,7 +1278,7 @@
               </label>
             )}
             {err && <p role="alert" className="text-sm text-rose-500 bg-rose-50 dark:bg-rose-900/30 rounded-lg px-3 py-2">⚠️ {err}</p>}
-            <Btn type="submit" disabled={busy} className="w-full">{busy ? "처리 중..." : (mode === "signup" ? "회원가입 신청" : "로그인")}</Btn>
+            <Btn type="submit" disabled={busy} className="w-full">{busy ? "처리 중..." : (mode === "signup" ? (invite.length === 6 ? "가족으로 합류하기" : "내 아기 수첩 만들기") : "로그인")}</Btn>
             {mode === "login" && <button type="button" onClick={resetPw} className="w-full text-sm text-slate-400 hover:text-teal-500 pt-1">비밀번호를 잊으셨나요?</button>}
           </form>
         </Card>
@@ -2971,7 +3003,10 @@
 
   const uploadPhotoFile = async (file, onStep) => {
     const now = new Date();
-    const base = `${now.getFullYear()}/${pad2(now.getMonth() + 1)}/${
+    // Storage 정책상 경로 첫 칸이 가족 id 여야 한다 (<familyId>/YYYY/MM/xxx)
+    if (!myFamilyId) await loadFamily();
+    if (!myFamilyId) throw new Error("가족 정보를 찾을 수 없어요. 다시 로그인해주세요.");
+    const base = `${myFamilyId}/${now.getFullYear()}/${pad2(now.getMonth() + 1)}/${
       (crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2) + Date.now()).replace(/-/g, "").slice(0, 16)}`;
     const ext = ((file.name || "").split(".").pop() || "jpg").toLowerCase().slice(0, 5);
     const storagePath = `${base}_o.${ext}`;
@@ -4743,8 +4778,25 @@
   //  대신 가족이 직접 가입하고 관리자가 승인하는 흐름을 씁니다.
   const AddAccountModal = ({ open, onClose }) => {
     const toast = useToast();
+    const confirm = useConfirm();
     const url = location.origin + location.pathname;
-    const msg = `또또 가족 앱에 초대합니다 👶\n\n${url}\n\n위 주소에서 '가입하기' 를 누르고 이메일·비밀번호를 정하면 돼요.\n가입 후 관리자가 승인하면 바로 사진을 보실 수 있어요.`;
+    const [code, setCode] = useState(null);
+    const [busy, setBusy] = useState(false);
+    useEffect(() => {
+      if (!open) return;
+      sb.rpc("my_invite_code").then(({ data }) => setCode(data || null)).catch(() => setCode(null));
+    }, [open]);
+    const reset = async () => {
+      if (!(await confirm("초대코드를 새로 만들까요?\n예전 코드는 더 이상 쓸 수 없게 됩니다.", { ok: "새로 만들기", variant: "primary" }))) return;
+      setBusy(true);
+      try {
+        const { data, error } = await sb.rpc("reset_invite_code");
+        if (error) throw error;
+        setCode(data); toast("새 초대코드를 만들었어요.", "success");
+      } catch (e) { toast(errMsg(e), "error"); }
+      finally { setBusy(false); }
+    };
+    const msg = `또또 가족 앱에 초대합니다 👶\n\n${url}\n\n1) 위 주소 열고 [가입하기]\n2) 초대코드 입력: ${code || "(코드를 받아주세요)"}\n3) 이메일·비밀번호 정하고 가입\n\n가입 후 제가 승인하면 바로 사진을 보실 수 있어요.`;
     const copy = async (t) => {
       try { await navigator.clipboard.writeText(t); toast("복사했어요. 붙여넣기 하세요!", "success"); }
       catch (e) { toast("복사가 안 되면 주소를 길게 눌러 복사해주세요.", "error"); }
@@ -4760,10 +4812,24 @@
             <p className="text-sm font-bold text-teal-700 dark:text-teal-300 mb-1">초대는 3단계예요</p>
             <ol className="text-sm text-slate-600 dark:text-slate-300 space-y-1 list-decimal pl-4">
               <li>아래 버튼으로 주소를 보내주세요</li>
-              <li>가족이 직접 <b>가입하기</b> 로 이메일·비밀번호 등록</li>
+              <li>가족이 <b>가입하기</b> → <b>초대코드 입력</b> → 이메일·비밀번호 등록</li>
               <li>여기 <b>계정 관리</b> 에서 <b>승인</b> 하고 등급 지정</li>
             </ol>
           </div>
+          <div className="bg-slate-900 dark:bg-slate-950 rounded-2xl p-4 text-center">
+            <p className="text-[11px] text-slate-400 mb-1.5">우리 가족 초대코드</p>
+            <p className="text-3xl font-bold tracking-[0.35em] text-teal-300 pl-[0.35em]">{code || "······"}</p>
+            <div className="flex gap-2 justify-center mt-3">
+              <button onClick={() => code && copy(code)} disabled={!code}
+                className="text-xs px-3 py-1.5 rounded-lg bg-white/10 text-white disabled:opacity-40">코드 복사</button>
+              <button onClick={reset} disabled={busy}
+                className="text-xs px-3 py-1.5 rounded-lg bg-white/10 text-white/70 disabled:opacity-40">새로 만들기</button>
+            </div>
+          </div>
+          <p className="text-[11px] text-slate-400 leading-relaxed -mt-1">
+            이 코드를 넣고 가입해야 <b>우리 아기</b> 기록에 합류합니다.
+            코드 없이 가입하면 그분의 <b>새 아기 수첩</b>이 따로 만들어져요.
+          </p>
           <Field label="앱 주소">
             <div className="flex gap-2">
               <input className={inputCls + " flex-1 text-xs"} value={url} readOnly onFocus={(e) => e.target.select()} />
@@ -4891,12 +4957,16 @@
       setBusy(true); setLog([]); setDone(false);
       let okR = 0, okP = 0, skip = 0, bad = 0;
       try {
-        // 1) 아기 설정
+        // 1) 아기 설정 — 실패해도 기록·사진 가져오기는 계속한다
         if (data.baby) {
-          const b = { ...data.baby };
-          delete b.units;
-          await COL.settings().set(b, { merge: true });
-          say(`✅ 아기 정보 (${b.name || "이름없음"}) 반영`);
+          try {
+            const bb = { ...data.baby };
+            delete bb.units;
+            await COL.settings().set(bb, { merge: true });
+            say(`✅ 아기 정보 (${bb.name || "이름없음"}) 반영`);
+          } catch (e) {
+            say(`⚠️ 아기 정보 반영 실패 (계속 진행): ${errMsg(e)}`);
+          }
         }
 
         // 2) 기록
