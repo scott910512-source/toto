@@ -24,6 +24,13 @@ async function open(page: Page, seed: Seed = {}) {
   return { errors };
 }
 
+/* 하단 메뉴 구성이 바뀌어도 테스트가 흔들리지 않게 주소로 이동한다.
+   앱이 #/gallery, #/more/family 같은 해시 라우팅을 쓰기 때문에 가능하다. */
+async function go(page: Page, hash: string, wait = 1500) {
+  await page.evaluate((h) => { location.hash = h; }, hash);
+  await page.waitForTimeout(wait);
+}
+
 const calls = (page: Page) =>
   page.evaluate(() => (window as unknown as { __E2E: { calls: unknown[] } }).__E2E.calls);
 
@@ -33,7 +40,8 @@ test.describe("로그인 · 권한", () => {
     const nav = page.locator("nav");
     await expect(nav).toContainText("홈");
     await expect(nav).toContainText("기록");
-    await expect(nav).toContainText("설정");
+    await expect(nav).toContainText("사진");
+    await expect(nav).toContainText("더보기");   // 저장·설정은 이 안으로 들어갔다
     expect(errors).toEqual([]);
   });
 
@@ -70,23 +78,20 @@ test.describe("로그인 · 권한", () => {
 test.describe("나만보기 — 실제로 가려지는가", () => {
   test("5) 내가 올린 나만보기 사진은 나에게 보인다", async ({ page }) => {
     await open(page, { role: "parent", photos: 3, privatePhotos: 1, privateOwner: "me" });
-    await page.getByRole("button", { name: /갤러리/ }).first().click();
-    await page.waitForTimeout(1500);
+    await go(page, "#/gallery");
     await expect(page.locator(`img[alt="비밀사진0"]`)).toHaveCount(1);
   });
 
   test("6) 남이 올린 나만보기 사진은 일반 가족에게 안 보인다", async ({ page }) => {
     await open(page, { role: "parent", photos: 3, privatePhotos: 1, privateOwner: "other" });
-    await page.getByRole("button", { name: /갤러리/ }).first().click();
-    await page.waitForTimeout(1500);
+    await go(page, "#/gallery");
     await expect(page.locator(`img[alt="비밀사진0"]`)).toHaveCount(0);   // 가려져야 한다
     await expect(page.locator(`img[alt="사진1"]`)).toHaveCount(1);       // 공개 사진은 보인다
   });
 
   test("7) 관리자는 남의 나만보기도 볼 수 있다", async ({ page }) => {
     await open(page, { role: "admin", photos: 3, privatePhotos: 1, privateOwner: "other" });
-    await page.getByRole("button", { name: /갤러리/ }).first().click();
-    await page.waitForTimeout(1500);
+    await go(page, "#/gallery");
     await expect(page.locator(`img[alt="비밀사진0"]`)).toHaveCount(1);
   });
 });
@@ -94,8 +99,7 @@ test.describe("나만보기 — 실제로 가려지는가", () => {
 test.describe("기록", () => {
   test("8) 수유를 기록하면 저장 요청이 나간다", async ({ page }) => {
     await open(page, { role: "admin" });
-    await page.getByRole("button", { name: /기록/ }).first().click();
-    await page.waitForTimeout(800);
+    await go(page, "#/records/feeding", 900);
     await page.getByRole("button", { name: /수유/ }).first().click();
     await page.waitForTimeout(600);
 
@@ -110,8 +114,7 @@ test.describe("기록", () => {
 
   test("9) 기록에 family_id 를 프론트가 직접 넣지 않는다", async ({ page }) => {
     await open(page, { role: "admin" });
-    await page.getByRole("button", { name: /기록/ }).first().click();
-    await page.waitForTimeout(800);
+    await go(page, "#/records/feeding", 900);
     const c = (await calls(page)) as Array<{ op: string; t?: string; row?: Record<string, unknown> }>;
     const inserts = c.filter((x) => x.op === "insert" && x.t === "records");
     for (const ins of inserts) {
@@ -124,15 +127,13 @@ test.describe("기록", () => {
 test.describe("갤러리 · 슬라이드쇼", () => {
   test("10) 사진이 그려지고 서명 URL 을 받아온다", async ({ page }) => {
     await open(page, { role: "admin", photos: 3, privatePhotos: 0 });
-    await page.getByRole("button", { name: /갤러리/ }).first().click();
-    await page.waitForTimeout(1500);
+    await go(page, "#/gallery");
     expect(await page.locator("img").count()).toBeGreaterThan(0);
   });
 
   test("11) 슬라이드쇼가 열리고 액자 모드가 있다", async ({ page }) => {
     await open(page, { role: "admin", photos: 3, privatePhotos: 0 });
-    await page.getByRole("button", { name: /갤러리/ }).first().click();
-    await page.waitForTimeout(1200);
+    await go(page, "#/gallery", 1200);
     await page.getByRole("button", { name: /슬라이드쇼/ }).first().click();
     await page.waitForTimeout(1800);
     await expect(page.locator(".ss-root")).toBeVisible();
@@ -142,8 +143,7 @@ test.describe("갤러리 · 슬라이드쇼", () => {
 
   test("12) 좋아요는 DB 함수로 처리한다 (남의 사진에도 눌러야 하므로)", async ({ page }) => {
     await open(page, { role: "admin", photos: 3, privatePhotos: 0 });
-    await page.getByRole("button", { name: /갤러리/ }).first().click();
-    await page.waitForTimeout(1200);
+    await go(page, "#/gallery", 1200);
     await page.getByRole("button", { name: /슬라이드쇼/ }).first().click();
     await page.waitForTimeout(1800);
     await page.mouse.move(400, 300);                 // UI 다시 띄우기
@@ -172,8 +172,7 @@ test.describe("D-day", () => {
 test.describe("설정 · 가족", () => {
   test("15) 초대코드가 보인다", async ({ page }) => {
     await open(page, { role: "admin" });
-    await page.getByRole("button", { name: /설정/ }).first().click();
-    await page.waitForTimeout(1000);
+    await go(page, "#/more/family", 1200);
     const invite = page.getByRole("button", { name: /가족 초대/ });
     if (await invite.count()) {
       await invite.click();
@@ -184,8 +183,7 @@ test.describe("설정 · 가족", () => {
 
   test("16) D-day 위젯 코드를 우리 아기 값으로 만들어 준다", async ({ page }) => {
     await open(page, { role: "admin", babyName: "또또", dueDate: "2026-12-14" });
-    await page.getByRole("button", { name: /설정/ }).first().click();
-    await page.waitForTimeout(1200);
+    await go(page, "#/more/widget", 1400);
     const body = await page.locator("body").innerText();
     expect(body).toContain("D-day 위젯");
     expect(body).toContain("위젯 코드 복사");
@@ -197,6 +195,38 @@ test.describe("설정 · 가족", () => {
     await page.waitForTimeout(900);
     const c = (await calls(page)) as Array<{ op: string }>;
     expect(c.some((x) => x.op === "signOut")).toBe(true);
+  });
+});
+
+test.describe("더보기 · 주소 기억", () => {
+  test("21) 더보기에 저장·메달·설정이 모두 들어 있다 (없어진 기능이 아니다)", async ({ page }) => {
+    const { errors } = await open(page, { role: "admin" });
+    await go(page, "#/more", 900);
+    const body = await page.locator("body").innerText();
+    for (const label of ["저장한 사진", "메달", "가족 관리", "아기 정보", "D-day 위젯", "데이터 백업", "설정"]) {
+      expect(body).toContain(label);
+    }
+    expect(errors).toEqual([]);
+  });
+
+  test("22) 새로고침하면 보던 화면이 그대로 열린다", async ({ page }) => {
+    await open(page, { role: "admin", photos: 2, privatePhotos: 0 });
+    await go(page, "#/gallery", 1200);
+    await page.reload({ waitUntil: "load" });
+    await page.waitForTimeout(2500);
+    expect(await page.evaluate(() => location.hash)).toBe("#/gallery");
+    await expect(page.locator("nav button[aria-current=\"page\"]")).toContainText("사진");
+  });
+
+  test("23) 더보기 상세에서 뒤로가기를 누르면 목록으로 돌아온다", async ({ page }) => {
+    await open(page, { role: "admin" });
+    await go(page, "#/more", 900);
+    await page.getByRole("button", { name: /설정/ }).last().click();   // 목록 → 상세
+    await page.waitForTimeout(1200);
+    expect(await page.evaluate(() => location.hash)).toBe("#/more/settings");
+    await page.goBack();
+    await page.waitForTimeout(900);
+    expect(await page.evaluate(() => location.hash)).toBe("#/more");
   });
 });
 

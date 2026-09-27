@@ -4666,8 +4666,11 @@
     );
   };
 
-  const Settings = () => {
+  /* focus 가 주어지면 그 섹션만 보여준다 (더보기에서 들어온 경우).
+     focus 가 없으면 예전처럼 전부 보여준다. */
+  const Settings = ({ focus = null, dark: darkProp, setDark: setDarkProp } = {}) => {
     const { user, profile, isAdmin } = useAuth();
+    const show = (name) => !focus || focus === name;
     const toast = useToast();
     const confirm = useConfirm();
     const baby = useBaby();
@@ -4837,6 +4840,7 @@
     return (
       <div className="p-4 space-y-4 pb-safe">
         {/* 내 정보 */}
+        {show("settings") && (
         <Card className="p-4">
           <div className="flex items-start justify-between">
             <h3 className="font-bold text-slate-800 dark:text-white mb-2">내 계정</h3>
@@ -4848,12 +4852,14 @@
             {isAdmin ? "관리자" : roleLabel(profile && profile.role)}
           </span>
         </Card>
+        )}
         <NicknameModal open={nickOpen} onClose={() => setNickOpen(false)} />
 
-        {/* 내 메달 */}
-        <MyMedals />
+        {/* 내 메달 — 더보기에 따로 있으므로 전체 보기에서만 */}
+        {!focus && <MyMedals />}
 
         {/* 아기 정보 */}
+        {show("baby") && (
         <Card className="p-4 space-y-3">
           <h3 className="font-bold text-slate-800 dark:text-white">아기 정보 {isAdmin ? "" : "(관리자만 수정)"}</h3>
           <Field label="이름"><input className={inputCls} value={babyForm.name} disabled={!isAdmin} onChange={(e) => setBabyForm({ ...babyForm, name: e.target.value })} /></Field>
@@ -4871,9 +4877,10 @@
           )}
           {isAdmin && <Btn onClick={saveBaby} className="w-full">저장</Btn>}
         </Card>
+        )}
 
         {/* 데이터 내보내기 / 백업 */}
-        {isAdmin && (
+        {isAdmin && show("backup") && (
           <Card className="p-4 space-y-3">
             <h3 className="font-bold text-slate-800 dark:text-white">데이터 내보내기</h3>
             <p className="text-[11px] text-slate-400">소아과 진료·기록 보관용으로 내보낼 수 있어요.</p>
@@ -4902,9 +4909,10 @@
         <ImportModal open={importOpen} onClose={() => setImportOpen(false)} />
 
         {/* D-day 위젯 — 가족 누구나 자기 폰에 올릴 수 있게 */}
-        <DdayWidgetCard />
+        {show("widget") && <DdayWidgetCard />}
 
         {/* 버전 / 강제 새로고침 — 폰에 옛 화면이 남아 있을 때 사용 */}
+        {show("settings") && (
         <Card className="p-4 space-y-2">
           <div className="flex items-center justify-between">
             <span className="text-sm text-slate-600 dark:text-slate-300">앱 버전</span>
@@ -4922,9 +4930,10 @@
             location.reload(true);
           }}>🔄 최신으로 새로고침</Btn>
         </Card>
+        )}
 
         {/* 관리자: 계정 관리 */}
-        {isAdmin && (
+        {isAdmin && show("family") && (
           <Card className="p-4 space-y-3">
             <div className="flex items-center justify-between">
               <h3 className="font-bold text-slate-800 dark:text-white">계정 관리 <span className="text-[11px] font-normal text-slate-400">(총관리자=엄마·아빠)</span></h3>
@@ -5078,14 +5087,74 @@
   /* ========================================================================
      24. 하단 네비게이션
      ======================================================================== */
+  /* 주소창에 현재 화면을 남긴다.
+     · 모바일 Safari 에서 뒤로가기가 앱을 벗어나지 않고 이전 탭으로 간다
+     · 새로고침해도 보던 화면이 그대로 열린다
+     예) #/records/feeding, #/gallery, #/more/saved */
+  const useHashRoute = (fallback = "/dashboard") => {
+    const read = () => (location.hash || "#" + fallback).slice(1) || fallback;
+    const [path, setPath] = useState(read);
+    useEffect(() => {
+      const on = () => setPath(read());
+      window.addEventListener("hashchange", on);
+      if (!location.hash) history.replaceState(null, "", "#" + fallback);
+      return () => window.removeEventListener("hashchange", on);
+    }, []);
+    const nav = useCallback((p, { replace = false } = {}) => {
+      const next = "#" + (p.startsWith("/") ? p : "/" + p);
+      if (location.hash === next) { setPath(next.slice(1)); return; }
+      if (replace) { history.replaceState(null, "", next); setPath(next.slice(1)); }
+      else location.hash = next;
+    }, []);
+    const parts = path.split("/").filter(Boolean);
+    return { path, nav, tab: parts[0] || fallback.slice(1), sub: parts[1] || null };
+  };
+
+  /* 하단 메뉴는 5개까지만 둔다. 430px 에서 6개는 글자가 너무 작아진다.
+     나머지는 '더보기' 안으로 — 기능을 없애지는 않는다. */
+  const MORE_ITEMS = [
+    { id: "saved",    icon: "🔖", label: "저장한 사진", desc: "나중에 볼 사진 모음" },
+    { id: "medals",   icon: "🏅", label: "메달",        desc: "접속·편지 기록" },
+    { id: "family",   icon: "👥", label: "가족 관리",   desc: "승인 · 권한 · 초대", adminOnly: true },
+    { id: "baby",     icon: "👶", label: "아기 정보",   desc: "이름 · 출산예정일" },
+    { id: "widget",   icon: "📱", label: "D-day 위젯",  desc: "홈화면에 띄우기" },
+    { id: "backup",   icon: "💾", label: "데이터 백업", desc: "내보내기 · 가져오기", adminOnly: true },
+    { id: "settings", icon: "⚙️", label: "설정",        desc: "화면 · 단위 · 계정" },
+  ];
+
+  const MoreMenu = ({ nav }) => {
+    const { isAdmin, profile } = useAuth();
+    const items = MORE_ITEMS.filter((m) => !m.adminOnly || isAdmin);
+    return (
+      <div className="p-4 space-y-4 pb-safe">
+        <div className="px-1">
+          <h1 className="text-xl font-bold text-slate-800 dark:text-white">더보기</h1>
+          <p className="text-xs text-slate-400 mt-0.5">{(profile && profile.name) || ""}님</p>
+        </div>
+        <div className="space-y-2">
+          {items.map((m) => (
+            <button key={m.id} onClick={() => nav("/more/" + m.id)}
+              className="w-full flex items-center gap-3 bg-white dark:bg-slate-800 rounded-2xl p-4 shadow-sm active:scale-[.99] transition text-left">
+              <span className="text-2xl w-9 text-center" aria-hidden="true">{m.icon}</span>
+              <span className="flex-1 min-w-0">
+                <span className="block text-base font-bold text-slate-800 dark:text-white">{m.label}</span>
+                <span className="block text-sm text-slate-400 mt-0.5">{m.desc}</span>
+              </span>
+              <span className="text-slate-300 text-lg" aria-hidden="true">›</span>
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
   const BottomNav = ({ tab, setTab }) => {
     const navs = [
       { id: "dashboard", icon: "🏠", label: "홈" },
       { id: "records", icon: "📋", label: "기록" },
-      { id: "gallery", icon: "🖼️", label: "갤러리" },
+      { id: "gallery", icon: "🖼️", label: "사진" },
       { id: "letters", icon: "💌", label: "편지" },
-      { id: "saved", icon: "🔖", label: "저장" },
-      { id: "settings", icon: "⚙️", label: "설정" },
+      { id: "more", icon: "⋯", label: "더보기" },
     ];
     return (
       <nav className="shrink-0 bg-white/95 dark:bg-slate-800/95 backdrop-blur border-t border-slate-100 dark:border-slate-700 nav-safe" aria-label="주요 메뉴">
@@ -5094,9 +5163,9 @@
             const active = tab === n.id;
             return (
               <button key={n.id} onClick={() => setTab(n.id)} aria-current={active ? "page" : undefined}
-                className={`flex-1 flex flex-col items-center gap-0.5 py-2.5 ${active ? "text-teal-500" : "text-slate-400"}`}>
-                <span className="text-xl" aria-hidden="true">{n.icon}</span>
-                <span className="text-[10px] font-medium">{n.label}</span>
+                className={`flex-1 flex flex-col items-center justify-center gap-0.5 py-2 min-h-[56px] ${active ? "text-teal-500" : "text-slate-500 dark:text-slate-400"}`}>
+                <span className="text-[22px] leading-none" aria-hidden="true">{n.icon}</span>
+                <span className="text-[12px] font-medium">{n.label}</span>
               </button>
             );
           })}
@@ -5743,15 +5812,39 @@ Script.complete();
   /* ========================================================================
      25. 메인 앱 셸
      ======================================================================== */
+  /* 더보기 하위 화면. 기존 Settings 안의 카드들을 주제별로 나눠 보여준다.
+     기능을 없애지 않고 위치만 정리한 것이다. */
+  const MoreDetail = ({ section, nav, dark, setDark }) => {
+    const item = MORE_ITEMS.find((m) => m.id === section);
+    const title = item ? `${item.icon} ${item.label}` : "더보기";
+    return (
+      <div className="pb-safe">
+        <div className="flex items-center gap-2 px-4 pt-4">
+          <button onClick={() => nav("/more")} aria-label="더보기로 돌아가기"
+            className="w-11 h-11 -ml-2 flex items-center justify-center text-2xl text-slate-500 dark:text-slate-300">‹</button>
+          <h1 className="text-lg font-bold text-slate-800 dark:text-white">{title}</h1>
+        </div>
+        {section === "saved" && <Saved />}
+        {section === "medals" && <div className="p-4"><MyMedals /></div>}
+        {(section === "family" || section === "baby" || section === "widget"
+          || section === "backup" || section === "settings") && (
+          <Settings focus={section} dark={dark} setDark={setDark} />
+        )}
+      </div>
+    );
+  };
+
   const MainApp = () => {
     const { profile, isAdmin, approved } = useAuth();
     const [dark, setDark] = useDarkMode();
-    const [tab, setTab] = useState("dashboard");
-    const [recSub, setRecSub] = useState("feeding");
+    const { nav, tab, sub } = useHashRoute("/dashboard");
     const [uploadOpen, setUploadOpen] = useState(false);
     const [uploadCat, setUploadCat] = useState("baby");
 
-    const go = (t, sub) => { setTab(t); if (sub) setRecSub(sub); };
+    const recSub = tab === "records" ? (sub || "feeding") : "feeding";
+    const setRecSub = (v) => nav("/records/" + v);
+    const setTab = (t) => nav("/" + t);
+    const go = (t, s2) => nav("/" + t + (s2 ? "/" + s2 : ""));
     const openUpload = (cat = "baby") => { setUploadCat(cat); setUploadOpen(true); };
 
     // 비활성화된 계정 차단 (관리자는 차단되지 않음 → 잠금 방지)
@@ -5793,6 +5886,10 @@ Script.complete();
           {tab === "records" && <Records sub={recSub} setSub={setRecSub} openUpload={() => openUpload("ultrasound")} />}
           {tab === "gallery" && <Gallery openUpload={() => openUpload("baby")} />}
           {tab === "letters" && <Letters />}
+          {/* 더보기 — 예전 '저장·설정' 을 포함해 한 곳에 모았다 */}
+          {tab === "more" && !sub && <MoreMenu nav={nav} />}
+          {tab === "more" && sub && <MoreDetail section={sub} nav={nav} dark={dark} setDark={setDark} />}
+          {/* 예전 주소로 들어와도 동작하도록 */}
           {tab === "saved" && <Saved />}
           {tab === "settings" && <Settings />}
         </main>
