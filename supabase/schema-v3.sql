@@ -117,6 +117,9 @@ begin
   )
   returning id into fid;
 
+  -- ⚠️ 주의: 이 시점에 가입해 있던 계정은 전부 이 가족으로 들어갑니다.
+  --    자기 아기를 따로 관리해야 하는 사람이 섞여 있었다면
+  --    supabase/fix-split-user.sql 로 분리하세요.
   update public.profiles     set family_id = fid where family_id is null;
   update public.records      set family_id = fid where family_id is null;
   update public.media        set family_id = fid where family_id is null;
