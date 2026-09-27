@@ -20,14 +20,91 @@
       (Run Script 로 두면 탭했을 때 앱이 열립니다)
    =========================================================================== */
 
-// ── 여기만 고치세요 (가족마다 자기 아기 날짜를 넣으면 됩니다) ──────────────
-const BABY = {
+// ── 처음 값 (Scriptable 앱에서 ▶︎ 실행하면 화면에서 바꿀 수 있습니다) ────────
+const DEFAULTS = {
   name: "또또",
   dueDate: "2026-12-14",   // 출산 예정일
-  birthDate: "",           // 태어나면 "2026-12-14" 처럼 채우세요 → 자동으로 D+ 로 전환
+  birthDate: "",           // 태어나면 채우세요 → 자동으로 D+ 로 전환
   appUrl: "https://scott910512-source.github.io/toto/app.html", // 위젯 탭하면 열릴 주소
 };
 // ───────────────────────────────────────────────────────────────────────────
+
+/* 저장된 설정 — 앱에서 ▶︎ 로 실행해 입력하면 기기에 보관되고,
+   위젯은 그 값을 씁니다. 아기가 태어나면 출생일만 다시 넣으면 D+ 로 바뀝니다. */
+const STORE_KEY = "toto-dday-config";
+
+const loadConfig = () => {
+  try {
+    if (Keychain.contains(STORE_KEY)) {
+      const saved = JSON.parse(Keychain.get(STORE_KEY));
+      return { ...DEFAULTS, ...saved };
+    }
+  } catch (e) { /* 저장값이 깨졌으면 기본값 사용 */ }
+  return { ...DEFAULTS };
+};
+const saveConfig = (c) => {
+  try { Keychain.set(STORE_KEY, JSON.stringify(c)); return true; }
+  catch (e) { return false; }
+};
+
+const BABY = loadConfig();
+
+/* YYYY-MM-DD 인지, 진짜 존재하는 날짜인지 확인 */
+const isValidDate = (s) => {
+  if (!s) return true;                       // 비워두는 건 허용(출생일)
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+  const [y, m, d] = s.split("-").map(Number);
+  const dt = new Date(y, m - 1, d);
+  return dt.getFullYear() === y && dt.getMonth() === m - 1 && dt.getDate() === d;
+};
+
+/* 앱에서 ▶︎ 실행했을 때 뜨는 입력 화면 */
+async function editConfig() {
+  const a = new Alert();
+  a.title = "D-day 위젯 설정";
+  a.message = "날짜는 2026-12-14 처럼 입력하세요.\n아기가 태어났으면 출생일을 채우면 D+ 로 바뀝니다.";
+  a.addTextField("아기 이름", BABY.name || "");
+  a.addTextField("출산 예정일 (YYYY-MM-DD)", BABY.dueDate || "");
+  a.addTextField("출생일 (없으면 비워두기)", BABY.birthDate || "");
+  a.addAction("저장");
+  a.addCancelAction("취소");
+
+  const picked = await a.present();
+  if (picked !== 0) return false;            // 취소
+
+  const name = (a.textFieldValue(0) || "").trim().slice(0, 20) || "아기";
+  const due = (a.textFieldValue(1) || "").trim();
+  const birth = (a.textFieldValue(2) || "").trim();
+
+  if (!isValidDate(due) || !isValidDate(birth)) {
+    const e = new Alert();
+    e.title = "날짜 형식을 확인해주세요";
+    e.message = "2026-12-14 형식이어야 합니다.\n입력한 값: " +
+      (isValidDate(due) ? birth : due);
+    e.addAction("확인");
+    await e.present();
+    return await editConfig();               // 다시 입력받기
+  }
+  if (!due && !birth) {
+    const e = new Alert();
+    e.title = "날짜가 필요해요";
+    e.message = "출산 예정일 또는 출생일 중 하나는 입력해주세요.";
+    e.addAction("확인");
+    await e.present();
+    return await editConfig();
+  }
+
+  BABY.name = name; BABY.dueDate = due; BABY.birthDate = birth;
+  const ok = saveConfig({ name, dueDate: due, birthDate: birth, appUrl: BABY.appUrl });
+  if (!ok) {
+    const e = new Alert();
+    e.title = "저장하지 못했어요";
+    e.message = "이번 실행에만 반영됩니다. 다시 시도해주세요.";
+    e.addAction("확인");
+    await e.present();
+  }
+  return true;
+}
 
 const C = {
   from: new Color("#7dd3c0"),
@@ -298,14 +375,41 @@ function buildWidget(size) {
 // ── 실행 ────────────────────────────────────────────────────────────────────
 const family = config.widgetFamily || "medium";
 const isAccessory = String(family).indexOf("accessory") === 0;   // 잠금화면 위젯
-const widget = isAccessory ? buildAccessory(family) : buildWidget(family);
 
 if (config.runsInWidget) {
-  Script.setWidget(widget);
+  // 홈/잠금화면 위젯: 저장된 값으로 그리기만 한다
+  Script.setWidget(isAccessory ? buildAccessory(family) : buildWidget(family));
 } else {
-  // 앱에서 직접 실행하면 미리보기
-  if (family === "small") await widget.presentSmall();
-  else if (family === "large" || family === "extraLarge") await widget.presentLarge();
-  else await widget.presentMedium();
+  // Scriptable 앱에서 ▶︎ 로 실행: 설정을 고칠 수 있게 물어본 뒤 미리보기
+  const menu = new Alert();
+  menu.title = BABY.name + " D-day";
+  menu.message = (function () {
+    const s = computeState();
+    return s.big + " · " + s.sub + "\n" +
+      (BABY.birthDate ? "출생일 " + BABY.birthDate : "출산예정일 " + (BABY.dueDate || "미설정"));
+  })();
+  menu.addAction("✏️ 날짜 수정");
+  menu.addAction("👀 미리보기");
+  menu.addCancelAction("닫기");
+
+  const pick = await menu.present();
+  if (pick === 0) {
+    const changed = await editConfig();
+    if (changed) {
+      const done = new Alert();
+      const s = computeState();
+      done.title = "저장했어요";
+      done.message = BABY.name + " · " + s.big + "\n" + s.sub +
+        "\n\n홈화면 위젯은 잠시 뒤 자동으로 바뀝니다.";
+      done.addAction("확인");
+      await done.present();
+    }
+  }
+  if (pick === 0 || pick === 1) {
+    const w = isAccessory ? buildAccessory(family) : buildWidget(family);
+    if (family === "small") await w.presentSmall();
+    else if (family === "large" || family === "extraLarge") await w.presentLarge();
+    else await w.presentMedium();
+  }
 }
 Script.complete();
