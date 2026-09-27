@@ -1,0 +1,17 @@
+node_modules/
+dist/
+_site/
+test-results/
+playwright-report/
+.vite/
+*.local
+.DS_Store
+
+# E2E 벤더 — node_modules 에서 생성 (tools/prepare-e2e-vendor.mjs)
+e2e/vendor/react.js
+e2e/vendor/react-dom.js
+e2e/vendor/babel.js
+e2e/vendor/prop-types.js
+e2e/vendor/recharts.js
+e2e/vendor/exifr.js
+e2e/vendor/empty.css

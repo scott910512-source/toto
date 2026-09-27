@@ -686,9 +686,11 @@
 
     // 저장된 로그인 정보 불러오기 + 자동 로그인
     useEffect(() => {
+      // 비밀번호는 저장하지 않는다. 이메일만 기억한다.
+      try { localStorage.removeItem("baby-cred"); } catch (e) {}
+      const savedEmail = localStorage.getItem("toto-email");
+      if (savedEmail) setEmail(savedEmail);
       let saved = null;
-      try { saved = JSON.parse(localStorage.getItem("baby-cred") || "null"); } catch (e) {}
-      if (saved && saved.email) { setEmail(saved.email); setPw(saved.pw || ""); }
       // 로그아웃 직후엔 자동 로그인 건너뜀(다시 로그인하면 재활성화)
       const skip = localStorage.getItem("baby-skip-autologin") === "1";
       if (saved && saved.email && saved.pw && !skip && !autoTried.current) {
@@ -719,10 +721,10 @@
         localStorage.removeItem("baby-skip-autologin");
         if (remember) {
           localStorage.setItem("baby-remember", "1");
-          localStorage.setItem("baby-cred", JSON.stringify({ email: email.trim(), pw }));
+          localStorage.setItem("toto-email", email.trim());
         } else {
           localStorage.setItem("baby-remember", "0");
-          localStorage.removeItem("baby-cred");
+          localStorage.removeItem("toto-email");
         }
       } catch (ex) {
         setErr(errMsg(ex));
