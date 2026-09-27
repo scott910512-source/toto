@@ -29,6 +29,16 @@ jobs:
       - run: npm run lint
       - run: npm run typecheck
       - run: npm test
+      # 가족이 쓰는 주소로 올라가기 전에 실제 화면까지 돌려본다.
+      # 로그인·나만보기·기록·갤러리가 깨진 채 배포되는 일을 막는 게 목적이다.
+      - run: npx playwright install --with-deps chromium webkit
+      - run: npm run e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: deploy-playwright-report
+          path: playwright-report/
+          retention-days: 7
 
   deploy:
     name: 배포
