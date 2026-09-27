@@ -1,8 +1,14 @@
 name: CI
 
+# 이 저장소에는 main 이 없다. 프로젝트마다 claude/* 브랜치를 쓰고,
+# GitHub Pages 가 claude/baby-care-firebase-app-QPyK0 브랜치를 그대로 내보낸다.
+# 그래서 검사도 그 브랜치 푸시에서 돌아야 한다. (예전엔 main 만 보고 있어서
+# 한 번도 돌지 않았다)
 on:
   push:
-    branches: [main]
+    branches:
+      - "claude/**"
+      - main
   pull_request:
   workflow_dispatch:
 
