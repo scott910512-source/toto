@@ -428,7 +428,7 @@
   const hm = (mins) => `${Math.floor(mins / 60)}시간 ${Math.round(mins % 60)}분`;
 
   // 화면에 표시할 빌드 버전 — 폰이 최신인지 바로 확인할 수 있게
-  const APP_VERSION = "v27";
+  const APP_VERSION = "v28";
 
   /* ========================================================================
      1. Supabase 초기화 + Firestore 호환 계층
@@ -1097,38 +1097,17 @@
       !!email && ADMIN_EMAILS.map((e) => e.toLowerCase()).includes(email.toLowerCase());
 
     useEffect(() => {
-      // onAuthStateChanged 로 로그인 상태 관리 (주의사항)
       const unsub = auth.onAuthStateChanged(async (u) => {
         setUser(u);
         if (!u) { setProfile(null); return; }
-        // users/{uid} 프로필 보장 (없으면 생성, 있으면 관리자 이메일 자동 승격)
-        const ref = COL.users().doc(u.uid);
-        const snap = await ref.get();
-        const wantAdmin = isAdminEmail(u.email);
-        const today = ymd(new Date());
+        // 프로필은 DB 트리거(handle_new_user)가 만든다. 프론트는 만들지 않는다.
+        // 여기서 하는 일은 "오늘 들어왔다" 를 남기는 것 하나뿐이다.
+        // role/approved/family_id/disabled 는 절대 쓰지 않는다 — DB 가 정한다.
         try {
-          if (!snap.exists) {
-            // 새 계정(자가 회원가입): 관람전용 + 승인대기. 관리자 이메일은 즉시 관리자.
-            const name = (u.email || "").split("@")[0];
-            await ref.set({
-              email: u.email, name,
-              role: wantAdmin ? "admin" : "viewer",
-              approved: wantAdmin ? true : false,
-              disabled: false, loginDays: [today], letterCount: 0, createdAt: TS(),
-            });
-          } else {
-            // 접속일 기록(중복 없이) + 관리자 자동 복구(승격·승인·차단해제)
-            const data = snap.data();
-            const upd = {};
-            if (wantAdmin) {
-              if (data.role !== "admin") upd.role = "admin";
-              if (data.approved === false) upd.approved = true;
-              if (data.disabled) upd.disabled = false; // 관리자는 차단 자동 해제
-            }
-            if (!(data.loginDays || []).includes(today)) upd.loginDays = SV.arrayUnion(today);
-            if (Object.keys(upd).length) await ref.update(upd);
-          }
-        } catch (e) { console.warn("프로필 동기화 실패:", e.code); }
+          await sb.rpc("touch_login");
+        } catch (e) {
+          console.warn("접속 기록 실패(계속 진행):", e && e.message);
+        }
       });
       return () => unsub();
     }, []);
@@ -1140,12 +1119,21 @@
       return () => unsub(); // 언마운트 시 리스너 해제 (시니어 검토 #7)
     }, [user && user.uid]);
 
-    // 클라이언트 관리자 판정: Firestore role 또는 ADMIN_EMAILS 둘 중 하나면 관리자(=총관리자)
-    const isAdmin = (profile && profile.role === "admin") || (user && isAdminEmail(user.email));
-    // 승인 여부: 관리자거나, approved가 명시적으로 false가 아니면 승인됨(기존 계정 호환)
-    const approved = isAdmin || (profile && profile.approved !== false);
+    // 권한은 DB 가 정한 것만 믿는다. 화면이 스스로 관리자라고 판단하지 않는다.
+    const isAdmin = !!(profile && profile.role === "admin" && profile.approved !== false);
+    const approved = !!(profile && profile.approved !== false);
 
-    return <AuthCtx.Provider value={{ user, profile, isAdmin, approved }}>{children}</AuthCtx.Provider>;
+    /* ADMIN_EMAILS 는 권한이 아니라 안내용이다.
+       "관리자여야 하는데 DB 는 아니라고 한다" 면 조용히 넘기지 않고 알려준다.
+       예전에는 여기서 화면이 관리자 메뉴를 열어줬는데, DB 가 거부해서
+       눌러도 안 되는 버튼만 보이는 상태였다. */
+    const adminMismatch = !!(user && profile && isAdminEmail(user.email) && !isAdmin);
+
+    return (
+      <AuthCtx.Provider value={{ user, profile, isAdmin, approved, adminMismatch }}>
+        {children}
+      </AuthCtx.Provider>
+    );
   };
 
   /* ========================================================================
@@ -6153,6 +6141,23 @@ Script.complete();
     }
   }
 
+  /* "관리자 이메일인데 DB 는 관리자가 아니라고 한다" 를 알려준다.
+     예전에는 화면이 스스로 관리자 권한을 줘 버려서, 눌러도 안 되는 버튼만
+     보이고 왜 안 되는지 알 수 없었다. 이제는 무엇을 해야 하는지 적어준다. */
+  const AdminMismatchBanner = () => {
+    const { adminMismatch, profile } = useAuth();
+    if (!adminMismatch) return null;
+    const role = (profile && profile.role) || "알 수 없음";
+    return (
+      <div role="alert" className="mx-4 mt-3 rounded-xl bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 p-3 text-[12px] leading-relaxed text-amber-800 dark:text-amber-200">
+        <b>관리자 권한이 서버에 반영되어 있지 않습니다.</b> 지금 권한은 <b>{role}</b> 이에요.<br />
+        화면만 관리자로 보이게 하면 눌러도 동작하지 않으므로, 그렇게 하지 않습니다.
+        다른 관리자에게 권한 변경을 요청하거나, Supabase 에서 profiles 의 role 을
+        확인해주세요.
+      </div>
+    );
+  };
+
   const App = () => {
     if (!sbReady) return <ToastProvider><ConfigNeeded /></ToastProvider>;
     return (
@@ -6161,6 +6166,7 @@ Script.complete();
           <ConfirmProvider>
             <AuthProvider>
               <UpdateBanner />
+              <AdminMismatchBanner />
               <Root />
             </AuthProvider>
           </ConfirmProvider>

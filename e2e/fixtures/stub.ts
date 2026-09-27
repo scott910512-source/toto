@@ -12,13 +12,15 @@ export type Seed = {
   privatePhotos?: number;
   /** 나만보기 사진을 올린 사람 — 본인이 아니면 못 봐야 한다 */
   privateOwner?: "me" | "other";
+  /** 로그인한 사람의 이메일. ADMIN_EMAILS 와의 불일치를 재현할 때 쓴다 */
+  email?: string;
 };
 
 export function stubScript(seed: Seed = {}): string {
   const s: Required<Seed> = {
     role: "admin", approved: true, babyName: "또또",
     dueDate: "2026-12-14", birthDate: "", records: 2, photos: 3,
-    privatePhotos: 1, privateOwner: "me",
+    privatePhotos: 1, privateOwner: "me", email: "me@t.com",
     ...seed,
   };
 
@@ -80,7 +82,7 @@ export function stubScript(seed: Seed = {}): string {
 
   var DB = {
     profiles: [{
-      id: UID, email: "me@t.com", display_name: "아부지요", role: SEED.role,
+      id: UID, email: SEED.email, display_name: "아부지요", role: SEED.role,
       approved: SEED.approved, disabled: false, login_days: [], letter_count: 0,
       family_id: "fam-1", created_at: new Date(now).toISOString()
     }],
@@ -148,7 +150,7 @@ export function stubScript(seed: Seed = {}): string {
 
   window.supabase = { createClient: function () { return {
     auth: {
-      getSession: function () { return Promise.resolve({ data: { session: { user: { id: UID, email: "me@t.com" } } } }); },
+      getSession: function () { return Promise.resolve({ data: { session: { user: { id: UID, email: SEED.email } } } }); },
       onAuthStateChange: function () { return { data: { subscription: { unsubscribe: function () {} } } }; },
       signInWithPassword: function (a) { window.__E2E.calls.push({ op: "signIn", args: a }); return Promise.resolve({ data: { user: { id: UID } }, error: null }); },
       signUp: function (a) { window.__E2E.calls.push({ op: "signUp", args: a }); return Promise.resolve({ data: { user: { id: UID }, session: {} }, error: null }); },

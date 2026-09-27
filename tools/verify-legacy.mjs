@@ -16,6 +16,9 @@ const FORBIDDEN = [
   { re: /["']sb_secret_[A-Za-z0-9_-]{10,}["']/, why: "service_role(비밀) 키가 코드에 있음", files: null },
   // app.html 전용: 가입 직후 권한 덮어쓰기 (Supabase 는 DB 트리거가 정한다)
   { re: /role:\s*["']viewer["'],\s*approved:\s*false/, why: "가입 직후 권한 덮어쓰기", files: ["app.html"] },
+  // app.html 전용: 프론트가 권한을 직접 쓰는 코드 (DB 트리거가 정해야 한다)
+  { re: /upd\.(role|approved|disabled)\s*=/, why: "프론트에서 role/approved/disabled 를 씀", files: ["app.html"] },
+  { re: /isAdminEmail\(\s*user\.email\s*\)\s*(\|\||\?)/, why: "이메일만으로 관리자 권한을 줌", files: ["app.html"] },
   // app.html 전용: 12px 아래로 내려간 글씨 (한 손으로 보는 화면이다)
   { re: /text-\[(?:[0-9]|10|11)px\]/, why: "12px 보다 작은 글씨", files: ["app.html"] },
   { re: /fontSize:\s*(?:[0-9]|10|11)\b/, why: "12px 보다 작은 차트 글씨", files: ["app.html"] },
@@ -33,6 +36,7 @@ const REQUIRED = [
   { re: /addRecordUndoable/, why: "빠른 기록 실행취소", files: ["app.html"] },
   { re: /useHashRoute/, why: "화면 주소 기억 (뒤로가기)", files: ["app.html"] },
   { re: /rpc\(["']toggle_like["']/, why: "좋아요를 DB 함수로 처리 (남의 사진에도 눌러야 한다)", files: ["app.html"] },
+  { re: /rpc\(["']touch_login["']/, why: "접속일 기록을 DB 함수로 처리", files: ["app.html"] },
 ];
 
 for (const f of FILES) {

@@ -442,6 +442,49 @@ test.describe("말투 — 진단하지 않는다", () => {
   });
 });
 
+test.describe("권한은 DB 가 정한다", () => {
+  test("41) 로그인해도 프론트가 권한을 쓰지 않는다", async ({ page }) => {
+    const { errors } = await open(page, { role: "admin" });
+    const c = (await calls(page)) as Array<{ op: string; t?: string; patch?: Record<string, unknown>; row?: Record<string, unknown> }>;
+    const writes = c.filter((x) => (x.op === "update" || x.op === "upsert" || x.op === "insert") && x.t === "profiles");
+    for (const w of writes) {
+      const body = { ...(w.patch || {}), ...(w.row || {}) };
+      // role/approved/family_id/disabled 는 DB 트리거와 관리자 화면만 건드린다
+      expect(Object.keys(body)).not.toContain("role");
+      expect(Object.keys(body)).not.toContain("approved");
+      expect(Object.keys(body)).not.toContain("disabled");
+      expect(Object.keys(body)).not.toContain("family_id");
+    }
+    expect(errors).toEqual([]);
+  });
+
+  test("42) 접속일은 DB 함수로 남긴다 (프로필을 직접 수정하지 않는다)", async ({ page }) => {
+    await open(page, { role: "admin" });
+    const c = (await calls(page)) as Array<{ op: string; fn?: string }>;
+    expect(c.some((x) => x.op === "rpc" && x.fn === "touch_login")).toBe(true);
+  });
+
+  test("43) 관리자 이메일이어도 DB 가 아니라고 하면 관리자 메뉴를 열지 않는다", async ({ page }) => {
+    // scott7259@naver.com 은 app.html 의 ADMIN_EMAILS 에 있다.
+    // 예전에는 이 조건만으로 화면이 관리자 권한을 줬다.
+    await open(page, { role: "family", email: "scott7259@naver.com" });
+    const body = await page.locator("body").innerText();
+    expect(body).toContain("관리자 권한이 서버에 반영되어 있지 않습니다");
+
+    await go(page, "#/more", 900);
+    // 가족 관리는 관리자만 보이는 항목이다
+    expect(await page.locator("body").innerText()).not.toContain("가족 관리");
+  });
+
+  test("44) DB 가 관리자라고 하면 그대로 관리자다 (안내는 안 뜬다)", async ({ page }) => {
+    await open(page, { role: "admin", email: "scott7259@naver.com" });
+    const body = await page.locator("body").innerText();
+    expect(body).not.toContain("관리자 권한이 서버에 반영되어 있지 않습니다");
+    await go(page, "#/more", 900);
+    expect(await page.locator("body").innerText()).toContain("가족 관리");
+  });
+});
+
 test.describe("PWA", () => {
   test("18) manifest 가 세로로 고정돼 있지 않다 (액자 모드가 가로를 쓴다)", async ({ page }) => {
     const res = await page.request.get("/manifest.webmanifest");
