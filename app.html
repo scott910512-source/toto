@@ -21,7 +21,34 @@
     // 서비스워커 등록 (오프라인 앱 셸 + 빠른 재방문). 실패해도 앱은 정상 동작.
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", function () {
-        navigator.serviceWorker.register("sw.js").catch(function () {});
+        navigator.serviceWorker.register("sw.js").then(function (reg) {
+          // 새 버전이 준비되면 화면에 알려준다 (사용자가 버튼을 찾아 누르지 않아도 되게)
+          function watch(worker) {
+            if (!worker) return;
+            worker.addEventListener("statechange", function () {
+              if (worker.state === "installed" && navigator.serviceWorker.controller) {
+                window.__swWaiting = worker;
+                window.dispatchEvent(new CustomEvent("toto:update-ready"));
+              }
+            });
+          }
+          if (reg.waiting && navigator.serviceWorker.controller) {
+            window.__swWaiting = reg.waiting;
+            window.dispatchEvent(new CustomEvent("toto:update-ready"));
+          }
+          watch(reg.installing);
+          reg.addEventListener("updatefound", function () { watch(reg.installing); });
+          // 주기적으로 새 버전이 올라왔는지 확인
+          setInterval(function () { reg.update().catch(function () {}); }, 30 * 60 * 1000);
+        }).catch(function () {});
+
+        // 새 서비스워커가 제어권을 넘겨받으면 한 번만 새로고침
+        var reloading = false;
+        navigator.serviceWorker.addEventListener("controllerchange", function () {
+          if (reloading) return;
+          reloading = true;
+          location.reload();
+        });
       });
     }
     // 설치 프롬프트는 React 마운트 전에 발생할 수 있어 미리 보관
@@ -401,7 +428,7 @@
   const hm = (mins) => `${Math.floor(mins / 60)}시간 ${Math.round(mins % 60)}분`;
 
   // 화면에 표시할 빌드 버전 — 폰이 최신인지 바로 확인할 수 있게
-  const APP_VERSION = "v25";
+  const APP_VERSION = "v26";
 
   /* ========================================================================
      1. Supabase 초기화 + Firestore 호환 계층
@@ -790,6 +817,15 @@
     signOut: () => sb.auth.signOut(),
   };
 
+  /* 예전 버전이 localStorage 에 평문으로 남긴 비밀번호를 제거한다.
+     (앱을 열 때마다 확인해서, 구버전을 쓰다 온 기기도 즉시 정리되게 한다) */
+  const purgeLegacyCredentials = () => {
+    try {
+      ["baby-cred", "baby-remember", "baby-skip-autologin"].forEach((k) => localStorage.removeItem(k));
+    } catch (e) { /* 저장소를 못 쓰는 환경이면 무시 */ }
+  };
+  purgeLegacyCredentials();
+
   /* 사진 원본을 Storage 에서 지우기 (기존 storage.ref(path).delete() 대체) */
   const removeStorage = async (paths) => {
     const list = (Array.isArray(paths) ? paths : [paths]).filter(Boolean);
@@ -821,8 +857,9 @@
 
   const TS = () => SV.serverTimestamp();
   const signOutApp = async () => {
-    try { localStorage.setItem("baby-skip-autologin", "1"); } catch (e) {}
-    signedUrlCache.clear();
+    purgeLegacyCredentials();
+    signedUrlCache.clear();          // 다른 사람이 이어서 쓸 때 서명 URL 재사용 방지
+    myFamilyId = null;
     return sb.auth.signOut();
   };
 
@@ -1173,20 +1210,12 @@
     const [busy, setBusy] = useState(false);
     const autoTried = useRef(false);
 
-    // 저장된 로그인 정보 불러오기 + 자동 로그인
+    // 이메일만 기억한다. 비밀번호는 저장하지 않는다.
+    // 로그인 유지는 Supabase 세션(persistSession + autoRefreshToken)이 담당한다.
     useEffect(() => {
-      let saved = null;
-      try { saved = JSON.parse(localStorage.getItem("baby-cred") || "null"); } catch (e) {}
-      if (saved && saved.email) { setEmail(saved.email); setPw(saved.pw || ""); }
-      // 로그아웃 직후엔 자동 로그인 건너뜀(다시 로그인하면 재활성화)
-      const skip = localStorage.getItem("baby-skip-autologin") === "1";
-      if (saved && saved.email && saved.pw && !skip && !autoTried.current) {
-        autoTried.current = true;
-        setBusy(true);
-        auth.signInWithEmailAndPassword(saved.email, saved.pw)
-          .catch(() => { /* 실패 시 입력값 유지 */ })
-          .finally(() => setBusy(false));
-      }
+      purgeLegacyCredentials();               // 예전 버전이 남긴 평문 비밀번호 제거
+      const savedEmail = localStorage.getItem("toto-email");
+      if (savedEmail) setEmail(savedEmail);
     }, []);
 
     const submit = async (e) => {
@@ -1195,26 +1224,31 @@
       try {
         if (mode === "signup") {
           if (!name.trim()) { setErr("닉네임을 입력해주세요."); setBusy(false); return; }
-          const cred = await auth.createUserWithEmailAndPassword(email.trim(), pw, {
-            display_name: name.trim(), invite_code: invite.trim().toUpperCase(),
+          // 초대코드를 넣었다면 먼저 존재하는 코드인지 확인한다.
+          // (없는 코드로 가입하면 엉뚱한 새 가족이 만들어지므로 여기서 막는다)
+          const codeIn = invite.trim().toUpperCase();
+          if (codeIn) {
+            const { data: ok, error: chkErr } = await sb.rpc("invite_code_exists", { p_code: codeIn });
+            if (chkErr) throw chkErr;
+            if (!ok) {
+              setErr("초대코드를 찾을 수 없습니다. 가족에게 코드를 다시 확인해주세요.");
+              setBusy(false);
+              return;
+            }
+          }
+          await auth.createUserWithEmailAndPassword(email.trim(), pw, {
+            display_name: name.trim(), invite_code: codeIn,
           });
-          // 가입 즉시 관람전용 + 승인대기로 프로필 생성
-          await COL.users().doc(cred.user.uid).set({
-            email: email.trim(), name: name.trim(), role: "viewer", approved: false, disabled: false, createdAt: TS(),
-          }, { merge: true });
-          toast("가입 완료! 관리자 승인 후 이용할 수 있어요.", "success");
+          // ⚠️ role/approved/family_id/disabled 는 프론트에서 절대 건드리지 않는다.
+          //    DB 트리거(handle_new_user)가 정하고, 여기서는 조회만 한다.
+          toast(codeIn ? "가입 완료! 관리자 승인 후 이용할 수 있어요."
+                       : "가입 완료! 바로 사용하실 수 있어요.", "success");
         } else {
           await auth.signInWithEmailAndPassword(email.trim(), pw);
         }
-        // 로그인 정보 저장 (체크 시) + 자동로그인 재활성화
-        localStorage.removeItem("baby-skip-autologin");
-        if (remember) {
-          localStorage.setItem("baby-remember", "1");
-          localStorage.setItem("baby-cred", JSON.stringify({ email: email.trim(), pw }));
-        } else {
-          localStorage.setItem("baby-remember", "0");
-          localStorage.removeItem("baby-cred");
-        }
+        // 이메일만 기억 (비밀번호는 절대 저장하지 않음)
+        if (remember) localStorage.setItem("toto-email", email.trim());
+        else localStorage.removeItem("toto-email");
       } catch (ex) {
         setErr(errMsg(ex));
       } finally { setBusy(false); }
@@ -1274,7 +1308,7 @@
             {mode === "login" && (
               <label className="flex items-center gap-2 cursor-pointer select-none">
                 <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} className="w-5 h-5 rounded accent-teal-500" />
-                <span className="text-sm text-slate-600 dark:text-slate-300">로그인 정보 저장 · 자동 로그인</span>
+                <span className="text-sm text-slate-600 dark:text-slate-300">이메일 기억하기</span>
               </label>
             )}
             {err && <p role="alert" className="text-sm text-rose-500 bg-rose-50 dark:bg-rose-900/30 rounded-lg px-3 py-2">⚠️ {err}</p>}
@@ -3081,6 +3115,7 @@
   const ALL_CATS = [{ value: "ultrasound", label: "초음파" }, { value: "baby", label: "아기사진" }, { value: "milestone", label: "성장기록" }];
   const UploadModal = ({ open, onClose, defaultCategory = "baby" }) => {
     const [albumId, setAlbumId] = useState(null);
+    const [previews, setPreviews] = useState([]);   // 선택한 파일 미리보기 URL
     // 초음파 업로드는 임신 페이지에서만 → 갤러리 업로드는 아기사진/성장기록만
     const catOptions = defaultCategory === "ultrasound" ? ALL_CATS.filter((c) => c.value === "ultrasound") : ALL_CATS.filter((c) => c.value !== "ultrasound");
     const { user, profile } = useAuth();
@@ -3107,6 +3142,14 @@
       COL.users().get().then((s) => setFamilyNames(s.docs.map((d) => d.data().name).filter(Boolean)))
         .catch(() => setFamilyNames([]));
     }, [open]);
+
+    // 미리보기 URL 은 파일이 바뀔 때만 만들고, 바뀌거나 닫힐 때 반드시 해제한다
+    // (render 마다 만들면 URL 이 계속 쌓여 메모리를 잡아먹는다)
+    useEffect(() => {
+      const urls = files.map((f) => URL.createObjectURL(f));
+      setPreviews(urls);
+      return () => urls.forEach((u) => { try { URL.revokeObjectURL(u); } catch (e) {} });
+    }, [files]);
 
     const pick = async (e) => {
       const list = Array.from(e.target.files || []).slice(0, 5); // 최대 5장
@@ -3178,9 +3221,9 @@
           </div>
           <p className="text-[11px] text-slate-400 text-center">최대 5장까지 업로드할 수 있어요</p>
 
-          {files.length > 0 && (
+          {previews.length > 0 && (
             <div className="grid grid-cols-3 gap-2">
-              {files.map((f, i) => <img key={i} src={URL.createObjectURL(f)} alt={`선택한 사진 ${i + 1}`} className="w-full aspect-square object-cover rounded-lg" />)}
+              {previews.map((src, i) => <img key={src} src={src} alt={`선택한 사진 ${i + 1}`} className="w-full aspect-square object-cover rounded-lg" />)}
             </div>
           )}
 
@@ -3191,7 +3234,6 @@
           )}
           <Field label="캡션"><input className={inputCls} value={caption} onChange={(e) => setCaption(e.target.value)} placeholder="사진 설명" /></Field>
 
-          <AlbumPicker value={albumId} onChange={setAlbumId} label="앨범 (선택)" />
           {/* 공개 범위 */}
           <ChipGroup label="공개 범위" value={vis} onChange={setVis}
             options={[{ value: "public", label: "🌐 전체공개" }, { value: "private", label: "🔒 나만보기" }]} />
@@ -4502,6 +4544,40 @@
   /* ========================================================================
      23. 설정 탭 (관리자 계정 관리 + 아기 정보)
      ======================================================================== */
+  /* 새 버전이 준비되면 위에 띄우는 배너 — 사용자가 설정을 뒤지지 않아도 되게 */
+  const UpdateBanner = () => {
+    const [ready, setReady] = useState(!!window.__swWaiting);
+    const [busy, setBusy] = useState(false);
+    useEffect(() => {
+      const on = () => setReady(true);
+      window.addEventListener("toto:update-ready", on);
+      return () => window.removeEventListener("toto:update-ready", on);
+    }, []);
+    if (!ready) return null;
+    const apply = () => {
+      setBusy(true);
+      try {
+        if (window.__swWaiting) window.__swWaiting.postMessage({ type: "SKIP_WAITING" });
+        else location.reload();
+      } catch (e) { location.reload(); }
+      // 혹시 신호가 먹히지 않으면 직접 새로고침
+      setTimeout(() => location.reload(), 2500);
+    };
+    return (
+      <Portal>
+        <div className="fixed left-0 right-0 z-[150] px-4" style={{ top: "calc(env(safe-area-inset-top) + 10px)" }}>
+          <div className="max-w-[430px] mx-auto flex items-center gap-3 rounded-2xl bg-slate-900/95 text-white px-4 py-3 shadow-lg backdrop-blur">
+            <span className="text-sm flex-1">새 버전이 있습니다</span>
+            <button onClick={apply} disabled={busy}
+              className="text-sm font-bold bg-teal-400 text-slate-900 rounded-xl px-3.5 py-1.5 disabled:opacity-60">
+              {busy ? "적용 중…" : "업데이트"}
+            </button>
+          </div>
+        </div>
+      </Portal>
+    );
+  };
+
   /* ========================================================================
      D-day 위젯 — Scriptable 코드와 전체화면 링크를 우리 아기 값으로 만들어 준다
      ======================================================================== */
@@ -4599,6 +4675,8 @@
     const [babyForm, setBabyForm] = useState({ name: baby.name, birthDate: baby.birthDate || "", dueDate: baby.dueDate || "", sex: baby.sex || "", unitsVol: (baby.units && baby.units.vol) || "ml" });
     const [addOpen, setAddOpen] = useState(false);
     const [importOpen, setImportOpen] = useState(false);
+    const [backupBusy, setBackupBusy] = useState(false);
+    const [backupProg, setBackupProg] = useState(null);
     const [nickOpen, setNickOpen] = useState(false);
     const [statusUser, setStatusUser] = useState(null); // 현황보기 대상
 
@@ -4680,24 +4758,71 @@
         toast("CSV로 내보냈어요.", "success");
       } catch (e) { toast(errMsg(e), "error"); }
     };
+    /* 사진 한 장의 원본을 받아 base64 로 만든다 (Storage → data URL) */
+    const fetchPhotoData = async (p) => {
+      const path = p.storagePath || p.previewPath || p.thumbPath;
+      if (!path) return null;
+      const url = await signOne(path);
+      if (!url) return null;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      const blob = await res.blob();
+      return await new Promise((resolve, reject) => {
+        const fr = new FileReader();
+        fr.onload = () => resolve(fr.result);
+        fr.onerror = () => reject(new Error("읽기 실패"));
+        fr.readAsDataURL(blob);
+      });
+    };
+
     const backupJSON = async () => {
+      if (backupBusy) return;
+      setBackupBusy(true);
+      setBackupProg({ label: "준비 중", done: 0, total: 0 });
       try {
-        toast("사진까지 모으는 중… 잠시만요.", "info");
-        const [recs, photoSnap, userSnap] = await Promise.all([
+        const [recs, photoSnap, userSnap, albumSnap] = await Promise.all([
           fetchAllRecords(),
           COL.photos().limit(3000).get(),
           COL.users().get().catch(() => ({ docs: [] })),
+          COL.albums().limit(200).get().catch(() => ({ docs: [] })),
         ]);
-        // 사진 원본(base64)까지 포함해야 다른 곳으로 옮길 수 있음
-        const photos = photoSnap.docs.map((d) => ({ id: d.id, ...d.data() }))
+        const metas = photoSnap.docs.map((d) => ({ id: d.id, ...d.data() }))
           .sort((a, b) => toDate(a.createdAt) - toDate(b.createdAt));
         const users = userSnap.docs.map((d) => ({ uid: d.id, ...d.data() }));
-        const data = { exportedAt: new Date().toISOString(), version: 2, baby, records: recs, photos, users };
-        const json = JSON.stringify(data, null, 2);
-        download(json, `아기수첩_백업_${ymd(new Date())}.json`, "application/json");
+        const albums = albumSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+
+        // 사진 원본을 하나씩 받아 담는다 (이게 없으면 복원할 때 사진이 사라진다)
+        const photos = [];
+        const failed = [];
+        for (let i = 0; i < metas.length; i++) {
+          setBackupProg({ label: "사진 담는 중", done: i, total: metas.length });
+          const p = metas[i];
+          try {
+            const dataUrl = await fetchPhotoData(p);
+            if (dataUrl) photos.push({ ...p, url: dataUrl });
+            else failed.push(p.id);
+          } catch (e) { failed.push(p.id); }
+        }
+        setBackupProg({ label: "파일 만드는 중", done: metas.length, total: metas.length });
+
+        const data = {
+          exportedAt: new Date().toISOString(), version: 3,
+          baby, records: recs, photos, users, albums,
+          summary: { records: recs.length, photos: photos.length, photosExpected: metas.length,
+                     albums: albums.length, users: users.length, failedPhotoIds: failed },
+        };
+        const json = JSON.stringify(data);
+        download(json, `또또백업_${ymd(new Date())}.json`, "application/json");
+
+        // 무결성 확인 — 담긴 수가 DB 수와 맞는지 비교해서 그대로 알려준다
         const mb = (json.length / 1048576).toFixed(1);
-        toast(`백업 완료 · 기록 ${recs.length}건 · 사진 ${photos.length}장 (${mb}MB)`, "success");
+        if (failed.length) {
+          toast(`⚠️ 사진 ${photos.length}/${metas.length}장만 담겼어요. ${failed.length}장 실패 — 다시 시도해주세요.`, "error");
+        } else {
+          toast(`백업 완료 · 기록 ${recs.length}건 · 사진 ${photos.length}/${metas.length}장 · 앨범 ${albums.length}개 (${mb}MB)`, "success");
+        }
       } catch (e) { toast(errMsg(e), "error"); }
+      finally { setBackupBusy(false); setBackupProg(null); }
     };
     const printSummary = async () => {
       try {
@@ -4755,10 +4880,23 @@
             <div className="grid grid-cols-3 gap-2">
               <Btn variant="ghost" onClick={exportCSV} className="text-sm py-2.5">📄 CSV</Btn>
               <Btn variant="ghost" onClick={printSummary} className="text-sm py-2.5">🖨️ 인쇄/PDF</Btn>
-              <Btn variant="ghost" onClick={backupJSON} className="text-sm py-2.5">💾 백업</Btn>
+              <Btn variant="ghost" onClick={backupJSON} disabled={backupBusy} className="text-sm py-2.5">
+                {backupBusy ? "백업 중…" : "💾 백업"}
+              </Btn>
               {isAdmin && <Btn variant="lavender" onClick={() => setImportOpen(true)} className="text-sm py-2.5">📥 가져오기</Btn>}
             </div>
-            {isAdmin && <p className="text-[11px] text-slate-400 mt-2">📥 가져오기 — 예전 육아수첩 백업(JSON)을 이곳으로 옮깁니다.</p>}
+            {backupProg && (
+              <div className="mt-2 space-y-1">
+                <p className="text-xs text-slate-500">
+                  {backupProg.label} {backupProg.total ? `${backupProg.done} / ${backupProg.total}` : ""}
+                </p>
+                <div className="h-2 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+                  <div className="h-full bg-teal-500 transition-all"
+                    style={{ width: `${backupProg.total ? (backupProg.done / backupProg.total) * 100 : 5}%` }} />
+                </div>
+              </div>
+            )}
+            {isAdmin && <p className="text-[11px] text-slate-400 mt-2">📥 가져오기 — 백업(JSON)을 이곳으로 되살립니다. 백업에는 사진 원본이 함께 담깁니다.</p>}
           </Card>
         )}
         <ImportModal open={importOpen} onClose={() => setImportOpen(false)} />
@@ -5721,6 +5859,7 @@ Script.complete();
         <ToastProvider>
           <ConfirmProvider>
             <AuthProvider>
+              <UpdateBanner />
               <Root />
             </AuthProvider>
           </ConfirmProvider>
