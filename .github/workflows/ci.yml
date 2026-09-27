@@ -31,6 +31,29 @@ jobs:
           VITE_SUPABASE_URL: ${{ vars.SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ vars.SUPABASE_ANON_KEY }}
 
+  sql:
+    name: DB 권한 검사 (RLS)
+    runs-on: ubuntu-latest
+    # 마이그레이션을 진짜 PostgreSQL 에 올려, 남의 집 사진이 열리지 않는지 확인한다.
+    # 운영 DB 는 건드리지 않는다 — 여기서 임시 DB 를 새로 만든다.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    env:
+      PGHOST: localhost
+      PGUSER: postgres
+      PGPASSWORD: postgres
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - run: npm run test:sql
+
   e2e:
     name: E2E (Playwright)
     runs-on: ubuntu-latest
