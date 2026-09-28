@@ -398,10 +398,12 @@
     pad2, toLocalInput, fromLocalInput, ago, hm,
     babyAge: coreBabyAge, dday: coreDday,
     errMsg, diagnoseConfig, inspectBackup, verifyBackup,
+    SV, isSV, applySV, isoOf,
+    MAPPERS, FIELD_COL, ROLE_TO_DB, ROLE_FROM_DB,
   } = window.TotoCore;
 
   // 화면에 표시할 빌드 버전 — 폰이 최신인지 바로 확인할 수 있게
-  const APP_VERSION = "v29";
+  const APP_VERSION = "v30";
 
   /* ========================================================================
      1. Supabase 초기화 + Firestore 호환 계층
@@ -430,134 +432,15 @@
       })
     : null;
 
-  /* 역할 이름: 화면(구버전) ↔ DB(신버전) */
-  const ROLE_TO_DB = { admin: "admin", member: "parent", viewer: "gallery_only" };
-  const ROLE_FROM_DB = { admin: "admin", parent: "member", family: "viewer", gallery_only: "viewer" };
 
-  /* FieldValue 센티널 — 실제 값은 쓰기 시점에 해석 */
-  const SV = {
-    serverTimestamp: () => ({ __sv: "ts" }),
-    increment: (n) => ({ __sv: "inc", n }),
-    arrayUnion: (...v) => ({ __sv: "au", v }),
-    arrayRemove: (...v) => ({ __sv: "ar", v }),
-  };
-  const isSV = (v) => v && typeof v === "object" && v.__sv;
-  const applySV = (cur, sv) => {
-    if (sv.__sv === "ts") return new Date().toISOString();
-    if (sv.__sv === "inc") return (Number(cur) || 0) + sv.n;
-    const arr = Array.isArray(cur) ? cur.slice() : [];
-    if (sv.__sv === "au") { sv.v.forEach((x) => { if (!arr.includes(x)) arr.push(x); }); return arr; }
-    if (sv.__sv === "ar") return arr.filter((x) => !sv.v.includes(x));
-    return cur;
-  };
+  /* 쓰기 지시(FieldValue 흉내)와 날짜 변환은 vendor/toto-core.js 한 벌만 쓴다.
+     모든 쓰기가 지나가는 길목인데 여기 사본은 테스트가 없었다.
+     옮기면서 고쳐진 것: toDate() 가 Date 를 안 돌려주는 값이 오면
+     예전 사본은 그 자리에서 죽었다. 이제 null 로 넘어간다. */
 
-  const isoOf = (v) => {
-    if (!v) return null;
-    if (isSV(v)) return new Date().toISOString();
-    if (v instanceof Date) return v.toISOString();
-    if (typeof v === "object" && v.seconds != null) return new Date(v.seconds * 1000).toISOString(); // Firestore 백업 형식
-    if (typeof v === "object" && typeof v.toDate === "function") return v.toDate().toISOString();
-    const d = new Date(v);
-    return isNaN(d) ? null : d.toISOString();
-  };
-
-  /* ── 컬렉션별 필드 매핑 ───────────────────────────────────────────────── */
-  const REC_COLS = ["type", "at", "created_at", "created_by", "creator_name"];
-  const MAPPERS = {
-    records: {
-      table: "records",
-      fromDb: (r) => ({
-        id: r.id, type: r.type, at: r.at, createdAt: r.created_at,
-        createdBy: r.created_by, creatorName: r.creator_name, ...(r.data || {}),
-      }),
-      // 화면 객체 → { row(컬럼), data(jsonb) }
-      split: (o) => {
-        const row = {}, data = {};
-        Object.entries(o).forEach(([k, v]) => {
-          if (k === "id") return;
-          if (k === "type") row.type = v;
-          else if (k === "at") row.at = isoOf(v);
-          else if (k === "createdAt") row.created_at = isoOf(v);
-          else if (k === "createdBy") row.created_by = v;
-          else if (k === "creatorName") row.creator_name = v;
-          else data[k] = isSV(v) ? v : (v && v.seconds != null ? isoOf(v) : v);
-        });
-        return { row, data };
-      },
-    },
-    photos: {
-      table: "media",
-      fromDb: (r) => ({
-        id: r.id,
-        albumId: r.album_id || null,
-        url: r.__url || null,                 // 서명 URL(표시용) — 주입됨
-        thumbUrl: r.__thumb || r.__url || null,
-        storagePath: r.storage_path, previewPath: r.preview_path, thumbPath: r.thumb_path,
-        caption: r.caption || "", category: r.category || "baby",
-        uploaderName: r.uploader_name, uploadedBy: r.uploaded_by,
-        createdAt: r.uploaded_at, takenAt: r.captured_at,
-        people: r.people || [], place: r.place || "", gps: r.gps || null,
-        vis: r.vis || "public", likedBy: r.liked_by || [], favorite: !!r.favorite,
-        width: r.width, height: r.height, bytes: r.bytes, type: r.type,
-      }),
-      split: (o) => {
-        const row = {};
-        const M = {
-          albumId: "album_id",
-          storagePath: "storage_path", previewPath: "preview_path", thumbPath: "thumb_path",
-          caption: "caption", category: "category", uploaderName: "uploader_name",
-          uploadedBy: "uploaded_by", takenAt: "captured_at", createdAt: "uploaded_at",
-          people: "people", place: "place", gps: "gps", vis: "vis", likedBy: "liked_by",
-          favorite: "favorite", width: "width", height: "height", bytes: "bytes", mime: "mime",
-        };
-        Object.entries(o).forEach(([k, v]) => {
-          if (k === "id" || k === "url" || k === "thumbUrl") return;
-          const c = M[k];
-          if (!c) return;
-          row[c] = (c === "captured_at" || c === "uploaded_at") ? isoOf(v) : v;
-        });
-        return { row, data: null };
-      },
-    },
-    albums: {
-      table: "albums",
-      fromDb: (r) => ({
-        id: r.id, title: r.title, emoji: r.emoji || "📁", description: r.description || "",
-        coverMediaId: r.cover_media_id, eventDate: r.event_date,
-        sortOrder: r.sort_order || 0, createdBy: r.created_by, createdAt: r.created_at,
-      }),
-      split: (o) => {
-        const row = {};
-        const M = { title: "title", emoji: "emoji", description: "description",
-                    coverMediaId: "cover_media_id", eventDate: "event_date",
-                    sortOrder: "sort_order", createdBy: "created_by" };
-        Object.entries(o).forEach(([k, v]) => { if (M[k]) row[M[k]] = v; });
-        return { row, data: null };
-      },
-    },
-    users: {
-      table: "profiles",
-      fromDb: (r) => ({
-        uid: r.id, id: r.id, email: r.email, name: r.display_name,
-        role: ROLE_FROM_DB[r.role] || "viewer", roleDb: r.role,
-        approved: r.approved, disabled: r.disabled,
-        createdAt: r.created_at, loginDays: r.login_days || [], letterCount: r.letter_count || 0,
-      }),
-      split: (o) => {
-        const row = {};
-        Object.entries(o).forEach(([k, v]) => {
-          if (k === "name") row.display_name = v;
-          else if (k === "role") row.role = ROLE_TO_DB[v] || v;
-          else if (k === "approved") row.approved = v;
-          else if (k === "disabled") row.disabled = v;
-          else if (k === "email") row.email = v;
-          else if (k === "loginDays") row.login_days = v;
-          else if (k === "letterCount") row.letter_count = v;
-        });
-        return { row, data: null };
-      },
-    },
-  };
+  /* DB 행 ↔ 화면 객체 변환도 vendor/toto-core.js 한 벌만 쓴다.
+     모든 읽기·쓰기가 이 표를 지나간다. 컬럼 이름 하나만 틀려도 기록이
+     조용히 비어서 저장되는데, 여기 사본은 테스트가 없었다. */
 
   /* ── 문서 핸들 ──────────────────────────────────────────────────────── */
   const docHandle = (name, id) => {
@@ -635,12 +518,6 @@
   };
 
   /* ── 쿼리 빌더(Firestore 문법 흉내) ──────────────────────────────────── */
-  const FIELD_COL = {
-    records: { type: "type", createdBy: "created_by", at: "at", createdAt: "created_at" },
-    photos: { uploadedBy: "uploaded_by", category: "category", createdAt: "uploaded_at", takenAt: "captured_at" },
-    users: { role: "role", approved: "approved" },
-    albums: { sortOrder: "sort_order", createdBy: "created_by" },
-  };
   const collHandle = (name) => {
     const M = MAPPERS[name];
     const make = (ops) => ({

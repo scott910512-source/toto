@@ -191,21 +191,231 @@ var TotoCoreBundle = function(exports) {
     if (!b || typeof b !== "object") return { ok: false, reason: "파일을 읽을 수 없어요.", ...base };
     if (!Array.isArray(b.records) && !Array.isArray(b.photos))
       return { ok: false, reason: "백업 파일 형식이 아니에요.", ...base };
-    const photos = Array.isArray(b.photos) ? b.photos : [];
-    const withImage = photos.filter(
+    const photos2 = Array.isArray(b.photos) ? b.photos : [];
+    const withImage = photos2.filter(
       (p) => typeof p.url === "string" && String(p.url).startsWith("data:")
     ).length;
     return {
       ok: true,
       version: typeof b.version === "number" ? b.version : 1,
       records: Array.isArray(b.records) ? b.records.length : 0,
-      photos: photos.length,
+      photos: photos2.length,
       photosWithImage: withImage,
       albums: Array.isArray(b.albums) ? b.albums.length : 0,
       users: Array.isArray(b.users) ? b.users.length : 0,
       baby: (_a = b.baby) != null ? _a : null
     };
   }
+  const SV = {
+    /** 서버 기준 '지금' — 기기 시계가 틀어져 있어도 쓰기 시점으로 적는다 */
+    serverTimestamp: () => ({ __sv: "ts" }),
+    increment: (n) => ({ __sv: "inc", n }),
+    arrayUnion: (...v) => ({ __sv: "au", v }),
+    arrayRemove: (...v) => ({ __sv: "ar", v })
+  };
+  function isSV(v) {
+    return !!v && typeof v === "object" && typeof v.__sv === "string";
+  }
+  function applySV(cur, sv, now = /* @__PURE__ */ new Date()) {
+    if (sv.__sv === "ts") return now.toISOString();
+    if (sv.__sv === "inc") {
+      const base = typeof cur === "number" && Number.isFinite(cur) ? cur : Number(cur);
+      return (Number.isFinite(base) ? base : 0) + sv.n;
+    }
+    const arr = Array.isArray(cur) ? cur.slice() : [];
+    if (sv.__sv === "au") {
+      for (const x of sv.v) if (!arr.includes(x)) arr.push(x);
+      return arr;
+    }
+    if (sv.__sv === "ar") return arr.filter((x) => !sv.v.includes(x));
+    return cur;
+  }
+  function isoOf(v, now = /* @__PURE__ */ new Date()) {
+    if (v == null || v === "") return null;
+    if (isSV(v)) return now.toISOString();
+    if (v instanceof Date) return isNaN(v.getTime()) ? null : v.toISOString();
+    if (typeof v === "object") {
+      const o = v;
+      if (typeof o.seconds === "number") return new Date(o.seconds * 1e3).toISOString();
+      if (typeof o.toDate === "function") {
+        const d2 = o.toDate();
+        return d2 instanceof Date && !isNaN(d2.getTime()) ? d2.toISOString() : null;
+      }
+      return null;
+    }
+    const d = new Date(v);
+    return isNaN(d.getTime()) ? null : d.toISOString();
+  }
+  const ROLE_TO_DB = {
+    admin: "admin",
+    member: "parent",
+    viewer: "gallery_only"
+  };
+  const ROLE_FROM_DB = {
+    admin: "admin",
+    parent: "member",
+    family: "viewer",
+    gallery_only: "viewer"
+  };
+  const REC_COLS = ["type", "at", "created_at", "created_by", "creator_name"];
+  const records = {
+    table: "records",
+    fromDb: (r) => ({
+      id: r.id,
+      type: r.type,
+      at: r.at,
+      createdAt: r.created_at,
+      createdBy: r.created_by,
+      creatorName: r.creator_name,
+      ...r.data && typeof r.data === "object" ? r.data : {}
+    }),
+    split: (o) => {
+      const row = {}, data = {};
+      for (const [k, v] of Object.entries(o)) {
+        if (k === "id") continue;
+        else if (k === "type") row.type = v;
+        else if (k === "at") row.at = isoOf(v);
+        else if (k === "createdAt") row.created_at = isoOf(v);
+        else if (k === "createdBy") row.created_by = v;
+        else if (k === "creatorName") row.creator_name = v;
+        else data[k] = isSV(v) ? v : v && typeof v === "object" && "seconds" in v ? isoOf(v) : v;
+      }
+      return { row, data };
+    }
+  };
+  const PHOTO_COLS = {
+    albumId: "album_id",
+    storagePath: "storage_path",
+    previewPath: "preview_path",
+    thumbPath: "thumb_path",
+    caption: "caption",
+    category: "category",
+    uploaderName: "uploader_name",
+    uploadedBy: "uploaded_by",
+    takenAt: "captured_at",
+    createdAt: "uploaded_at",
+    people: "people",
+    place: "place",
+    gps: "gps",
+    vis: "vis",
+    likedBy: "liked_by",
+    favorite: "favorite",
+    width: "width",
+    height: "height",
+    bytes: "bytes",
+    mime: "mime"
+  };
+  const photos = {
+    table: "media",
+    fromDb: (r) => ({
+      id: r.id,
+      albumId: r.album_id || null,
+      // 서명 URL 은 조회 뒤에 주입된다 (__url / __thumb)
+      url: r.__url || null,
+      thumbUrl: r.__thumb || r.__url || null,
+      storagePath: r.storage_path,
+      previewPath: r.preview_path,
+      thumbPath: r.thumb_path,
+      caption: r.caption || "",
+      category: r.category || "baby",
+      uploaderName: r.uploader_name,
+      uploadedBy: r.uploaded_by,
+      createdAt: r.uploaded_at,
+      takenAt: r.captured_at,
+      people: r.people || [],
+      place: r.place || "",
+      gps: r.gps || null,
+      vis: r.vis || "public",
+      likedBy: r.liked_by || [],
+      favorite: !!r.favorite,
+      width: r.width,
+      height: r.height,
+      bytes: r.bytes,
+      type: r.type
+    }),
+    split: (o) => {
+      const row = {};
+      for (const [k, v] of Object.entries(o)) {
+        if (k === "id" || k === "url" || k === "thumbUrl") continue;
+        const c = PHOTO_COLS[k];
+        if (!c) continue;
+        row[c] = c === "captured_at" || c === "uploaded_at" ? isoOf(v) : v;
+      }
+      return { row, data: null };
+    }
+  };
+  const ALBUM_COLS = {
+    title: "title",
+    emoji: "emoji",
+    description: "description",
+    coverMediaId: "cover_media_id",
+    eventDate: "event_date",
+    sortOrder: "sort_order",
+    createdBy: "created_by"
+  };
+  const albums = {
+    table: "albums",
+    fromDb: (r) => ({
+      id: r.id,
+      title: r.title,
+      emoji: r.emoji || "📁",
+      description: r.description || "",
+      coverMediaId: r.cover_media_id,
+      eventDate: r.event_date,
+      sortOrder: r.sort_order || 0,
+      createdBy: r.created_by,
+      createdAt: r.created_at
+    }),
+    split: (o) => {
+      const row = {};
+      for (const [k, v] of Object.entries(o)) if (ALBUM_COLS[k]) row[ALBUM_COLS[k]] = v;
+      return { row, data: null };
+    }
+  };
+  const users = {
+    table: "profiles",
+    fromDb: (r) => ({
+      uid: r.id,
+      id: r.id,
+      email: r.email,
+      name: r.display_name,
+      role: ROLE_FROM_DB[String(r.role)] || "viewer",
+      roleDb: r.role,
+      approved: r.approved,
+      disabled: r.disabled,
+      createdAt: r.created_at,
+      loginDays: r.login_days || [],
+      letterCount: r.letter_count || 0
+    }),
+    split: (o) => {
+      const row = {};
+      for (const [k, v] of Object.entries(o)) {
+        if (k === "name") row.display_name = v;
+        else if (k === "role") row.role = ROLE_TO_DB[String(v)] || v;
+        else if (k === "approved") row.approved = v;
+        else if (k === "disabled") row.disabled = v;
+        else if (k === "email") row.email = v;
+        else if (k === "loginDays") row.login_days = v;
+        else if (k === "letterCount") row.letter_count = v;
+      }
+      return { row, data: null };
+    }
+  };
+  const MAPPERS = { records, photos, albums, users };
+  const FIELD_COL = {
+    records: { type: "type", at: "at", createdAt: "created_at", createdBy: "created_by" },
+    photos: {
+      albumId: "album_id",
+      category: "category",
+      takenAt: "captured_at",
+      createdAt: "uploaded_at",
+      uploadedBy: "uploaded_by",
+      vis: "vis",
+      favorite: "favorite"
+    },
+    albums: { sortOrder: "sort_order", createdBy: "created_by", createdAt: "created_at" },
+    users: { role: "role", approved: "approved" }
+  };
   const TotoCore = {
     // 날짜·시간
     GESTATION_DAYS,
@@ -235,7 +445,18 @@ var TotoCoreBundle = function(exports) {
     // 백업
     BACKUP_VERSION,
     verifyBackup,
-    inspectBackup
+    inspectBackup,
+    // 쓰기 지시(FieldValue 흉내)
+    SV,
+    isSV,
+    applySV,
+    isoOf,
+    // DB 행 ↔ 화면 객체 변환
+    MAPPERS,
+    FIELD_COL,
+    REC_COLS,
+    ROLE_TO_DB,
+    ROLE_FROM_DB
   };
   if (typeof window !== "undefined") window.TotoCore = TotoCore;
   exports.TotoCore = TotoCore;

@@ -26,6 +26,8 @@ import { errMsg, AppError } from "@/lib/errors";
 import { diagnoseConfig } from "@/lib/configDiagnosis";
 import { BACKUP_VERSION } from "@/lib/backupTypes";
 import { verifyBackup, inspectBackup } from "@/lib/backupInspect";
+import { SV, isSV, applySV, isoOf } from "@/lib/fieldValues";
+import { MAPPERS, FIELD_COL, REC_COLS, ROLE_TO_DB, ROLE_FROM_DB } from "@/repositories/legacyMappers";
 
 export const TotoCore = {
   // 날짜·시간
@@ -38,6 +40,10 @@ export const TotoCore = {
   diagnoseConfig,
   // 백업
   BACKUP_VERSION, verifyBackup, inspectBackup,
+  // 쓰기 지시(FieldValue 흉내)
+  SV, isSV, applySV, isoOf,
+  // DB 행 ↔ 화면 객체 변환
+  MAPPERS, FIELD_COL, REC_COLS, ROLE_TO_DB, ROLE_FROM_DB,
 } as const;
 
 declare global {

@@ -21,6 +21,9 @@ const FORBIDDEN = [
   { re: /const toDate = \(v\) =>/, why: "toDate 사본 (vendor/toto-core.js 를 쓴다)", files: ["app.html"] },
   { re: /const errMsg = \(e\) =>/, why: "errMsg 사본 (vendor/toto-core.js 를 쓴다)", files: ["app.html"] },
   { re: /AUTH_ERRORS/, why: "쓰이지 않는 Firebase 오류코드 표", files: ["app.html"] },
+  { re: /const isoOf = \(v\) =>/, why: "isoOf 사본 (vendor/toto-core.js 를 쓴다)", files: ["app.html"] },
+  { re: /const applySV = \(cur, sv\) =>/, why: "applySV 사본 (vendor/toto-core.js 를 쓴다)", files: ["app.html"] },
+  { re: /const MAPPERS = \{/, why: "변환 표 사본 (vendor/toto-core.js 를 쓴다)", files: ["app.html"] },
   // app.html 전용: 프론트가 권한을 직접 쓰는 코드 (DB 트리거가 정해야 한다)
   { re: /upd\.(role|approved|disabled)\s*=/, why: "프론트에서 role/approved/disabled 를 씀", files: ["app.html"] },
   { re: /isAdminEmail\(\s*user\.email\s*\)\s*(\|\||\?)/, why: "이메일만으로 관리자 권한을 줌", files: ["app.html"] },
