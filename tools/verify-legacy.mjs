@@ -24,6 +24,9 @@ const FORBIDDEN = [
   { re: /const isoOf = \(v\) =>/, why: "isoOf 사본 (vendor/toto-core.js 를 쓴다)", files: ["app.html"] },
   { re: /const applySV = \(cur, sv\) =>/, why: "applySV 사본 (vendor/toto-core.js 를 쓴다)", files: ["app.html"] },
   { re: /const MAPPERS = \{/, why: "변환 표 사본 (vendor/toto-core.js 를 쓴다)", files: ["app.html"] },
+  { re: /const watchRows = \(/, why: "실시간 구독 사본 (vendor/toto-core.js 를 쓴다)", files: ["app.html"] },
+  { re: /const collHandle = \(/, why: "쿼리 빌더 사본 (vendor/toto-core.js 를 쓴다)", files: ["app.html"] },
+  { re: /const docHandle = \(/, why: "문서 핸들 사본 (vendor/toto-core.js 를 쓴다)", files: ["app.html"] },
   // app.html 전용: 프론트가 권한을 직접 쓰는 코드 (DB 트리거가 정해야 한다)
   { re: /upd\.(role|approved|disabled)\s*=/, why: "프론트에서 role/approved/disabled 를 씀", files: ["app.html"] },
   { re: /isAdminEmail\(\s*user\.email\s*\)\s*(\|\||\?)/, why: "이메일만으로 관리자 권한을 줌", files: ["app.html"] },
@@ -47,6 +50,7 @@ const REQUIRED = [
   { re: /rpc\(["']touch_login["']/, why: "접속일 기록을 DB 함수로 처리", files: ["app.html"] },
   { re: /vendor\/toto-core\.js/, why: "공용 로직(vendor/toto-core.js) 불러오기", files: ["app.html"] },
   { re: /window\.TotoCore/, why: "공용 로직을 실제로 사용", files: ["app.html"] },
+  { re: /createStore\(sb\)/, why: "DB 접근 계층을 공용 모듈에서 가져옴", files: ["app.html"] },
 ];
 
 for (const f of FILES) {

@@ -403,7 +403,7 @@
   } = window.TotoCore;
 
   // 화면에 표시할 빌드 버전 — 폰이 최신인지 바로 확인할 수 있게
-  const APP_VERSION = "v30";
+  const APP_VERSION = "v31";
 
   /* ========================================================================
      1. Supabase 초기화 + Firestore 호환 계층
@@ -442,204 +442,22 @@
      모든 읽기·쓰기가 이 표를 지나간다. 컬럼 이름 하나만 틀려도 기록이
      조용히 비어서 저장되는데, 여기 사본은 테스트가 없었다. */
 
-  /* ── 문서 핸들 ──────────────────────────────────────────────────────── */
-  const docHandle = (name, id) => {
-    const M = MAPPERS[name];
-    const readRow = async () => {
-      const { data } = await sb.from(M.table).select("*").eq("id", id).maybeSingle();
-      return data || null;
-    };
-    return {
-      id,
-      get: async () => {
-        const r = await readRow();
-        return { exists: !!r, id, data: () => (r ? M.fromDb(r) : null) };
-      },
-      set: async (obj, opt) => {
-        const cur = (opt && opt.merge) ? await readRow() : null;
-        const { row, data } = M.split(obj);
-        const payload = { ...(cur ? {} : {}), ...row, id };
-        // 센티널 + jsonb 병합
-        Object.keys(payload).forEach((k) => { if (isSV(payload[k])) payload[k] = applySV(cur && cur[k], payload[k]); });
-        if (data) {
-          const base = (cur && cur.data) || {};
-          const merged = { ...((opt && opt.merge) ? base : {}) };
-          Object.entries(data).forEach(([k, v]) => { merged[k] = isSV(v) ? applySV(base[k], v) : v; });
-          payload.data = merged;
-        }
-        const { error } = await sb.from(M.table).upsert(payload, { onConflict: "id" });
-        if (error) throw error;
-      },
-      update: async (obj) => {
-        const cur = await readRow();
-        const { row, data } = M.split(obj);
-        const payload = { ...row };
-        Object.keys(payload).forEach((k) => { if (isSV(payload[k])) payload[k] = applySV(cur && cur[k], payload[k]); });
-        if (data && Object.keys(data).length) {
-          const base = (cur && cur.data) || {};
-          const merged = { ...base };
-          Object.entries(data).forEach(([k, v]) => { merged[k] = isSV(v) ? applySV(base[k], v) : v; });
-          payload.data = merged;
-        }
-        const { error } = await sb.from(M.table).update(payload).eq("id", id);
-        if (error) throw error;
-      },
-      delete: async () => {
-        const { error } = await sb.from(M.table).delete().eq("id", id);
-        if (error) throw error;
-      },
-      onSnapshot: (cb, errCb) => watchRows(name, (q) => q.eq("id", id), (rows) => {
-        const r = rows[0];
-        cb({ exists: !!r, id, data: () => (r ? MAPPERS[name].fromDb(r) : null) });
-      }, errCb),
-      // users/{uid}/savedPhotos
-      collection: (sub) => (sub === "savedPhotos" ? savedPhotosHandle(id) : null),
-    };
-  };
+  /* DB 접근 계층도 vendor/toto-core.js 한 벌만 쓴다.
+     Firestore 문법(COL.records().where(...).onSnapshot(...))을 Supabase 위에
+     흉내내는 계층으로, 모든 읽기·쓰기·실시간 구독이 여기를 지나간다.
+     Supabase 클라이언트를 인자로 받게 만들어 가짜 클라이언트로 검증했다.
 
-  /* ── 실시간 구독(변경 감지 시 재조회) ─────────────────────────────────── */
-  let chanSeq = 0;
-  const watchRows = (name, build, cb, errCb) => {
-    const M = MAPPERS[name];
-    let alive = true;
-    const run = async () => {
-      let q = sb.from(M.table).select("*");
-      q = build(q);
-      const { data, error } = await q;
-      if (!alive) return;
-      if (error) { if (errCb) errCb(error); return; }
-      cb(data || []);
-    };
-    run();
-    const ch = sb.channel(`w${M.table}${++chanSeq}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: M.table }, () => { if (alive) run(); })
-      .subscribe();
-    return () => { alive = false; try { sb.removeChannel(ch); } catch (e) {} };
-  };
-
-  /* ── 쿼리 빌더(Firestore 문법 흉내) ──────────────────────────────────── */
-  const collHandle = (name) => {
-    const M = MAPPERS[name];
-    const make = (ops) => ({
-      where: (f, _op, v) => make([...ops, { k: "where", f, v }]),
-      orderBy: (f, dir) => make([...ops, { k: "order", f, dir }]),
-      limit: (n) => make([...ops, { k: "limit", n }]),
-      doc: (id) => docHandle(name, id),
-      add: async (obj) => {
-        const { row, data } = M.split(obj);
-        Object.keys(row).forEach((k) => { if (isSV(row[k])) row[k] = applySV(null, row[k]); });
-        if (data) {
-          const d = {};
-          Object.entries(data).forEach(([k, v]) => { d[k] = isSV(v) ? applySV(null, v) : v; });
-          row.data = d;
-        }
-        const { data: ins, error } = await sb.from(M.table).insert(row).select("id").single();
-        if (error) throw error;
-        return { id: ins.id };
-      },
-      get: async () => {
-        let q = sb.from(M.table).select("*");
-        q = applyOps(q, name, ops);
-        const { data, error } = await q;
-        if (error) throw error;
-        return { docs: (data || []).map((r) => ({ id: r.id, data: () => M.fromDb(r) })) };
-      },
-      onSnapshot: (cb, errCb) => watchRows(name, (q) => applyOps(q, name, ops), (rows) => {
-        cb({ docs: rows.map((r) => ({ id: r.id, data: () => M.fromDb(r) })) });
-      }, errCb),
-    });
-    return make([]);
-  };
-  const applyOps = (q, name, ops) => {
-    const F = FIELD_COL[name] || {};
-    ops.forEach((o) => {
-      if (o.k === "where") q = q.eq(F[o.f] || o.f, o.f === "role" ? (ROLE_TO_DB[o.v] || o.v) : o.v);
-      else if (o.k === "order") q = q.order(F[o.f] || o.f, { ascending: o.dir !== "desc", nullsFirst: false });
-      else if (o.k === "limit") q = q.limit(o.n);
-    });
-    return q;
-  };
-
-  /* ── settings (단일 행) ─────────────────────────────────────────────── */
-  /* 아기 정보는 가족(families)마다 따로 보관된다. RLS 가 내 가족 행만 돌려주므로
-     별도 조건 없이 첫 행을 쓰면 된다. */
-  let myFamilyId = null;
-  const loadFamily = async () => {
-    const { data } = await sb.from("families").select("*").limit(1).maybeSingle();
-    if (data) myFamilyId = data.id;
-    return data || null;
-  };
-  const settingsHandle = () => ({
-    onSnapshot: (cb, errCb) => watchSettings(cb, errCb),
-    get: async () => {
-      const f = await loadFamily();
-      return { exists: !!f, data: () => (f ? f.baby : null) };
-    },
-    set: async (obj, opt) => {
-      const f = await loadFamily();
-      if (!f) throw new Error("가족 정보를 찾을 수 없어요. 다시 로그인해주세요.");
-      const base = (opt && opt.merge) ? (f.baby || {}) : {};
-      const { error } = await sb.from("families").update({ baby: { ...base, ...obj } }).eq("id", f.id);
-      if (error) throw error;
-    },
-  });
-  const watchSettings = (cb, errCb) => {
-    let alive = true;
-    const run = async () => {
-      const { data, error } = await sb.from("families").select("*").limit(1).maybeSingle();
-      if (!alive) return;
-      if (error) { if (errCb) errCb(error); return; }
-      if (data) myFamilyId = data.id;
-      cb({ exists: !!data, data: () => (data ? data.baby : null) });
-    };
-    run();
-    const ch = sb.channel(`wfam${++chanSeq}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "families" }, () => { if (alive) run(); })
-      .subscribe();
-    return () => { alive = false; try { sb.removeChannel(ch); } catch (e) {} };
-  };
-
-  /* ── savedPhotos (users/{uid}/savedPhotos) ──────────────────────────── */
-  const savedPhotosHandle = (uid) => ({
-    // 체이닝만 받아넘긴다(정렬은 아래 onSnapshot 에서 savedAt 내림차순 고정)
-    orderBy() { return savedPhotosHandle(uid); },
-    limit() { return savedPhotosHandle(uid); },
-    where() { return savedPhotosHandle(uid); },
-    doc: (mediaId) => ({
-      set: async () => {
-        const { error } = await sb.from("saved_photos")
-          .upsert({ user_id: uid, media_id: mediaId }, { onConflict: "user_id,media_id" });
-        if (error) throw error;
-      },
-      delete: async () => {
-        const { error } = await sb.from("saved_photos").delete().eq("user_id", uid).eq("media_id", mediaId);
-        if (error) throw error;
-      },
-    }),
-    onSnapshot: (cb, errCb) => {
-      let alive = true;
-      const run = async () => {
-        const { data, error } = await sb.from("saved_photos").select("*")
-          .eq("user_id", uid).order("saved_at", { ascending: false });
-        if (!alive) return;
-        if (error) { if (errCb) errCb(error); return; }
-        cb({ docs: (data || []).map((r) => ({ id: r.media_id, data: () => ({ photoRef: r.media_id, savedAt: r.saved_at }) })) });
-      };
-      run();
-      const ch = sb.channel(`wsav${++chanSeq}`)
-        .on("postgres_changes", { event: "*", schema: "public", table: "saved_photos" }, () => { if (alive) run(); })
-        .subscribe();
-      return () => { alive = false; try { sb.removeChannel(ch); } catch (e) {} };
-    },
-  });
-
-  const COL = {
-    records: () => collHandle("records"),
-    photos: () => collHandle("photos"),
-    users: () => collHandle("users"),
-    albums: () => collHandle("albums"),
-    settings: settingsHandle,
-  };
+     옮기면서 고쳐진 것
+     · 변경이 몰아칠 때(사진 여러 장 업로드) 바뀐 횟수만큼 전부 다시 읽어
+       화면이 여러 번 깜빡였다. 이제 묶어서 한 번만 읽는다.
+     · where 에 "==" 이 아닌 조건을 주면 조용히 등호로 바꿔 엉뚱한 결과를
+       냈다. 이제 그 자리에서 알려준다.
+     · 없는 하위 컬렉션에 null 을 돌려줘서 "null 의 doc" 이라는 엉뚱한
+       오류로 터졌다. 이제 무엇이 잘못인지 말해준다.
+     · 조회가 예외를 던지면 아무 일도 일어나지 않았다. 이제 오류로 알린다. */
+  const store = window.TotoCore.createStore(sb);
+  const COL = store.COL;
+  const loadFamily = store.loadFamily;
 
   /* ── Firebase Auth 호환 계층 ─────────────────────────────────────────── */
   const mapUser = (u) => (u ? { uid: u.id, email: u.email } : null);
@@ -713,7 +531,7 @@
   const signOutApp = async () => {
     purgeLegacyCredentials();
     signedUrlCache.clear();          // 다른 사람이 이어서 쓸 때 서명 URL 재사용 방지
-    myFamilyId = null;
+    store.resetFamilyId();           // 다음 사람이 남의 가족 폴더에 올리지 않게
     return sb.auth.signOut();
   };
 
@@ -3040,9 +2858,10 @@
   const uploadPhotoFile = async (file, onStep) => {
     const now = new Date();
     // Storage 정책상 경로 첫 칸이 가족 id 여야 한다 (<familyId>/YYYY/MM/xxx)
-    if (!myFamilyId) await loadFamily();
-    if (!myFamilyId) throw new Error("가족 정보를 찾을 수 없어요. 다시 로그인해주세요.");
-    const base = `${myFamilyId}/${now.getFullYear()}/${pad2(now.getMonth() + 1)}/${
+    if (!store.familyId()) await loadFamily();
+    const familyId = store.familyId();
+    if (!familyId) throw new Error("가족 정보를 찾을 수 없어요. 다시 로그인해주세요.");
+    const base = `${familyId}/${now.getFullYear()}/${pad2(now.getMonth() + 1)}/${
       (crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2) + Date.now()).replace(/-/g, "").slice(0, 16)}`;
     const ext = ((file.name || "").split(".").pop() || "jpg").toLowerCase().slice(0, 5);
     const storagePath = `${base}_o.${ext}`;

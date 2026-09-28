@@ -416,6 +416,311 @@ var TotoCoreBundle = function(exports) {
     albums: { sortOrder: "sort_order", createdBy: "created_by", createdAt: "created_at" },
     users: { role: "role", approved: "approved" }
   };
+  function createStore(sb, opts = {}) {
+    var _a, _b, _c;
+    const debounceMs = (_a = opts.debounceMs) != null ? _a : 120;
+    const setT = (_b = opts.setTimeoutFn) != null ? _b : (fn, ms) => setTimeout(fn, ms);
+    const clearT = (_c = opts.clearTimeoutFn) != null ? _c : (id) => clearTimeout(id);
+    let chanSeq = 0;
+    const mapperOf = (name) => {
+      const M = MAPPERS[name];
+      if (!M) throw new Error(`알 수 없는 컬렉션: ${name}`);
+      return M;
+    };
+    function watchRows(name, build, cb, errCb) {
+      const M = mapperOf(name);
+      let alive = true;
+      let timer = null;
+      const run = async () => {
+        try {
+          const { data, error } = await build(sb.from(M.table).select("*")).then((r) => r);
+          if (!alive) return;
+          if (error) {
+            errCb == null ? void 0 : errCb(error);
+            return;
+          }
+          cb(data || []);
+        } catch (e) {
+          if (alive) errCb == null ? void 0 : errCb(e);
+        }
+      };
+      const schedule = () => {
+        if (!alive) return;
+        if (debounceMs <= 0) {
+          void run();
+          return;
+        }
+        if (timer !== null) clearT(timer);
+        timer = setT(() => {
+          timer = null;
+          void run();
+        }, debounceMs);
+      };
+      void run();
+      const ch = sb.channel(`w${M.table}${++chanSeq}`).on("postgres_changes", { event: "*", schema: "public", table: M.table }, schedule).subscribe();
+      return () => {
+        alive = false;
+        if (timer !== null) clearT(timer);
+        try {
+          sb.removeChannel(ch);
+        } catch {
+        }
+      };
+    }
+    const resolveRow = (row, cur) => {
+      const out = { ...row };
+      for (const k of Object.keys(out)) {
+        if (isSV(out[k])) out[k] = applySV(cur ? cur[k] : null, out[k]);
+      }
+      return out;
+    };
+    const resolveJsonb = (data, base) => {
+      const merged = { ...base };
+      for (const [k, v] of Object.entries(data)) merged[k] = isSV(v) ? applySV(base[k], v) : v;
+      return merged;
+    };
+    function docHandle(name, id) {
+      const M = mapperOf(name);
+      const readRow = async () => {
+        const { data } = await sb.from(M.table).select("*").eq("id", id).maybeSingle();
+        return data || null;
+      };
+      return {
+        id,
+        get: async () => {
+          const r = await readRow();
+          return { exists: !!r, id, data: () => r ? M.fromDb(r) : null };
+        },
+        set: async (obj, opt) => {
+          const merge = !!(opt == null ? void 0 : opt.merge);
+          const cur = merge ? await readRow() : null;
+          const { row, data } = M.split(obj);
+          const payload = { ...resolveRow(row, cur), id };
+          if (data) {
+            const base = merge ? (cur == null ? void 0 : cur.data) || {} : {};
+            payload.data = resolveJsonb(data, base);
+          }
+          const { error } = await sb.from(M.table).upsert(payload, { onConflict: "id" });
+          if (error) throw error;
+        },
+        update: async (obj) => {
+          const cur = await readRow();
+          const { row, data } = M.split(obj);
+          const payload = resolveRow(row, cur);
+          if (data && Object.keys(data).length) {
+            payload.data = resolveJsonb(data, (cur == null ? void 0 : cur.data) || {});
+          }
+          const { error } = await sb.from(M.table).update(payload).eq("id", id);
+          if (error) throw error;
+        },
+        delete: async () => {
+          const { error } = await sb.from(M.table).delete().eq("id", id);
+          if (error) throw error;
+        },
+        onSnapshot: (cb, errCb) => watchRows(name, (q) => q.eq("id", id), (rows) => {
+          const r = rows[0];
+          cb({ exists: !!r, id, data: () => r ? M.fromDb(r) : null });
+        }, errCb),
+        /* Firebase 시절의 users/{uid}/savedPhotos 하위 컬렉션.
+           Supabase 에서는 saved_photos 테이블 한 장이라, 이름으로 갈라 보낸다. */
+        collection: (sub) => {
+          if (sub === "savedPhotos") return savedPhotosHandle(id);
+          throw new Error(`알 수 없는 하위 컬렉션: ${sub}`);
+        }
+      };
+    }
+    const applyOps = (q, name, ops) => {
+      var _a2;
+      const F = FIELD_COL[name] || {};
+      let out = q;
+      for (const o of ops) {
+        if (o.k === "where") {
+          const v = o.f === "role" ? (_a2 = ROLE_TO_DB[String(o.v)]) != null ? _a2 : o.v : o.v;
+          out = out.eq(F[o.f] || o.f, v);
+        } else if (o.k === "order") {
+          out = out.order(F[o.f] || o.f, { ascending: o.dir !== "desc", nullsFirst: false });
+        } else if (o.k === "limit") {
+          out = out.limit(o.n);
+        }
+      }
+      return out;
+    };
+    function collHandle(name) {
+      const M = mapperOf(name);
+      const make = (ops) => ({
+        /** op 은 "==" 만 받는다. 다른 것을 조용히 등호로 바꾸면 엉뚱한 결과가 나온다. */
+        where(f, op, v) {
+          if (op !== "==" && op !== "=") {
+            throw new Error(`where 는 "==" 만 지원합니다 (받은 값: ${op}). 나머지는 화면에서 걸러주세요.`);
+          }
+          return make([...ops, { k: "where", f, v }]);
+        },
+        orderBy: (f, dir) => make([...ops, { k: "order", f, dir }]),
+        limit: (n) => make([...ops, { k: "limit", n }]),
+        doc: (id) => docHandle(name, id),
+        add: async (obj) => {
+          const { row, data } = M.split(obj);
+          const payload = resolveRow(row, null);
+          if (data) payload.data = resolveJsonb(data, {});
+          const { data: ins, error } = await sb.from(M.table).insert(payload).select("id").single();
+          if (error) throw error;
+          if (!ins) throw new Error("저장은 됐지만 결과를 받지 못했어요.");
+          return { id: String(ins.id) };
+        },
+        get: async () => {
+          const { data, error } = await applyOps(sb.from(M.table).select("*"), name, ops).then((r) => r);
+          if (error) throw error;
+          return { docs: (data || []).map((r) => ({ id: String(r.id), data: () => M.fromDb(r) })) };
+        },
+        onSnapshot: (cb, errCb) => watchRows(name, (q) => applyOps(q, name, ops), (rows) => {
+          cb({ docs: rows.map((r) => ({ id: String(r.id), data: () => M.fromDb(r) })) });
+        }, errCb)
+      });
+      return make([]);
+    }
+    let myFamilyId = null;
+    const loadFamily = async () => {
+      const { data } = await sb.from("families").select("*").limit(1).maybeSingle();
+      if (data) myFamilyId = String(data.id);
+      return data || null;
+    };
+    function watchFamily(cb, errCb) {
+      let alive = true;
+      let timer = null;
+      const run = async () => {
+        try {
+          const { data, error } = await sb.from("families").select("*").limit(1).maybeSingle();
+          if (!alive) return;
+          if (error) {
+            errCb == null ? void 0 : errCb(error);
+            return;
+          }
+          if (data) myFamilyId = String(data.id);
+          cb({ exists: !!data, data: () => data ? data.baby : null });
+        } catch (e) {
+          if (alive) errCb == null ? void 0 : errCb(e);
+        }
+      };
+      const schedule = () => {
+        if (!alive) return;
+        if (debounceMs <= 0) {
+          void run();
+          return;
+        }
+        if (timer !== null) clearT(timer);
+        timer = setT(() => {
+          timer = null;
+          void run();
+        }, debounceMs);
+      };
+      void run();
+      const ch = sb.channel(`wfam${++chanSeq}`).on("postgres_changes", { event: "*", schema: "public", table: "families" }, schedule).subscribe();
+      return () => {
+        alive = false;
+        if (timer !== null) clearT(timer);
+        try {
+          sb.removeChannel(ch);
+        } catch {
+        }
+      };
+    }
+    const settingsHandle = () => ({
+      onSnapshot: watchFamily,
+      get: async () => {
+        const f = await loadFamily();
+        return { exists: !!f, data: () => f ? f.baby : null };
+      },
+      set: async (obj, opt) => {
+        const f = await loadFamily();
+        if (!f) throw new Error("가족 정보를 찾을 수 없어요. 다시 로그인해주세요.");
+        const base = (opt == null ? void 0 : opt.merge) ? f.baby || {} : {};
+        const { error } = await sb.from("families").update({ baby: { ...base, ...obj } }).eq("id", String(f.id));
+        if (error) throw error;
+      }
+    });
+    function savedPhotosHandle(uid) {
+      const self = {
+        // 정렬은 아래에서 savedAt 내림차순으로 고정한다. 체이닝만 받아넘긴다.
+        orderBy: () => self,
+        limit: () => self,
+        where: () => self,
+        doc: (mediaId) => ({
+          set: async () => {
+            const { error } = await sb.from("saved_photos").upsert({ user_id: uid, media_id: mediaId }, { onConflict: "user_id,media_id" });
+            if (error) throw error;
+          },
+          delete: async () => {
+            const { error } = await sb.from("saved_photos").delete().eq("user_id", uid).eq("media_id", mediaId);
+            if (error) throw error;
+          }
+        }),
+        onSnapshot: (cb, errCb) => {
+          let alive = true;
+          let timer = null;
+          const run = async () => {
+            try {
+              const { data, error } = await sb.from("saved_photos").select("*").eq("user_id", uid).order("saved_at", { ascending: false, nullsFirst: false }).then((r) => r);
+              if (!alive) return;
+              if (error) {
+                errCb == null ? void 0 : errCb(error);
+                return;
+              }
+              cb({
+                docs: (data || []).map((r) => ({
+                  id: String(r.media_id),
+                  data: () => ({ photoRef: r.media_id, savedAt: r.saved_at })
+                }))
+              });
+            } catch (e) {
+              if (alive) errCb == null ? void 0 : errCb(e);
+            }
+          };
+          const schedule = () => {
+            if (!alive) return;
+            if (debounceMs <= 0) {
+              void run();
+              return;
+            }
+            if (timer !== null) clearT(timer);
+            timer = setT(() => {
+              timer = null;
+              void run();
+            }, debounceMs);
+          };
+          void run();
+          const ch = sb.channel(`wsav${++chanSeq}`).on("postgres_changes", { event: "*", schema: "public", table: "saved_photos" }, schedule).subscribe();
+          return () => {
+            alive = false;
+            if (timer !== null) clearT(timer);
+            try {
+              sb.removeChannel(ch);
+            } catch {
+            }
+          };
+        }
+      };
+      return self;
+    }
+    const COL = {
+      records: () => collHandle("records"),
+      photos: () => collHandle("photos"),
+      users: () => collHandle("users"),
+      albums: () => collHandle("albums"),
+      settings: settingsHandle
+    };
+    return {
+      COL,
+      /** 컬렉션 핸들 — users/{uid}/savedPhotos 대응 */
+      savedPhotosHandle,
+      loadFamily,
+      familyId: () => myFamilyId,
+      resetFamilyId: () => {
+        myFamilyId = null;
+      },
+      /** 서버 기준 '지금' */
+      TS: () => SV.serverTimestamp()
+    };
+  }
   const TotoCore = {
     // 날짜·시간
     GESTATION_DAYS,
@@ -456,7 +761,9 @@ var TotoCoreBundle = function(exports) {
     FIELD_COL,
     REC_COLS,
     ROLE_TO_DB,
-    ROLE_FROM_DB
+    ROLE_FROM_DB,
+    // DB 접근 계층 (Firestore 문법 → Supabase)
+    createStore
   };
   if (typeof window !== "undefined") window.TotoCore = TotoCore;
   exports.TotoCore = TotoCore;
