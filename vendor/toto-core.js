@@ -721,6 +721,82 @@ var TotoCoreBundle = function(exports) {
       TS: () => SV.serverTimestamp()
     };
   }
+  const TTL_SEC = 60 * 60;
+  const RENEW_MS = 2 * 60 * 1e3;
+  const CHUNK = 90;
+  function createStorage(client, bucket, opts = {}) {
+    var _a, _b;
+    const now = (_a = opts.nowFn) != null ? _a : () => Date.now();
+    const doFetch = (_b = opts.fetchFn) != null ? _b : (...a) => fetch(...a);
+    const cache = /* @__PURE__ */ new Map();
+    const clear = () => {
+      cache.clear();
+    };
+    async function signPaths(paths) {
+      var _a2;
+      const t = now();
+      const uniq = [...new Set((paths || []).filter((p) => !!p))];
+      const need = uniq.filter((p) => {
+        const c = cache.get(p);
+        return !c || c.exp < t + RENEW_MS;
+      });
+      for (let i = 0; i < need.length; i += CHUNK) {
+        const chunk = need.slice(i, i + CHUNK);
+        try {
+          const { data, error } = await client.storage.from(bucket).createSignedUrls(chunk, TTL_SEC);
+          if (error) continue;
+          for (const d of data != null ? data : []) {
+            const url = (_a2 = d.signedUrl) != null ? _a2 : d.signedURL;
+            if (url && d.path) cache.set(d.path, { url, exp: t + TTL_SEC * 1e3 });
+          }
+        } catch {
+        }
+      }
+      const out = {};
+      for (const p of uniq) {
+        const c = cache.get(p);
+        if (c) out[p] = c.url;
+      }
+      return out;
+    }
+    const signOne = async (path) => {
+      var _a2;
+      if (!path) return null;
+      const map = await signPaths([path]);
+      return (_a2 = map[path]) != null ? _a2 : null;
+    };
+    async function fetchSigned(path) {
+      let url = await signOne(path);
+      if (!url) throw new Error("사진 주소를 받지 못했어요.");
+      let res = await doFetch(url);
+      if (res.status === 400 || res.status === 403 || res.status === 404) {
+        cache.delete(path);
+        url = await signOne(path);
+        if (url) res = await doFetch(url);
+      }
+      if (!res.ok) throw new Error(`사진을 불러오지 못했어요 (HTTP ${res.status})`);
+      return res;
+    }
+    async function removeFiles(paths) {
+      const list = (Array.isArray(paths) ? paths : [paths]).filter((p) => !!p);
+      if (!list.length) return;
+      try {
+        await client.storage.from(bucket).remove(list);
+      } catch {
+      } finally {
+        list.forEach((p) => cache.delete(p));
+      }
+    }
+    return {
+      signPaths,
+      signOne,
+      fetchSigned,
+      removeFiles,
+      clearSignedUrlCache: clear,
+      /** 테스트·진단용 */
+      cacheSize: () => cache.size
+    };
+  }
   const TotoCore = {
     // 날짜·시간
     GESTATION_DAYS,
@@ -763,7 +839,9 @@ var TotoCoreBundle = function(exports) {
     ROLE_TO_DB,
     ROLE_FROM_DB,
     // DB 접근 계층 (Firestore 문법 → Supabase)
-    createStore
+    createStore,
+    // 비공개 버킷 서명 URL 캐시 · 파일 지우기
+    createStorage
   };
   if (typeof window !== "undefined") window.TotoCore = TotoCore;
   exports.TotoCore = TotoCore;

@@ -132,28 +132,35 @@ test.describe("갤러리 · 슬라이드쇼", () => {
   });
 
   test("11) 슬라이드쇼가 열리고 액자 모드가 있다", async ({ page }) => {
+    test.slow();
     await open(page, { role: "admin", photos: 3, privatePhotos: 0 });
     await go(page, "#/gallery", 1200);
-    await page.getByRole("button", { name: /슬라이드쇼/ }).first().click();
-    await page.waitForTimeout(1800);
+    await page.getByRole("button", { name: /슬라이드쇼/ }).first().click({ force: true });
     await expect(page.locator(".ss-root")).toBeVisible();
     await expect(page.locator(".ss-backdrop")).toBeVisible();
     await expect(page.getByRole("button", { name: "액자 모드" })).toBeVisible();
   });
 
   test("12) 좋아요는 DB 함수로 처리한다 (남의 사진에도 눌러야 하므로)", async ({ page }) => {
+    // 슬라이드쇼는 사진 주소를 받아 첫 장을 띄우기까지 시간이 걸린다.
+    // 세 기기를 한꺼번에 돌리면 30초 안에 못 끝나 흔들렸다.
+    test.slow();
     await open(page, { role: "admin", photos: 3, privatePhotos: 0 });
     await go(page, "#/gallery", 1200);
-    await page.getByRole("button", { name: /슬라이드쇼/ }).first().click();
-    await page.waitForTimeout(1800);
-    await page.mouse.move(400, 300);                 // UI 다시 띄우기
-    const like = page.locator(".ss-bar button[aria-label*=\"좋아요\"]").first();
-    if (await like.count()) {
-      await like.click({ force: true });
-      await page.waitForTimeout(600);
-      const c = (await calls(page)) as Array<{ op: string; fn?: string }>;
-      expect(c.some((x) => x.op === "rpc" && x.fn === "toggle_like")).toBe(true);
-    }
+    // force: 갤러리 사진이 서서히 나타나는 동안 Playwright 가 "아직 안 멈췄다" 며
+    // 기다리는 걸 건너뛴다. 버튼 위치는 이미 정해져 있다.
+    await page.getByRole("button", { name: /슬라이드쇼/ }).first().click({ force: true });
+    await expect(page.locator(".ss-root")).toBeVisible();
+
+    // 조작 막대는 4.5초 뒤 흐려지지만(opacity:0) 자리와 클릭은 살아 있다.
+    // 그래서 다시 띄우지 않고 그대로 누른다 — 전체화면 덮개를 클릭하려 하면
+    // Playwright 가 "가려져 있다" 며 30초를 기다려 테스트가 흔들렸다.
+    const like = page.locator('.ss-bar button[aria-label*="좋아요"]').first();
+    await expect(like).toHaveCount(1, { timeout: 15_000 });
+    await like.click({ force: true });
+    await page.waitForTimeout(600);
+    const c = (await calls(page)) as Array<{ op: string; fn?: string }>;
+    expect(c.some((x) => x.op === "rpc" && x.fn === "toggle_like")).toBe(true);
   });
 });
 

@@ -29,6 +29,7 @@ import { verifyBackup, inspectBackup } from "@/lib/backupInspect";
 import { SV, isSV, applySV, isoOf } from "@/lib/fieldValues";
 import { MAPPERS, FIELD_COL, REC_COLS, ROLE_TO_DB, ROLE_FROM_DB } from "@/repositories/legacyMappers";
 import { createStore } from "@/repositories/legacyStore";
+import { createStorage } from "@/lib/storage";
 
 export const TotoCore = {
   // 날짜·시간
@@ -47,6 +48,8 @@ export const TotoCore = {
   MAPPERS, FIELD_COL, REC_COLS, ROLE_TO_DB, ROLE_FROM_DB,
   // DB 접근 계층 (Firestore 문법 → Supabase)
   createStore,
+  // 비공개 버킷 서명 URL 캐시 · 파일 지우기
+  createStorage,
 } as const;
 
 declare global {

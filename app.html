@@ -403,7 +403,7 @@
   } = window.TotoCore;
 
   // 화면에 표시할 빌드 버전 — 폰이 최신인지 바로 확인할 수 있게
-  const APP_VERSION = "v31";
+  const APP_VERSION = "v32";
 
   /* ========================================================================
      1. Supabase 초기화 + Firestore 호환 계층
@@ -498,39 +498,20 @@
   };
   purgeLegacyCredentials();
 
-  /* 사진 원본을 Storage 에서 지우기 (기존 storage.ref(path).delete() 대체) */
-  const removeStorage = async (paths) => {
-    const list = (Array.isArray(paths) ? paths : [paths]).filter(Boolean);
-    if (!list.length) return;
-    try { await sb.storage.from(BUCKET).remove(list); } catch (e) { /* 이미 없으면 무시 */ }
-  };
+  /* 사진 주소(서명 URL) 캐시와 파일 지우기도 vendor/toto-core.js 한 벌만 쓴다.
 
-  /* ── 비공개 버킷 서명 URL 캐시 ──────────────────────────────────────── */
-  const SIGN_TTL = 3600;
-  const signedUrlCache = new Map();
-  const signPaths = async (paths) => {
-    const now = Date.now();
-    const uniq = [...new Set((paths || []).filter(Boolean))];
-    const need = uniq.filter((p) => { const c = signedUrlCache.get(p); return !c || c.exp < now + 120000; });
-    for (let i = 0; i < need.length; i += 90) {
-      const chunk = need.slice(i, i + 90);
-      const { data, error } = await sb.storage.from(BUCKET).createSignedUrls(chunk, SIGN_TTL);
-      if (error) continue;
-      (data || []).forEach((d) => {
-        const u = d.signedUrl || d.signedURL;
-        if (u && d.path) signedUrlCache.set(d.path, { url: u, exp: now + SIGN_TTL * 1000 });
-      });
-    }
-    const out = {};
-    uniq.forEach((p) => { const c = signedUrlCache.get(p); if (c) out[p] = c.url; });
-    return out;
-  };
-  const signOne = async (p) => (p ? (await signPaths([p]))[p] || null : null);
+     옮기면서 고쳐진 것
+     · 사진을 지운 뒤에도 캐시에 남은 주소로 계속 보일 수 있었다.
+       이제 지울 때 주소도 함께 버린다.
+     · 백업 중 서명 URL 이 만료되면 그 사진은 그냥 실패했다. 사진이 많으면
+       뒤쪽이 통째로 빠질 수 있었다. 이제 한 번 다시 받아 재시도한다. */
+  const photoStore = window.TotoCore.createStorage(sb, BUCKET);
+  const { signPaths, signOne, fetchSigned, removeFiles: removeStorage } = photoStore;
 
   const TS = () => SV.serverTimestamp();
   const signOutApp = async () => {
     purgeLegacyCredentials();
-    signedUrlCache.clear();          // 다른 사람이 이어서 쓸 때 서명 URL 재사용 방지
+    photoStore.clearSignedUrlCache();   // 다음 사람에게 남의 사진이 보이지 않게
     store.resetFamilyId();           // 다음 사람이 남의 가족 폴더에 올리지 않게
     return sb.auth.signOut();
   };
@@ -4614,10 +4595,9 @@
     const fetchPhotoData = async (p) => {
       const path = p.storagePath || p.previewPath || p.thumbPath;
       if (!path) return null;
-      const url = await signOne(path);
-      if (!url) return null;
-      const res = await fetch(url);
-      if (!res.ok) throw new Error("HTTP " + res.status);
+      // fetchSigned 는 주소가 만료되면 한 번 새로 받아 다시 시도한다.
+      // 사진이 많아 백업이 오래 걸리면 도중에 만료되기 때문이다.
+      const res = await fetchSigned(path);
       const blob = await res.blob();
       return await new Promise((resolve, reject) => {
         const fr = new FileReader();

@@ -1,5 +1,5 @@
 import { sb } from "@/lib/supabase";
-import { signPaths, removeFiles } from "@/lib/storage";
+import { signPaths, removeFiles } from "@/lib/storageDefault";
 import { toPhoto, fromPhoto } from "./mappers";
 import type { Photo } from "@/types/models";
 
