@@ -28,6 +28,9 @@ const FORBIDDEN = [
   { re: /const collHandle = \(/, why: "쿼리 빌더 사본 (vendor/toto-core.js 를 쓴다)", files: ["app.html"] },
   { re: /const docHandle = \(/, why: "문서 핸들 사본 (vendor/toto-core.js 를 쓴다)", files: ["app.html"] },
   { re: /const signedUrlCache = new Map/, why: "서명 URL 캐시 사본 (vendor/toto-core.js 를 쓴다)", files: ["app.html"] },
+  { re: /const canSeePhoto = /, why: "공개범위 판단 사본 (vendor/toto-core.js 를 쓴다)", files: ["app.html"] },
+  { re: /const tempStage = /, why: "체온 단계 사본 (vendor/toto-core.js 를 쓴다)", files: ["app.html"] },
+  { re: /const MEDALS = \[/, why: "메달 목록 사본 (vendor/toto-core.js 를 쓴다)", files: ["app.html"] },
   // app.html 전용: 프론트가 권한을 직접 쓰는 코드 (DB 트리거가 정해야 한다)
   { re: /upd\.(role|approved|disabled)\s*=/, why: "프론트에서 role/approved/disabled 를 씀", files: ["app.html"] },
   { re: /isAdminEmail\(\s*user\.email\s*\)\s*(\|\||\?)/, why: "이메일만으로 관리자 권한을 줌", files: ["app.html"] },

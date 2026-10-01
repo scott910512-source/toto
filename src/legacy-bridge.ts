@@ -30,6 +30,9 @@ import { SV, isSV, applySV, isoOf } from "@/lib/fieldValues";
 import { MAPPERS, FIELD_COL, REC_COLS, ROLE_TO_DB, ROLE_FROM_DB } from "@/repositories/legacyMappers";
 import { createStore } from "@/repositories/legacyStore";
 import { createStorage } from "@/lib/storage";
+import { canSeePhoto, canSeeLetter, likeCountOf, likedByMe } from "@/lib/visibility";
+import { MEDALS, medalStats, earnedMedals, medalProgress } from "@/lib/medals";
+import { tempStage, fhrCheck, crlGuide, roleLabel, ROLE_LABEL } from "@/lib/guides";
 
 export const TotoCore = {
   // 날짜·시간
@@ -50,6 +53,12 @@ export const TotoCore = {
   createStore,
   // 비공개 버킷 서명 URL 캐시 · 파일 지우기
   createStorage,
+  // 누구에게 무엇을 보여줄지 (진짜 차단은 DB 가 한다)
+  canSeePhoto, canSeeLetter, likeCountOf, likedByMe,
+  // 메달
+  MEDALS, medalStats, earnedMedals, medalProgress,
+  // 참고 안내 · 등급 이름
+  tempStage, fhrCheck, crlGuide, roleLabel, ROLE_LABEL,
 } as const;
 
 declare global {
