@@ -130,5 +130,27 @@ if (existsSync("vendor/toto-core.js") && existsSync("src/legacy-bridge.ts")) {
   }
 }
 
+/* 모바일용 짧은 SQL 은 원본에서 만든 것이라, 원본만 고치고 다시 만들지 않으면
+   가족이 예전 SQL 을 돌리게 된다. 다시 만들어 비교한다. */
+if (existsSync("tools/build-compact-sql.mjs") && existsSync("supabase/migrations/004-005-compact.sql")) {
+  const files = ["supabase/migrations/004-005-compact.sql",
+    ...[1,2,3,4,5].map((n) => `supabase/migrations/mobile/0${n}.sql`)];
+  const before = files.filter(existsSync).map((f) => [f, readFileSync(f, "utf8")]);
+  try {
+    execSync("node tools/build-compact-sql.mjs", { stdio: "pipe" });
+    let drift = false;
+    for (const [f, old] of before) {
+      if (readFileSync(f, "utf8") !== old) { drift = true; writeFileSync(f, old); }
+    }
+    if (drift) {
+      console.error("❌ 모바일용 SQL 이 원본과 어긋납니다 — npm run build:sql 후 커밋하세요");
+      failed++;
+    } else console.log("✅ 모바일용 SQL 이 원본과 일치");
+  } catch (e) {
+    console.error("❌ 모바일용 SQL 생성 실패: " + e.message);
+    failed++;
+  }
+}
+
 if (failed) { console.error(`\n${failed}건 실패`); process.exit(1); }
 console.log("\n모두 통과");
