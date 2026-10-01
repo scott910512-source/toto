@@ -98,8 +98,25 @@ chunks.forEach((c, i) => {
   writeFileSync(`${OUT_DIR}/${n}.sql`, `${head}\n${c.join("\n\n")}\n`);
 });
 
+/* 앱 안에서 바로 복사할 수 있게 조각을 JS 로도 내보낸다.
+   아이폰에서 GitHub 을 열어 텍스트를 선택하는 게 제일 고생이라,
+   또또 앱 설정에서 한 번 눌러 복사하도록 만든다. */
+const forApp = chunks.map((c, i) => ({
+  n: i + 1,
+  title: `${i + 1}번`,
+  sql: `-- 또또 보안 수정 ${i + 1}/${chunks.length}\n\n${c.join("\n\n")}\n`,
+}));
+writeFileSync(
+  "vendor/toto-sql.js",
+  `/* 또또 아기수첩 · DB 보안 수정 SQL (앱에서 복사용)\n`
+  + `   tools/build-compact-sql.mjs 가 만듭니다 — 손으로 고치지 마세요.\n`
+  + `   원본: ${SRC.join(" · ")} */\n`
+  + `window.TotoSQL = ${JSON.stringify({ chunks: forApp, all: readFileSync(OUT_ONE, "utf8") }, null, 1)};\n`,
+);
+
 const one = readFileSync(OUT_ONE, "utf8");
 console.log(`✅ ${OUT_ONE} — ${one.length.toLocaleString()}자 · ${one.split("\n").length}줄`);
+console.log(`   vendor/toto-sql.js — ${readFileSync("vendor/toto-sql.js", "utf8").length.toLocaleString()}자`);
 chunks.forEach((c, i) => {
   const t = readFileSync(`${OUT_DIR}/${String(i + 1).padStart(2, "0")}.sql`, "utf8");
   console.log(`   ${OUT_DIR}/${String(i + 1).padStart(2, "0")}.sql — ${t.split("\n").length}줄 (문장 ${c.length}개)`);

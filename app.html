@@ -65,6 +65,10 @@
        이 파일이 못 뜨면 앱이 멈추므로 defer/async 를 쓰지 않는다. -->
   <script src="vendor/toto-core.js"></script>
 
+  <!-- DB 보안 수정 SQL (관리자가 설정에서 복사해 Supabase 에 붙여넣는 용도).
+       공개 저장소에 있는 내용과 같고 비밀값이 아니다. 없어도 앱은 동작한다. -->
+  <script src="vendor/toto-sql.js"></script>
+
   <!-- 버전 고정 + crossorigin: 'latest' 변경/CORS 가림(Script error.) 방지 -->
   <script crossorigin="anonymous" src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
   <script crossorigin="anonymous" src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
@@ -393,7 +397,7 @@
   } = window.TotoCore;
 
   // 화면에 표시할 빌드 버전 — 폰이 최신인지 바로 확인할 수 있게
-  const APP_VERSION = "v33";
+  const APP_VERSION = "v34";
 
   /* ========================================================================
      1. Supabase 초기화 + Firestore 호환 계층
@@ -4384,6 +4388,118 @@
   /* ========================================================================
      D-day 위젯 — Scriptable 코드와 전체화면 링크를 우리 아기 값으로 만들어 준다
      ======================================================================== */
+  /* 아이폰에서 Supabase SQL 편집기에 긴 SQL 을 붙여넣으면 사파리가 버벅여
+     아예 안 들어간다. GitHub 을 열어 텍스트를 선택하는 것도 고생이다.
+     그래서 조각을 앱 안에 두고 한 번 눌러 복사하게 한다.
+     SQL 자체는 공개 저장소에 있는 것과 같고 비밀값이 아니다. */
+  const SQL_DONE_KEY = "toto-sql-done";
+
+  const DbFixCard = () => {
+    const toast = useToast();
+    const pack = (typeof window !== "undefined" && window.TotoSQL) || null;
+    const [open, setOpen] = useState(false);
+    const [show, setShow] = useState(null);     // 클립보드가 막혔을 때 보여줄 조각
+    const [done, setDone] = useState(() => {
+      try { return JSON.parse(localStorage.getItem(SQL_DONE_KEY) || "[]"); } catch (e) { return []; }
+    });
+
+    if (!pack || !pack.chunks || !pack.chunks.length) return null;
+
+    const mark = (n) => {
+      setDone((prev) => {
+        const next = prev.includes(n) ? prev : [...prev, n];
+        try { localStorage.setItem(SQL_DONE_KEY, JSON.stringify(next)); } catch (e) { /* 무시 */ }
+        return next;
+      });
+    };
+
+    const copy = async (chunk) => {
+      try {
+        await navigator.clipboard.writeText(chunk.sql);
+        mark(chunk.n);
+        toast(chunk.title + " 복사했어요. Supabase 에 붙여넣고 RUN 하세요.", "success");
+      } catch (e) {
+        setShow(chunk);
+        toast("아래 상자를 길게 눌러 전체 선택 후 복사해주세요.", "info");
+      }
+    };
+
+    const allDone = pack.chunks.every((c) => done.includes(c.n));
+
+    return (
+      <Card className="p-4 space-y-3">
+        <div>
+          <h3 className="font-bold text-slate-800 dark:text-white">🛠 DB 보안 수정</h3>
+          <p className="text-[12px] text-slate-400 mt-0.5 leading-relaxed">
+            아직 적용하지 않은 보안 수정 두 가지가 있어요. 조각을 하나씩 복사해
+            Supabase SQL 편집기에 붙여넣고 RUN 하면 됩니다.
+            여러 번 눌러도, 중간에 끊겨도 안전합니다.
+          </p>
+        </div>
+
+        {allDone ? (
+          <p className="text-[12px] text-teal-700 dark:text-teal-300 bg-teal-50 dark:bg-teal-900/20 rounded-xl p-2.5">
+            ✅ 다섯 조각 모두 복사했어요. Supabase 에서 전부 RUN 했는지 확인해주세요.
+          </p>
+        ) : (
+          <p className="text-[12px] text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 rounded-xl p-2.5 leading-relaxed">
+            적용 전에는 다른 가족이 우리 집 예전 사진 경로를 열 수 있고, 초대코드를
+            틀리게 적고 가입하면 엉뚱한 새 가족이 만들어집니다.
+          </p>
+        )}
+
+        <a href="https://supabase.com/dashboard/project/_/sql/new" target="_blank" rel="noopener noreferrer"
+          className="block text-center py-3 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 text-sm font-medium">
+          Supabase SQL 편집기 열기 ↗
+        </a>
+
+        <div className="grid grid-cols-5 gap-1.5">
+          {pack.chunks.map((c) => {
+            const ok = done.includes(c.n);
+            return (
+              <button key={c.n} onClick={() => copy(c)}
+                aria-label={c.title + " SQL 복사" + (ok ? " (복사했음)" : "")}
+                className={`py-3 rounded-xl text-sm font-bold ${ok
+                  ? "bg-teal-500 text-white"
+                  : "bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-200"}`}>
+                {ok ? "✓" : c.n}
+              </button>
+            );
+          })}
+        </div>
+        <p className="text-[12px] text-slate-400">1번부터 순서대로 복사 → 붙여넣기 → RUN</p>
+
+        <button onClick={() => setOpen((v) => !v)} aria-expanded={open}
+          className="w-full py-2.5 text-[12px] text-slate-500 dark:text-slate-300">
+          {open ? "접기" : "한 번에 다 하기 · 직접 복사하기"}
+        </button>
+
+        {open && (
+          <div className="space-y-2">
+            <button onClick={() => copy({ n: 0, title: "전체", sql: pack.all })}
+              className="w-full py-3 rounded-xl bg-violet-400 text-white text-sm font-medium">
+              전체 한 번에 복사 (버벅이면 조각으로 하세요)
+            </button>
+            {done.length > 0 && (
+              <button onClick={() => { setDone([]); try { localStorage.removeItem(SQL_DONE_KEY); } catch (e) {} }}
+                className="w-full py-2.5 text-[12px] text-slate-400">복사 표시 지우기</button>
+            )}
+          </div>
+        )}
+
+        {show && (
+          <div className="space-y-2">
+            <p className="text-[12px] text-slate-500 dark:text-slate-300">{show.title} — 길게 눌러 전체 선택 후 복사</p>
+            <textarea readOnly value={show.sql} onFocus={(e) => e.target.select()}
+              className="w-full h-40 text-[12px] font-mono p-2 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-700 dark:text-slate-200" />
+            <button onClick={() => { mark(show.n); setShow(null); }}
+              className="w-full py-2.5 text-[12px] text-slate-500 dark:text-slate-300">복사했어요</button>
+          </div>
+        )}
+      </Card>
+    );
+  };
+
   const DdayWidgetCard = () => {
     const baby = useBaby();
     const toast = useToast();
@@ -4711,6 +4827,8 @@
         <ImportModal open={importOpen} onClose={() => setImportOpen(false)} />
 
         {/* D-day 위젯 — 가족 누구나 자기 폰에 올릴 수 있게 */}
+        {isAdmin && show("dbfix") && <DbFixCard />}
+
         {show("widget") && <DdayWidgetCard />}
 
         {/* 버전 / 강제 새로고침 — 폰에 옛 화면이 남아 있을 때 사용 */}
@@ -4921,6 +5039,7 @@
     { id: "baby",     icon: "👶", label: "아기 정보",   desc: "이름 · 출산예정일" },
     { id: "widget",   icon: "📱", label: "D-day 위젯",  desc: "홈화면에 띄우기" },
     { id: "backup",   icon: "💾", label: "데이터 백업", desc: "내보내기 · 가져오기", adminOnly: true },
+    { id: "dbfix",    icon: "🛠", label: "DB 보안 수정",  desc: "Supabase 에 붙여넣을 SQL", adminOnly: true },
     { id: "settings", icon: "⚙️", label: "설정",        desc: "화면 · 단위 · 계정" },
   ];
 
@@ -5629,7 +5748,7 @@ Script.complete();
         {section === "saved" && <Saved />}
         {section === "medals" && <div className="p-4"><MyMedals /></div>}
         {(section === "family" || section === "baby" || section === "widget"
-          || section === "backup" || section === "settings") && (
+          || section === "backup" || section === "dbfix" || section === "settings") && (
           <Settings focus={section} dark={dark} setDark={setDark} />
         )}
       </div>

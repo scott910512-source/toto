@@ -53,6 +53,7 @@ const REQUIRED = [
   { re: /rpc\(["']toggle_like["']/, why: "좋아요를 DB 함수로 처리 (남의 사진에도 눌러야 한다)", files: ["app.html"] },
   { re: /rpc\(["']touch_login["']/, why: "접속일 기록을 DB 함수로 처리", files: ["app.html"] },
   { re: /vendor\/toto-core\.js/, why: "공용 로직(vendor/toto-core.js) 불러오기", files: ["app.html"] },
+  { re: /window\.TotoSQL/, why: "DB 보안 수정 SQL 복사 카드", files: ["app.html"] },
   { re: /window\.TotoCore/, why: "공용 로직을 실제로 사용", files: ["app.html"] },
   { re: /createStore\(sb\)/, why: "DB 접근 계층을 공용 모듈에서 가져옴", files: ["app.html"] },
   { re: /createStorage\(sb, BUCKET\)/, why: "Storage 접근을 공용 모듈에서 가져옴", files: ["app.html"] },
@@ -133,7 +134,7 @@ if (existsSync("vendor/toto-core.js") && existsSync("src/legacy-bridge.ts")) {
 /* 모바일용 짧은 SQL 은 원본에서 만든 것이라, 원본만 고치고 다시 만들지 않으면
    가족이 예전 SQL 을 돌리게 된다. 다시 만들어 비교한다. */
 if (existsSync("tools/build-compact-sql.mjs") && existsSync("supabase/migrations/004-005-compact.sql")) {
-  const files = ["supabase/migrations/004-005-compact.sql",
+  const files = ["supabase/migrations/004-005-compact.sql", "vendor/toto-sql.js",
     ...[1,2,3,4,5].map((n) => `supabase/migrations/mobile/0${n}.sql`)];
   const before = files.filter(existsSync).map((f) => [f, readFileSync(f, "utf8")]);
   try {

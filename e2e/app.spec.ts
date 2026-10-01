@@ -580,6 +580,55 @@ test.describe("접속 설정이 잘못됐을 때", () => {
   });
 });
 
+test.describe("DB 보안 수정 복사 카드", () => {
+  test("51) 관리자는 다섯 조각을 앱에서 복사할 수 있다", async ({ page }) => {
+    const { errors } = await open(page, { role: "admin" });
+    await go(page, "#/more/dbfix", 1200);
+
+    const body = await page.locator("body").innerText();
+    expect(body).toContain("DB 보안 수정");
+    expect(body).toContain("Supabase SQL 편집기 열기");
+
+    // 1~5 번 버튼이 있다
+    for (const n of [1, 2, 3, 4, 5]) {
+      await expect(page.getByRole("button", { name: new RegExp(`${n}번 SQL 복사`) })).toHaveCount(1);
+    }
+    expect(errors).toEqual([]);
+  });
+
+  test("52) 복사한 조각은 체크로 바뀌고 새로고침해도 남는다", async ({ page, context }) => {
+    await context.grantPermissions(["clipboard-read", "clipboard-write"]).catch(() => {});
+    await open(page, { role: "admin" });
+    await go(page, "#/more/dbfix", 1200);
+
+    await page.getByRole("button", { name: /1번 SQL 복사/ }).click();
+    await page.waitForTimeout(700);
+    await expect(page.getByRole("button", { name: /1번 SQL 복사 \(복사했음\)/ })).toHaveCount(1);
+
+    await page.reload({ waitUntil: "load" });
+    await page.waitForTimeout(2500);
+    await expect(page.getByRole("button", { name: /1번 SQL 복사 \(복사했음\)/ })).toHaveCount(1);
+  });
+
+  test("53) 복사되는 내용이 실제 SQL 이다 (빈 값을 복사하지 않는다)", async ({ page }) => {
+    await open(page, { role: "admin" });
+    const chunks = await page.evaluate(() => {
+      const p = (window as unknown as { TotoSQL?: { chunks: Array<{ n: number; sql: string }>; all: string } }).TotoSQL;
+      return p ? { n: p.chunks.length, lens: p.chunks.map((c) => c.sql.length), all: p.all.length } : null;
+    });
+    expect(chunks).not.toBeNull();
+    expect(chunks!.n).toBe(5);
+    for (const len of chunks!.lens) expect(len).toBeGreaterThan(300);
+    expect(chunks!.all).toBeGreaterThan(5000);
+  });
+
+  test("54) 관리자가 아니면 이 항목이 보이지 않는다", async ({ page }) => {
+    await open(page, { role: "parent" });
+    await go(page, "#/more", 900);
+    expect(await page.locator("body").innerText()).not.toContain("DB 보안 수정");
+  });
+});
+
 test.describe("PWA", () => {
   test("18) manifest 가 세로로 고정돼 있지 않다 (액자 모드가 가로를 쓴다)", async ({ page }) => {
     const res = await page.request.get("/manifest.webmanifest");

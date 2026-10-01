@@ -9,12 +9,13 @@
    ⚠️ 정적 파일 요청에 앱 화면(app.html)을 돌려주지 않는다.
       예전에는 .js 가 실패하면 HTML 이 돌아와서 앱이 이상하게 깨졌다.
    배포할 때 CACHE 버전을 올리면 이전 캐시가 정리된다. */
-const CACHE = "toto-v33";
+const CACHE = "toto-v34";
 
 const SHELL = [
   "./app.html",
   // 앱이 이 파일 없이는 못 뜬다 (날짜·오류문구·설정진단). 셸에 포함한다.
   "./vendor/toto-core.js",
+  "./vendor/toto-sql.js",
   "./dday.html",
   "./supabase-config.js",
   "./manifest.webmanifest",
