@@ -18,6 +18,8 @@ export type Seed = {
   loggedOut?: boolean;
   /** 로그인 시 Supabase 가 돌려줄 오류 원문 (영어가 한국어로 바뀌는지 확인) */
   signInError?: string;
+  /** DB 보안 수정이 적용돼 있는지 — false 면 해당 함수가 없는 것처럼 답한다 */
+  migrated?: boolean;
 };
 
 export function stubScript(seed: Seed = {}): string {
@@ -25,7 +27,7 @@ export function stubScript(seed: Seed = {}): string {
     role: "admin", approved: true, babyName: "또또",
     dueDate: "2026-12-14", birthDate: "", records: 2, photos: 3,
     privatePhotos: 1, privateOwner: "me", email: "me@t.com",
-    loggedOut: false, signInError: "",
+    loggedOut: false, signInError: "", migrated: true,
     ...seed,
   };
 
@@ -172,6 +174,16 @@ export function stubScript(seed: Seed = {}): string {
     rpc: function (fn, args) {
       window.__E2E.calls.push({ op: "rpc", fn: fn, args: args });
       if (fn === "my_invite_code") return Promise.resolve({ data: "AB3K9Z", error: null });
+      // 보안 수정으로 생기는 함수들 — 적용 전이면 PostgREST 가 PGRST202 로 답한다
+      if (fn === "invite_code_exists" || fn === "can_read_media_path") {
+        if (!SEED.migrated) {
+          return Promise.resolve({
+            data: null,
+            error: { code: "PGRST202", message: "Could not find the function public." + fn + " in the schema cache" },
+          });
+        }
+        if (fn === "can_read_media_path") return Promise.resolve({ data: true, error: null });
+      }
       if (fn === "invite_code_exists") return Promise.resolve({ data: String((args || {}).p_code) === "AB3K9Z", error: null });
       if (fn === "toggle_like") return Promise.resolve({ data: [UID], error: null });
       return Promise.resolve({ data: true, error: null });

@@ -397,7 +397,7 @@
   } = window.TotoCore;
 
   // 화면에 표시할 빌드 버전 — 폰이 최신인지 바로 확인할 수 있게
-  const APP_VERSION = "v34";
+  const APP_VERSION = "v35";
 
   /* ========================================================================
      1. Supabase 초기화 + Firestore 호환 계층
@@ -4403,6 +4403,34 @@
       try { return JSON.parse(localStorage.getItem(SQL_DONE_KEY) || "[]"); } catch (e) { return []; }
     });
 
+    /* 적용 상태: null=확인중 · true=적용됨 · false=아직 · "unknown"=확인 실패
+       '복사 버튼을 눌렀는지' 로 판단하면, 다른 기기에서 적용했을 때 거짓말을
+       한다. 그래서 그 함수가 DB 에 있는지 직접 불러본다. */
+    const [applied, setApplied] = useState({ s004: null, s005: null });
+    useEffect(() => {
+      let alive = true;
+      const probe = async (fn, args) => {
+        try {
+          const { error } = await sb.rpc(fn, args);
+          if (!error) return true;
+          const m = (error.message || "") + " " + (error.code || "");
+          // 함수가 없을 때 PostgREST 는 PGRST202 / "Could not find the function" 로 답한다
+          if (/PGRST202|could not find the function|does not exist/i.test(m)) return false;
+          return "unknown";      // 권한·네트워크 문제는 '아직'이라고 단정하지 않는다
+        } catch (e) {
+          return "unknown";
+        }
+      };
+      (async () => {
+        const [s004, s005] = await Promise.all([
+          probe("invite_code_exists", { p_code: "" }),
+          probe("can_read_media_path", { p: "" }),
+        ]);
+        if (alive) setApplied({ s004, s005 });
+      })();
+      return () => { alive = false; };
+    }, []);
+
     if (!pack || !pack.chunks || !pack.chunks.length) return null;
 
     const mark = (n) => {
@@ -4424,7 +4452,10 @@
       }
     };
 
-    const allDone = pack.chunks.every((c) => done.includes(c.n));
+    const checking = applied.s004 === null || applied.s005 === null;
+    const bothApplied = applied.s004 === true && applied.s005 === true;
+    const unknown = !checking && !bothApplied
+      && applied.s004 !== false && applied.s005 !== false;
 
     return (
       <Card className="p-4 space-y-3">
@@ -4437,23 +4468,42 @@
           </p>
         </div>
 
-        {allDone ? (
-          <p className="text-[12px] text-teal-700 dark:text-teal-300 bg-teal-50 dark:bg-teal-900/20 rounded-xl p-2.5">
-            ✅ 다섯 조각 모두 복사했어요. Supabase 에서 전부 RUN 했는지 확인해주세요.
+        {checking ? (
+          <p className="text-[12px] text-slate-400 bg-slate-50 dark:bg-slate-900/40 rounded-xl p-2.5">
+            적용됐는지 DB 에 확인하는 중…
+          </p>
+        ) : bothApplied ? (
+          <p className="text-[12px] text-teal-700 dark:text-teal-300 bg-teal-50 dark:bg-teal-900/20 rounded-xl p-2.5 leading-relaxed">
+            ✅ <b>두 가지 모두 적용돼 있어요.</b> 더 하실 일은 없습니다.<br />
+            옛 사진 경로가 가족별로 나뉘었고, 초대코드를 틀리면 가입이 막힙니다.
+          </p>
+        ) : unknown ? (
+          <p className="text-[12px] text-slate-500 dark:text-slate-300 bg-slate-50 dark:bg-slate-900/40 rounded-xl p-2.5 leading-relaxed">
+            적용됐는지 확인하지 못했어요(연결 문제일 수 있어요). 아래 확인 쿼리를
+            Supabase 에서 직접 돌려보시면 확실합니다.
           </p>
         ) : (
-          <p className="text-[12px] text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 rounded-xl p-2.5 leading-relaxed">
-            적용 전에는 다른 가족이 우리 집 예전 사진 경로를 열 수 있고, 초대코드를
-            틀리게 적고 가입하면 엉뚱한 새 가족이 만들어집니다.
-          </p>
+          <div className="text-[12px] text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 rounded-xl p-2.5 space-y-1.5 leading-relaxed">
+            <p>
+              {applied.s004 === false && applied.s005 === false
+                ? "아직 둘 다 적용되지 않았어요."
+                : applied.s004 === false
+                  ? "가입 보안 수정(004)이 아직 적용되지 않았어요."
+                  : "사진 권한 수정(005)이 아직 적용되지 않았어요."}
+            </p>
+            {applied.s004 === false && <p>· 초대코드를 틀리게 적고 가입하면 엉뚱한 새 가족이 만들어집니다.</p>}
+            {applied.s005 === false && <p>· 다른 가족이 우리 집 예전 사진 경로를 열 수 있습니다.</p>}
+          </div>
         )}
 
-        <a href="https://supabase.com/dashboard/project/_/sql/new" target="_blank" rel="noopener noreferrer"
-          className="block text-center py-3 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 text-sm font-medium">
-          Supabase SQL 편집기 열기 ↗
-        </a>
+        {!bothApplied && (
+          <a href="https://supabase.com/dashboard/project/_/sql/new" target="_blank" rel="noopener noreferrer"
+            className="block text-center py-3 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 text-sm font-medium">
+            Supabase SQL 편집기 열기 ↗
+          </a>
+        )}
 
-        <div className="grid grid-cols-5 gap-1.5">
+        <div className={bothApplied ? "hidden" : "grid grid-cols-5 gap-1.5"}>
           {pack.chunks.map((c) => {
             const ok = done.includes(c.n);
             return (
@@ -4467,11 +4517,11 @@
             );
           })}
         </div>
-        <p className="text-[12px] text-slate-400">1번부터 순서대로 복사 → 붙여넣기 → RUN</p>
+        {!bothApplied && <p className="text-[12px] text-slate-400">1번부터 순서대로 복사 → 붙여넣기 → RUN</p>}
 
         <button onClick={() => setOpen((v) => !v)} aria-expanded={open}
           className="w-full py-2.5 text-[12px] text-slate-500 dark:text-slate-300">
-          {open ? "접기" : "한 번에 다 하기 · 직접 복사하기"}
+          {open ? "접기" : bothApplied ? "그래도 SQL 을 보고 싶다면" : "한 번에 다 하기 · 직접 복사하기"}
         </button>
 
         {open && (

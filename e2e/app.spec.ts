@@ -581,13 +581,14 @@ test.describe("접속 설정이 잘못됐을 때", () => {
 });
 
 test.describe("DB 보안 수정 복사 카드", () => {
-  test("51) 관리자는 다섯 조각을 앱에서 복사할 수 있다", async ({ page }) => {
-    const { errors } = await open(page, { role: "admin" });
-    await go(page, "#/more/dbfix", 1200);
+  test("51) 아직 적용 전이면 조각 다섯 개를 복사할 수 있다", async ({ page }) => {
+    const { errors } = await open(page, { role: "admin", migrated: false });
+    await go(page, "#/more/dbfix", 1500);
 
     const body = await page.locator("body").innerText();
     expect(body).toContain("DB 보안 수정");
     expect(body).toContain("Supabase SQL 편집기 열기");
+    expect(body).toContain("아직 둘 다 적용되지 않았어요");
 
     // 1~5 번 버튼이 있다
     for (const n of [1, 2, 3, 4, 5]) {
@@ -598,8 +599,8 @@ test.describe("DB 보안 수정 복사 카드", () => {
 
   test("52) 복사한 조각은 체크로 바뀌고 새로고침해도 남는다", async ({ page, context }) => {
     await context.grantPermissions(["clipboard-read", "clipboard-write"]).catch(() => {});
-    await open(page, { role: "admin" });
-    await go(page, "#/more/dbfix", 1200);
+    await open(page, { role: "admin", migrated: false });
+    await go(page, "#/more/dbfix", 1500);
 
     await page.getByRole("button", { name: /1번 SQL 복사/ }).click();
     await page.waitForTimeout(700);
@@ -626,6 +627,29 @@ test.describe("DB 보안 수정 복사 카드", () => {
     await open(page, { role: "parent" });
     await go(page, "#/more", 900);
     expect(await page.locator("body").innerText()).not.toContain("DB 보안 수정");
+  });
+  test("55) 적용이 끝나면 '다 됐다' 고 말하고 복사 버튼을 접는다", async ({ page }) => {
+    // 복사 버튼을 눌렀는지로 판단하면, 다른 기기에서 적용했을 때 거짓말을 한다.
+    // DB 에 직접 물어보므로 적용 상태가 그대로 드러난다.
+    const { errors } = await open(page, { role: "admin", migrated: true });
+    await go(page, "#/more/dbfix", 1800);
+
+    const body = await page.locator("body").innerText();
+    expect(body).toContain("두 가지 모두 적용돼 있어요");
+    // 페이지 다른 곳의 '아직' 과 섞이지 않게 이 카드가 쓰는 문구만 확인한다
+    expect(body).not.toContain("아직 둘 다 적용되지 않았어요");
+    expect(body).not.toContain("아직 적용되지 않았어요");
+    expect(body).not.toContain("1번부터 순서대로");
+    await expect(page.getByRole("button", { name: /1번 SQL 복사/ })).toBeHidden();
+    expect(errors).toEqual([]);
+  });
+
+  test("56) 적용 여부를 DB 에 물어본다 (버튼을 누른 기록이 아니라)", async ({ page }) => {
+    await open(page, { role: "admin", migrated: true });
+    await go(page, "#/more/dbfix", 1800);
+    const c = (await calls(page)) as Array<{ op: string; fn?: string }>;
+    expect(c.some((x) => x.op === "rpc" && x.fn === "invite_code_exists")).toBe(true);
+    expect(c.some((x) => x.op === "rpc" && x.fn === "can_read_media_path")).toBe(true);
   });
 });
 
