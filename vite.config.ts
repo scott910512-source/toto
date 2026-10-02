@@ -13,12 +13,18 @@ export default defineConfig({
     outDir: "dist",
     sourcemap: true,
     rollupOptions: {
+      /* 저장소 루트의 index.html 은 다른 프로젝트 것이라 쓸 수 없다.
+         새 구조의 진입점은 web/index.html 에 따로 둔다. */
+      input: fileURLToPath(new URL("./web/index.html", import.meta.url)),
       output: {
-        // 첫 로딩을 가볍게: 차트·갤러리 같은 무거운 것은 따로 떨어뜨린다
-        manualChunks: {
-          react: ["react", "react-dom"],
-          supabase: ["@supabase/supabase-js"],
-          charts: ["recharts"],
+        /* 첫 로딩을 가볍게: 무거운 라이브러리는 따로 떨어뜨린다.
+           아직 쓰지 않는 것까지 미리 적으면 "빈 청크" 경고만 남으므로,
+           실제로 불러온 모듈을 보고 가른다. */
+        manualChunks(id) {
+          if (id.includes("node_modules/react") || id.includes("node_modules/scheduler")) return "react";
+          if (id.includes("@supabase")) return "supabase";
+          if (id.includes("recharts") || id.includes("d3-")) return "charts";
+          return undefined;
         },
       },
     },

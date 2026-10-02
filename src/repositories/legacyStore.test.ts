@@ -232,10 +232,14 @@ describe("조건 붙이기", () => {
     expect(() => coll.where("at", ">=", "2026-01-01")).toThrow(/"==" 만 지원/);
   });
 
-  it("모르는 컬렉션은 바로 알려준다", () => {
+  it("다루는 컬렉션이 빠지지 않았다", () => {
+    // 배선에서 하나를 빠뜨리면 그 화면이 통째로 비는데, 조용히 비기만 한다.
+    // (COL 에 없는 이름은 타입에서 막히므로 런타임 검사 대신 목록을 고정한다)
     const f = fakeClient({});
-    // @ts-expect-error 일부러 없는 이름
-    expect(() => createStore(f.client).COL.nope?.()).toThrow;
+    const store = createStore(f.client);
+    expect(Object.keys(store.COL).sort()).toEqual(
+      ["albums", "photos", "records", "settings", "users"],
+    );
   });
 });
 

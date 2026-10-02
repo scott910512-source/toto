@@ -6,3 +6,10 @@ if (typeof window !== "undefined") {
     addListener() {}, removeListener() {},
   })) as unknown as typeof window.matchMedia;
 }
+
+/* React Testing Library 가 각 테스트 뒤에 화면을 정리하도록 */
+import { afterEach } from "vitest";
+import { cleanup } from "@testing-library/react";
+import "@testing-library/jest-dom/vitest";
+
+afterEach(() => cleanup());
