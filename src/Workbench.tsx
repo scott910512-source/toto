@@ -11,6 +11,7 @@ import { useHashRoute } from "./hooks/useHashRoute";
 import { babyAge, dday, ago, hm } from "./lib/dates";
 import { tempStage } from "./lib/guides";
 import { errMsg } from "./lib/errors";
+import { MedalGrid } from "./screens/MedalGrid";
 
 /* 작업대 — 옮겨 온 조각들이 실제로 동작하는지 눈으로 보는 자리.
    가족이 쓰는 화면이 아니며 배포되지 않는다. 화면을 하나씩 옮겨 오면서
@@ -100,6 +101,11 @@ function Inner() {
             <Field label="메모"><input className={inputCls} /></Field>
           </div>
         </Modal>
+      </Card>
+
+      <Card className="p-4 space-y-2">
+        <h2 className="font-bold text-slate-800 dark:text-white">메달 (옮겨 온 화면)</h2>
+        <MedalGrid owner={{ loginDays: ["1", "2", "3", "4", "5"], letterCount: 1 }} />
       </Card>
 
       <Card className="p-4 space-y-2">

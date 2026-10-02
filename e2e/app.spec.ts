@@ -651,6 +651,26 @@ test.describe("DB 보안 수정 복사 카드", () => {
     expect(c.some((x) => x.op === "rpc" && x.fn === "invite_code_exists")).toBe(true);
     expect(c.some((x) => x.op === "rpc" && x.fn === "can_read_media_path")).toBe(true);
   });
+  test("57) 메달 진행률을 스크린리더가 숫자로 읽을 수 있다", async ({ page }) => {
+    // 막대만 그려두면 화면을 못 보는 사람에게는 아무 정보가 없다
+    const { errors } = await open(page, { role: "admin" });
+    await go(page, "#/more/medals", 1500);
+
+    const bars = page.getByRole("progressbar");
+    expect(await bars.count()).toBeGreaterThan(0);
+    const first = bars.first();
+    await expect(first).toHaveAttribute("aria-valuemax", /\d+/);
+    await expect(first).toHaveAttribute("aria-valuenow", /\d+/);
+    expect(errors).toEqual([]);
+  });
+
+  test("58) 메달 여섯 개가 목록으로 읽힌다 (못 받은 것도 보인다)", async ({ page }) => {
+    await open(page, { role: "admin" });
+    await go(page, "#/more/medals", 1500);
+    const list = page.getByRole("list", { name: /메달 · 접속/ });
+    await expect(list).toHaveCount(1);
+    expect(await list.getByRole("listitem").count()).toBe(6);
+  });
 });
 
 test.describe("PWA", () => {

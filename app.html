@@ -397,7 +397,7 @@
   } = window.TotoCore;
 
   // 화면에 표시할 빌드 버전 — 폰이 최신인지 바로 확인할 수 있게
-  const APP_VERSION = "v36";
+  const APP_VERSION = "v37";
 
   /* ========================================================================
      1. Supabase 초기화 + Firestore 호환 계층
@@ -4241,16 +4241,22 @@
   const MedalGrid = ({ u }) => {
     const s = medalStats(u);
     return (
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-3 gap-2" role="list"
+        aria-label={`메달 · 접속 ${s.login}일 · 편지 ${s.letter}회`}>
         {MEDALS.map((m) => {
           const val = s[m.type]; const got = val >= m.goal;
           const pct = Math.min(100, Math.round((val / m.goal) * 100));
           return (
-            <div key={m.id} className={`rounded-xl p-2 text-center border ${got ? "bg-amber-50 border-amber-200 dark:bg-amber-900/20 dark:border-amber-800" : "bg-slate-50 border-slate-100 dark:bg-slate-700/40 dark:border-slate-700"}`}>
-              <div className="text-2xl" style={got ? {} : { filter: "grayscale(1)", opacity: 0.45 }}>{m.icon}</div>
+            <div key={m.id} role="listitem" className={`rounded-xl p-2 text-center border ${got ? "bg-amber-50 border-amber-200 dark:bg-amber-900/20 dark:border-amber-800" : "bg-slate-50 border-slate-100 dark:bg-slate-700/40 dark:border-slate-700"}`}>
+              <div className="text-2xl" aria-hidden="true" style={got ? {} : { filter: "grayscale(1)", opacity: 0.45 }}>{m.icon}</div>
               <p className="text-[12px] font-medium text-slate-700 dark:text-slate-200 mt-0.5 leading-tight">{m.name}</p>
               <p className="text-[12px] text-slate-400">{m.desc}</p>
-              <div className="h-1 bg-slate-200 dark:bg-slate-600 rounded mt-1 overflow-hidden"><div className="h-full bg-amber-400" style={{ width: pct + "%" }} /></div>
+              {/* 스크린리더는 막대 대신 숫자로 읽는다 */}
+              <div className="h-1 bg-slate-200 dark:bg-slate-600 rounded mt-1 overflow-hidden"
+                role="progressbar" aria-label={`${m.name} 진행`}
+                aria-valuemin={0} aria-valuemax={m.goal} aria-valuenow={Math.min(val, m.goal)}>
+                <div className="h-full bg-amber-400" style={{ width: pct + "%" }} />
+              </div>
               <p className="text-[12px] text-slate-400 mt-0.5">{Math.min(val, m.goal)}/{m.goal}</p>
             </div>
           );
