@@ -31,6 +31,9 @@ const FORBIDDEN = [
   { re: /const canSeePhoto = /, why: "공개범위 판단 사본 (vendor/toto-core.js 를 쓴다)", files: ["app.html"] },
   { re: /const tempStage = /, why: "체온 단계 사본 (vendor/toto-core.js 를 쓴다)", files: ["app.html"] },
   { re: /const MEDALS = \[/, why: "메달 목록 사본 (vendor/toto-core.js 를 쓴다)", files: ["app.html"] },
+  // app.html 전용: 한 손으로 누르기 어려운 크기로 되돌아가는 것
+  { re: /className="w-10 h-10 rounded-full hover:bg-slate-100/, why: "44px 보다 작은 다크모드 버튼", files: ["app.html"] },
+  { re: /py-1\.5 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-[56]00/, why: "44px 보다 작은 작은글씨 버튼", files: ["app.html"] },
   // app.html 전용: 프론트가 권한을 직접 쓰는 코드 (DB 트리거가 정해야 한다)
   { re: /upd\.(role|approved|disabled)\s*=/, why: "프론트에서 role/approved/disabled 를 씀", files: ["app.html"] },
   { re: /isAdminEmail\(\s*user\.email\s*\)\s*(\|\||\?)/, why: "이메일만으로 관리자 권한을 줌", files: ["app.html"] },
@@ -54,6 +57,7 @@ const REQUIRED = [
   { re: /rpc\(["']touch_login["']/, why: "접속일 기록을 DB 함수로 처리", files: ["app.html"] },
   { re: /vendor\/toto-core\.js/, why: "공용 로직(vendor/toto-core.js) 불러오기", files: ["app.html"] },
   { re: /window\.TotoSQL/, why: "DB 보안 수정 SQL 복사 카드", files: ["app.html"] },
+  { re: /h1 className="sr-only"/, why: "스크린리더용 화면 제목", files: ["app.html"] },
   { re: /window\.TotoCore/, why: "공용 로직을 실제로 사용", files: ["app.html"] },
   { re: /createStore\(sb\)/, why: "DB 접근 계층을 공용 모듈에서 가져옴", files: ["app.html"] },
   { re: /createStorage\(sb, BUCKET\)/, why: "Storage 접근을 공용 모듈에서 가져옴", files: ["app.html"] },

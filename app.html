@@ -397,7 +397,7 @@
   } = window.TotoCore;
 
   // 화면에 표시할 빌드 버전 — 폰이 최신인지 바로 확인할 수 있게
-  const APP_VERSION = "v37";
+  const APP_VERSION = "v38";
 
   /* ========================================================================
      1. Supabase 초기화 + Firestore 호환 계층
@@ -614,7 +614,7 @@
           return (
             <button key={o.value} type="button" role="radio" aria-checked={active}
               onClick={() => onChange(o.value)}
-              className={`px-4 py-2.5 rounded-full text-sm font-medium border transition ${active
+              className={`px-4 min-h-[44px] rounded-full text-sm font-medium border transition ${active
                 ? "bg-teal-500 border-teal-500 text-white"
                 : "bg-white dark:bg-slate-700 border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300"}`}>
               {o.label}
@@ -698,7 +698,7 @@
             {title && (
               <div className="sticky top-0 bg-white dark:bg-slate-800 px-5 py-4 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between z-10">
                 <h2 id="modal-title" className="text-lg font-bold text-slate-800 dark:text-white">{title}</h2>
-                <button onClick={onClose} aria-label="닫기" className="text-2xl text-slate-400 hover:text-slate-600 w-9 h-9">×</button>
+                <button onClick={onClose} aria-label="닫기" className="text-2xl text-slate-400 hover:text-slate-600 w-11 h-11 -mr-2">×</button>
               </div>
             )}
             <div className="p-5">{children}</div>
@@ -969,7 +969,7 @@
           <div className="flex gap-2 mb-5 bg-slate-100 dark:bg-slate-700 rounded-xl p-1">
             {[{ v: "login", l: "로그인" }, { v: "signup", l: "회원가입" }].map((t) => (
               <button key={t.v} type="button" onClick={() => { setMode(t.v); setErr(""); }}
-                className={`flex-1 py-2 rounded-lg text-sm font-medium ${mode === t.v ? "bg-white dark:bg-slate-800 text-teal-600 shadow-sm" : "text-slate-500"}`}>{t.l}</button>
+                className={`flex-1 min-h-[44px] rounded-lg text-sm font-medium ${mode === t.v ? "bg-white dark:bg-slate-800 text-teal-600 shadow-sm" : "text-slate-500"}`}>{t.l}</button>
             ))}
           </div>
           <form onSubmit={submit} className="space-y-4">
@@ -1011,7 +1011,7 @@
             )}
             {err && <p role="alert" className="text-sm text-rose-500 bg-rose-50 dark:bg-rose-900/30 rounded-lg px-3 py-2">⚠️ {err}</p>}
             <Btn type="submit" disabled={busy} className="w-full">{busy ? "처리 중..." : (mode === "signup" ? (invite.length === 6 ? "가족으로 합류하기" : "내 아기 수첩 만들기") : "로그인")}</Btn>
-            {mode === "login" && <button type="button" onClick={resetPw} className="w-full text-sm text-slate-400 hover:text-teal-500 pt-1">비밀번호를 잊으셨나요?</button>}
+            {mode === "login" && <button type="button" onClick={resetPw} className="w-full min-h-[44px] text-sm text-slate-400 hover:text-teal-500">비밀번호를 잊으셨나요?</button>}
           </form>
         </Card>
         <p className="text-center text-xs text-slate-400 mt-6 leading-relaxed">
@@ -1093,7 +1093,7 @@
         <p className="flex-1 text-xs text-slate-600 dark:text-slate-200 leading-snug">
           {bip ? "홈 화면에 앱처럼 설치할 수 있어요." : "공유 버튼 → ‘홈 화면에 추가’로 앱처럼 쓸 수 있어요."}
         </p>
-        {bip && <button onClick={install} className="text-xs px-3 py-1.5 rounded-lg bg-teal-500 text-white font-medium whitespace-nowrap">설치</button>}
+        {bip && <button onClick={install} className="text-xs px-3.5 min-h-[44px] rounded-lg bg-teal-500 text-white font-medium whitespace-nowrap">설치</button>}
         <button onClick={close} aria-label="닫기" className="text-slate-400 text-lg w-7 h-7">×</button>
       </div>
     );
@@ -1115,10 +1115,10 @@
           </div>
           <div className="flex items-center gap-1">
             <button onClick={() => setDark(!dark)} aria-label={dark ? "라이트 모드로 전환" : "다크 모드로 전환"}
-              className="w-10 h-10 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 text-xl">{dark ? "☀️" : "🌙"}</button>
+              className="w-11 h-11 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 text-xl">{dark ? "☀️" : "🌙"}</button>
             <span className="text-xs font-medium text-slate-600 dark:text-slate-300 leading-tight mr-1 truncate max-w-[90px]">{profile ? profile.name : "..."}</span>
             <button onClick={() => { signOutApp(); toast("로그아웃 되었습니다."); }} aria-label="로그아웃"
-              className="text-xs px-2.5 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300">로그아웃</button>
+              className="text-xs px-3 min-h-[44px] rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300">로그아웃</button>
           </div>
         </div>
       </header>
@@ -1293,6 +1293,9 @@
        수유·수면·기저귀 화면은 사라진 게 아니라 '기록' 탭에 그대로 있다. */
     if (!born) return (
       <div className="p-4 space-y-4 pb-safe">
+      {/* 스크린리더가 제목으로 화면을 훑는다. 화면에는 자리를 차지하지 않지만
+          어떤 화면인지 읽히도록 둔다 (예전에는 H3 부터 시작해 건너뛰며 읽혔다) */}
+        <h1 className="sr-only">홈</h1>
         <Card className="p-6 text-center bg-gradient-to-br from-violet-50 to-teal-50 dark:from-slate-800 dark:to-slate-800">
           <p className="text-sm text-slate-500 dark:text-slate-400">{baby.name}</p>
           {ageInfo.daysLeft > 0 ? (
@@ -1362,6 +1365,7 @@
     /* ── 출산 후 홈 ───────────────────────────────────────────────── */
     return (
       <div className="p-4 space-y-4 pb-safe">
+        <h1 className="sr-only">홈</h1>
         {/* 아기 나이 + D-day */}
         <Card className="p-5 bg-gradient-to-br from-teal-50 to-violet-50 dark:from-slate-800 dark:to-slate-800">
           <p className="text-sm text-slate-500 dark:text-slate-400">{baby.name}</p>
@@ -1463,7 +1467,7 @@
         <Card className="p-4">
           <div className="flex items-center justify-between mb-1">
             <h3 className="font-bold text-slate-800 dark:text-white">최근 7일 통계</h3>
-            <button onClick={() => setStatsOpen(true)} className="text-xs text-teal-600 dark:text-teal-400">📊 상세 통계 ›</button>
+            <button onClick={() => setStatsOpen(true)} className="text-xs text-teal-600 dark:text-teal-400 min-h-[44px] px-2 -mr-2">📊 상세 통계 ›</button>
           </div>
           <div className="grid grid-cols-3 gap-2 my-3 text-center">
             <div><p className="text-lg font-bold text-teal-500">{avg("수유").toFixed(1)}</p><p className="text-[12px] text-slate-400">하루 평균 수유</p></div>
@@ -2716,17 +2720,20 @@
 
     return (
       <div className="p-4 space-y-4 pb-safe">
+      {/* 스크린리더가 제목으로 화면을 훑는다. 화면에는 자리를 차지하지 않지만
+          어떤 화면인지 읽히도록 둔다 (예전에는 H3 부터 시작해 건너뛰며 읽혔다) */}
+        <h1 className="sr-only">기록</h1>
         <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="육아 기록 종류">
           {tabs.map((t) => (
             <button key={t.id} role="tab" aria-selected={cur === t.id} onClick={() => setSub(t.id)}
-              className={`whitespace-nowrap px-3.5 py-2 rounded-full text-sm font-medium transition ${cur === t.id
+              className={`whitespace-nowrap px-3.5 min-h-[44px] rounded-full text-sm font-medium transition ${cur === t.id
                 ? "bg-teal-500 text-white" : "bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-300 border border-slate-200 dark:border-slate-700"}`}>
               {t.label}
             </button>
           ))}
           {rest.length > 0 && (
             <button onClick={() => setMoreOpen(true)} aria-haspopup="dialog"
-              className="whitespace-nowrap px-3.5 py-2 rounded-full text-sm font-medium bg-white dark:bg-slate-800 text-teal-600 dark:text-teal-400 border border-dashed border-teal-300 dark:border-teal-600">
+              className="whitespace-nowrap px-3.5 min-h-[44px] rounded-full text-sm font-medium bg-white dark:bg-slate-800 text-teal-600 dark:text-teal-400 border border-dashed border-teal-300 dark:border-teal-600">
               ＋ 다른 기록
             </button>
           )}
@@ -3143,10 +3150,14 @@
         <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/60 to-transparent rounded-b-xl p-2 flex items-end justify-between">
           <span className="text-[12px] text-white/90 truncate">{photo.uploaderName}</span>
           <div className="flex items-center gap-2">
-            <button onClick={() => toggleLike(photo, uid)} aria-label={liked ? "좋아요 취소" : "좋아요"} className="text-sm flex items-center gap-0.5 text-white">
+            {/* 사진을 가리지 않도록 겉보기 크기는 그대로 두고, 누를 수 있는
+                영역만 넓힌다 (p-2.5 로 넓히고 -m-2.5 로 자리를 되돌린다) */}
+            <button onClick={() => toggleLike(photo, uid)} aria-label={liked ? "좋아요 취소" : "좋아요"}
+              className="text-sm flex items-center justify-center gap-0.5 text-white min-w-[44px] min-h-[44px] -m-2.5 p-2.5">
               <span aria-hidden="true">{liked ? "❤️" : "🤍"}</span><span className="text-[12px]">{likeCountOf(photo)}</span>
             </button>
-            <button onClick={() => toggleSave(photo, uid)} aria-label={saved ? "저장 취소" : "저장"} className="text-base text-white">{saved ? "🔖" : "🏷️"}</button>
+            <button onClick={() => toggleSave(photo, uid)} aria-label={saved ? "저장 취소" : "저장"}
+              className="text-base text-white flex items-center justify-center min-w-[44px] min-h-[44px] -m-2.5 p-2.5">{saved ? "🔖" : "🏷️"}</button>
           </div>
         </div>
       </div>
@@ -3379,6 +3390,9 @@
 
     return (
       <div className="p-4 space-y-3 pb-safe">
+      {/* 스크린리더가 제목으로 화면을 훑는다. 화면에는 자리를 차지하지 않지만
+          어떤 화면인지 읽히도록 둔다 (예전에는 H3 부터 시작해 건너뛰며 읽혔다) */}
+        <h1 className="sr-only">사진</h1>
         {/* 앨범 목록 화면 */}
         {albumView && (
           <AlbumGrid photos={photos} onBack={() => { setAlbumView(false); setAlbum(undefined); }}
@@ -3415,9 +3429,9 @@
         </div>
         <div className="flex gap-2">
           <button onClick={() => setAlbumView(true)} aria-label="앨범 보기"
-            className="flex-1 py-2.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 text-sm font-medium">📚 앨범</button>
+            className="flex-1 min-h-[44px] rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 text-sm font-medium">📚 앨범</button>
           <button onClick={() => setShowSlide(true)} aria-label="슬라이드쇼 시작"
-            className="flex-1 py-2.5 rounded-xl bg-violet-400 text-white text-sm font-medium">▶ 슬라이드쇼</button>
+            className="flex-1 min-h-[44px] rounded-xl bg-violet-400 text-white text-sm font-medium">▶ 슬라이드쇼</button>
         </div>
 
         {filterOpen && (
@@ -4008,6 +4022,9 @@
 
     return (
       <div className="p-4 space-y-3 pb-safe">
+      {/* 스크린리더가 제목으로 화면을 훑는다. 화면에는 자리를 차지하지 않지만
+          어떤 화면인지 읽히도록 둔다 (예전에는 H3 부터 시작해 건너뛰며 읽혔다) */}
+        <h1 className="sr-only">저장한 사진</h1>
         <h2 className="font-bold text-lg text-slate-800 dark:text-white">🔖 내 저장</h2>
         {!loaded ? <Spinner /> : list.length === 0 ? (
           <Card className="p-8 text-center text-sm text-slate-400">저장한 사진이 없어요.<br />갤러리에서 🔖 버튼으로 저장해보세요.</Card>
@@ -4078,6 +4095,9 @@
 
     return (
       <div className="p-4 space-y-4 pb-safe">
+      {/* 스크린리더가 제목으로 화면을 훑는다. 화면에는 자리를 차지하지 않지만
+          어떤 화면인지 읽히도록 둔다 (예전에는 H3 부터 시작해 건너뛰며 읽혔다) */}
+        <h1 className="sr-only">편지</h1>
         <div className="flex items-center justify-between">
           <div>
             <h2 className="font-bold text-lg text-slate-800 dark:text-white">💌 편지</h2>
@@ -4538,7 +4558,7 @@
         {!bothApplied && <p className="text-[12px] text-slate-400">1번부터 순서대로 복사 → 붙여넣기 → RUN</p>}
 
         <button onClick={() => setOpen((v) => !v)} aria-expanded={open}
-          className="w-full py-2.5 text-[12px] text-slate-500 dark:text-slate-300">
+          className="w-full min-h-[44px] text-[12px] text-slate-500 dark:text-slate-300">
           {open ? "접기" : bothApplied ? "그래도 SQL 을 보고 싶다면" : "한 번에 다 하기 · 직접 복사하기"}
         </button>
 
@@ -4830,7 +4850,7 @@
         <Card className="p-4">
           <div className="flex items-start justify-between">
             <h3 className="font-bold text-slate-800 dark:text-white mb-2">내 계정</h3>
-            <button onClick={() => setNickOpen(true)} className="text-xs px-2.5 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300">✏️ 닉네임 변경</button>
+            <button onClick={() => setNickOpen(true)} className="text-xs px-3 min-h-[44px] rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300">✏️ 닉네임 변경</button>
           </div>
           <p className="text-sm text-slate-700 dark:text-slate-200"><b>{profile && profile.name}</b> <span className="text-slate-400">(닉네임)</span></p>
           <p className="text-xs text-slate-400 mt-0.5">{user.email}</p>
@@ -4943,7 +4963,7 @@
                     {/* 메달 현황 */}
                     <div className="flex items-center justify-between mt-1">
                       <p className="text-[12px] text-slate-400">🏅 접속 {medalStats(u).login}일 · ✍️ 편지 {medalStats(u).letter}회 · {earnedMedals(u).map((m) => m.icon).join(" ") || "메달 없음"}</p>
-                      <button onClick={() => setStatusUser(u)} className="text-[12px] text-teal-600 dark:text-teal-400 whitespace-nowrap shrink-0">현황보기 ›</button>
+                      <button onClick={() => setStatusUser(u)} className="text-[12px] text-teal-600 dark:text-teal-400 whitespace-nowrap shrink-0 min-h-[44px] px-2 -mr-2">현황보기 ›</button>
                     </div>
 
                     {pending ? (
@@ -4963,7 +4983,7 @@
                             <div className="flex gap-1.5">
                               {["viewer", "member", "admin"].map((r) => (
                                 <button key={r} onClick={() => setRole(u, r)}
-                                  className={`text-xs px-2.5 py-1.5 rounded-lg border ${u.role === r ? "bg-teal-500 border-teal-500 text-white" : "bg-white dark:bg-slate-700 border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300"}`}>
+                                  className={`text-xs px-3 min-h-[44px] rounded-lg border ${u.role === r ? "bg-teal-500 border-teal-500 text-white" : "bg-white dark:bg-slate-700 border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300"}`}>
                                   {roleLabel(r)}
                                 </button>
                               ))}
@@ -4971,9 +4991,9 @@
                           )}
                         </div>
                         <div className="flex flex-wrap gap-1.5 mt-2">
-                          <button onClick={() => resetPw(u)} className="text-xs px-2.5 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300">비번 재설정</button>
+                          <button onClick={() => resetPw(u)} className="text-xs px-3 min-h-[44px] rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300">비번 재설정</button>
                           {(u.role !== "admin" || u.disabled) && (
-                            <button onClick={() => toggleDisabled(u)} className="text-xs px-2.5 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300">{u.disabled ? "차단 해제" : "차단"}</button>
+                            <button onClick={() => toggleDisabled(u)} className="text-xs px-3 min-h-[44px] rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300">{u.disabled ? "차단 해제" : "차단"}</button>
                           )}
                           {u.uid !== user.uid && (
                             <button onClick={() => deleteUser(u)} className="text-xs px-2.5 py-1.5 rounded-lg bg-rose-100 text-rose-600 dark:bg-rose-900/40">🗑️ 삭제</button>
