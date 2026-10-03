@@ -9,7 +9,7 @@
    ⚠️ 정적 파일 요청에 앱 화면(app.html)을 돌려주지 않는다.
       예전에는 .js 가 실패하면 HTML 이 돌아와서 앱이 이상하게 깨졌다.
    배포할 때 CACHE 버전을 올리면 이전 캐시가 정리된다. */
-const CACHE = "toto-v38";
+const CACHE = "toto-v39";
 
 const SHELL = [
   "./app.html",
@@ -27,9 +27,34 @@ const SHELL = [
 /* 캐시하면 안 되는 요청 — 인증 토큰과 가족 사진 signed URL */
 const BYPASS = /supabase\.co|supabase\.in|identitytoolkit|securetoken|google-analytics|googletagmanager/;
 
+/* 앱이 이 둘 없이는 못 뜬다. 나머지(아이콘 등)는 없어도 화면은 나온다. */
+const MUST = ["./app.html", "./vendor/toto-core.js"];
+
 self.addEventListener("install", (e) => {
-  // 새 버전을 받으면 바로 대기 상태로 (실제 적용은 아래 SKIP_WAITING 신호를 받고)
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).catch(() => {}));
+  /* 한 장씩 담는다.
+     예전에는 addAll 로 한 번에 담았는데, addAll 은 하나만 실패해도 전체가
+     취소된다. 그걸 catch 로 삼키고 있었으니 아이콘 하나가 빠지면 오프라인이
+     통째로 죽고 아무도 모르는 상태였다. */
+  e.waitUntil((async () => {
+    const c = await caches.open(CACHE);
+    const failed = [];
+    await Promise.all(SHELL.map(async (url) => {
+      try {
+        const res = await fetch(url, { cache: "reload" });
+        if (res && res.status === 200) await c.put(url, res.clone());
+        else failed.push(url + " (HTTP " + (res && res.status) + ")");
+      } catch (err) {
+        failed.push(url + " (" + (err && err.message) + ")");
+      }
+    }));
+    if (failed.length) {
+      // 조용히 넘기지 않는다. 개발자 도구에서 바로 보이게 남긴다.
+      console.error("[sw] 오프라인용 파일을 담지 못했습니다:", failed);
+    }
+    const missing = [];
+    for (const m of MUST) if (!(await c.match(m))) missing.push(m);
+    if (missing.length) console.error("[sw] 이게 없으면 오프라인에서 앱이 안 뜹니다:", missing);
+  })());
 });
 
 self.addEventListener("activate", (e) => {

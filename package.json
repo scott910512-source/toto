@@ -14,7 +14,7 @@
     "test:watch": "vitest",
     "e2e": "npm run e2e:prepare && playwright test",
     "e2e:ui": "playwright test --ui",
-    "verify": "node tools/verify-legacy.mjs",
+    "verify": "node tools/verify-legacy.mjs && node tools/check-touch-size.mjs",
     "e2e:prepare": "node tools/prepare-e2e-vendor.mjs",
     "fetch:tailwind": "node tools/fetch-tailwind.mjs",
     "test:sql": "bash tools/sql-verify.sh",

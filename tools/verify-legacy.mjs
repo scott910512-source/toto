@@ -115,6 +115,25 @@ if (existsSync("app.html") && existsSync("sw.js")) {
   } else console.log(`✅ 버전 일치 ${v[1]}`);
 }
 
+/* 서비스워커가 오프라인용으로 담는 파일이 실제로 있는지.
+   없는 파일이 목록에 있으면 그 기기는 오프라인에서 앱이 안 뜨는데,
+   런타임에만 드러나고 조용히 지나간다. 커밋 전에 잡는다. */
+if (existsSync("sw.js")) {
+  const sw = readFileSync("sw.js", "utf8");
+  const block = sw.match(/const SHELL = \[([\s\S]*?)\]/);
+  if (!block) {
+    console.error("❌ sw.js: 오프라인용 파일 목록(SHELL)을 찾지 못했습니다");
+    failed++;
+  } else {
+    const files = [...block[1].matchAll(/"\.\/([^"]+)"/g)].map((m) => m[1]);
+    const gone = files.filter((f) => !existsSync(f));
+    if (gone.length) {
+      console.error("❌ sw.js: 오프라인용 목록에 없는 파일이 있습니다 → " + gone.join(", "));
+      failed++;
+    } else console.log(`✅ 오프라인용 파일 ${files.length}개 모두 존재`);
+  }
+}
+
 /* vendor/toto-core.js 는 src/ 에서 빌드한 결과물인데 저장소에 커밋된다.
    (Pages 가 브랜치를 그대로 내보내서 배포 시 빌드 단계가 없다)
    소스를 고치고 빌드를 잊으면, 테스트는 통과하는데 가족이 보는 화면은
