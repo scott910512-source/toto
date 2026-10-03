@@ -3,6 +3,7 @@
    Vite 로 옮기는 중에도 이 파일들이 실제 서비스이므로, CI 가 매번 검사한다. */
 import { readFileSync, existsSync, writeFileSync } from "node:fs";
 import { execSync } from "node:child_process";
+import { readAppSource } from "./app-source.mjs";
 import { transform } from "@babel/standalone";
 
 const FILES = ["app.html", "dday.html", "gallery.html", "baby-care.html"];
@@ -76,11 +77,11 @@ for (const f of FILES) {
     if (!rule.re.test(html)) { console.error(`❌ ${f}: ${rule.why} 가 사라졌습니다`); failed++; }
   }
 
-  const m = html.match(/<script type="text\/babel"[^>]*>([\s\S]*?)<\/script>/);
-  if (!m) { console.log(`   ${f}: babel 스크립트 없음 (건너뜀)`); continue; }
+  const appSrc = readAppSource(html);
+  if (appSrc === null) { console.log(`   ${f}: 앱 소스 없음 (건너뜀)`); continue; }
   try {
-    transform(m[1], { presets: [["react", { runtime: "classic" }]] });
-    console.log(`✅ ${f} 문법 OK (${m[1].length.toLocaleString()} chars)`);
+    transform(appSrc, { presets: [["react", { runtime: "classic" }]] });
+    console.log(`✅ ${f} 문법 OK (${appSrc.length.toLocaleString()} chars)`);
   } catch (e) {
     console.error(`❌ ${f} 문법 오류: ${e.message}`);
     failed++;
@@ -113,6 +114,25 @@ if (existsSync("app.html") && existsSync("sw.js")) {
     console.error(`❌ 버전 불일치: app.html ${v[1]} ≠ sw.js ${c[1]} — 폰이 최신화되지 않습니다`);
     failed++;
   } else console.log(`✅ 버전 일치 ${v[1]}`);
+
+  /* app.html 이 부르는 vendor 주소의 ?v=NN 도 같아야 한다.
+     어긋나면 새 HTML 이 옛 캐시의 코드를 받아 "업데이트했는데 그대로" 가 된다. */
+  if (v) {
+    const app = readFileSync("app.html", "utf8");
+    const urls = [...app.matchAll(/vendor\/([\w.-]+\.js)\?v=(\d+)/g)];
+    const want = v[1].replace(/^v/, "");
+    const wrong = urls.filter((u) => u[2] !== want).map((u) => `${u[1]}?v=${u[2]}`);
+    const plain = [...app.matchAll(/<script src="vendor\/([\w.-]+\.js)"><\/script>/g)].map((u) => u[1]);
+    if (wrong.length) {
+      console.error(`❌ vendor 주소 버전이 ${want} 와 다릅니다 → ${wrong.join(", ")}`);
+      failed++;
+    } else if (plain.length) {
+      console.error(`❌ vendor 주소에 버전이 없습니다 → ${plain.join(", ")} (?v=${want} 를 붙이세요)`);
+      failed++;
+    } else if (urls.length) {
+      console.log(`✅ vendor 주소 버전 ${urls.length}곳 일치 (?v=${want})`);
+    }
+  }
 }
 
 /* 서비스워커가 오프라인용으로 담는 파일이 실제로 있는지.
@@ -125,7 +145,10 @@ if (existsSync("sw.js")) {
     console.error("❌ sw.js: 오프라인용 파일 목록(SHELL)을 찾지 못했습니다");
     failed++;
   } else {
-    const files = [...block[1].matchAll(/"\.\/([^"]+)"/g)].map((m) => m[1]);
+    /* "./x.png" 와 `./x.js?v=${V}` 둘 다 받는다. ?v= 뒤는 떼고 본다.
+       (버전 붙은 주소로 바꾸면서 vendor 파일 3개가 조용히 검사에서 빠졌었다) */
+    const files = [...block[1].matchAll(/["`]\.\/([^"`]+)["`]/g)]
+      .map((m) => m[1].replace(/\?.*$/, ""));
     const gone = files.filter((f) => !existsSync(f));
     if (gone.length) {
       console.error("❌ sw.js: 오프라인용 목록에 없는 파일이 있습니다 → " + gone.join(", "));
@@ -150,6 +173,25 @@ if (existsSync("vendor/toto-core.js") && existsSync("src/legacy-bridge.ts")) {
     } else console.log("✅ vendor/toto-core.js 가 src/ 와 일치");
   } catch (e) {
     console.error("❌ 공용 로직 빌드 실패: " + (e.stderr ? String(e.stderr).slice(0, 400) : e.message));
+    failed++;
+  }
+}
+
+/* vendor/app-compiled.js 는 app.html 의 JSX 를 컴파일한 것이다.
+   소스만 고치고 다시 만들지 않으면, 가족은 예전 화면을 계속 본다
+   (가장 눈에 안 띄는 종류의 사고다). 다시 만들어 비교한다. */
+if (existsSync("vendor/app-compiled.js") && existsSync("tools/build-app-bundle.mjs")) {
+  const before = readFileSync("vendor/app-compiled.js", "utf8");
+  try {
+    execSync("node tools/build-app-bundle.mjs", { stdio: "pipe" });
+    const after = readFileSync("vendor/app-compiled.js", "utf8");
+    if (before !== after) {
+      writeFileSync("vendor/app-compiled.js", before);
+      console.error("❌ vendor/app-compiled.js 가 app.html 과 어긋납니다 — npm run build:app 후 커밋하세요");
+      failed++;
+    } else console.log("✅ vendor/app-compiled.js 가 app.html 과 일치");
+  } catch (e) {
+    console.error("❌ 앱 컴파일 실패: " + (e.stderr ? String(e.stderr).slice(0, 300) : e.message));
     failed++;
   }
 }

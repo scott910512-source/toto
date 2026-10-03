@@ -74,17 +74,19 @@
   <!-- 공용 로직(날짜·오류문구·설정진단·백업검사).
        src/ 에서 빌드한 파일이고 테스트가 붙어 있다. npm run build:core
        이 파일이 못 뜨면 앱이 멈추므로 defer/async 를 쓰지 않는다. -->
-  <script src="vendor/toto-core.js"></script>
+  <script src="vendor/toto-core.js?v=40"></script>
 
   <!-- DB 보안 수정 SQL (관리자가 설정에서 복사해 Supabase 에 붙여넣는 용도).
        공개 저장소에 있는 내용과 같고 비밀값이 아니다. 없어도 앱은 동작한다. -->
-  <script src="vendor/toto-sql.js"></script>
+  <script src="vendor/toto-sql.js?v=40"></script>
 
   <!-- 버전 고정 + crossorigin: 'latest' 변경/CORS 가림(Script error.) 방지 -->
   <script crossorigin="anonymous" src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
   <script crossorigin="anonymous" src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
   <script crossorigin="anonymous" src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
-  <script crossorigin="anonymous" src="https://unpkg.com/@babel/standalone@7.26.4/babel.min.js"></script>
+  <!-- Babel 은 미리 내려받지 않는다. 아래 vendor/app-compiled.js 가 이미
+       컴파일된 결과이고, 그걸 못 받았을 때만 Babel 을 받아 직접 컴파일한다.
+       (2.9MB 내려받기 + 폰에서 2~3초 컴파일을 없애기 위한 것) -->
   <!-- prop-types: Recharts UMD가 window.PropTypes를 요구함 (없으면 차트 로드 실패) -->
   <script crossorigin="anonymous" src="https://unpkg.com/prop-types@15.8.1/prop-types.min.js"></script>
   <!-- Recharts: 2.x UMD 고정 ('latest'가 v3로 바뀌면 깨짐) -->
@@ -350,7 +352,10 @@
   ============================================================================
   -->
 
-  <script type="text/babel" data-presets="react">
+  <!-- ⚠️ 여기가 원본입니다. vendor/app-compiled.js 는 이걸 기계가 컴파일해
+       옮겨 적은 것이고, npm run verify 가 둘이 어긋나지 않는지 검사합니다.
+       type 이 text/plain 이라 브라우저는 실행하지 않습니다. -->
+  <script type="text/plain" id="toto-source" data-presets="react">
   /* global React, ReactDOM, Recharts, BABY_DEFAULTS */
   const { useState, useEffect, useRef, useMemo, useCallback, createContext, useContext } = React;
   // Recharts가 CDN에서 안 떠도 앱 전체가 멈추지 않도록 대체 컴포넌트 사용
@@ -408,7 +413,7 @@
   } = window.TotoCore;
 
   // 화면에 표시할 빌드 버전 — 폰이 최신인지 바로 확인할 수 있게
-  const APP_VERSION = "v39";
+  const APP_VERSION = "v40";
 
   /* ========================================================================
      1. Supabase 초기화 + Firestore 호환 계층
@@ -6030,6 +6035,38 @@ Script.complete();
   };
 
   ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+  </script>
+
+  <!-- 미리 컴파일한 앱. 이게 돌면 Babel 은 필요하지 않다. -->
+  <script src="vendor/app-compiled.js?v=40"></script>
+
+  <script>
+    /* 미리 컴파일한 파일을 못 받았을 때의 되돌림.
+       느리지만 앱이 뜨긴 뜬다 — 배포가 한쪽만 올라간 상황에서도 가족이
+       아무것도 못 보는 일은 없게 한다. */
+    if (!window.__TOTO_PRECOMPILED) {
+      (function () {
+        var src = document.getElementById("toto-source");
+        if (!src) return;
+        console.warn("[toto] 미리 컴파일한 파일을 쓰지 못해 Babel 로 직접 컴파일합니다 (느립니다).");
+        var b = document.createElement("script");
+        b.crossOrigin = "anonymous";
+        b.src = "https://unpkg.com/@babel/standalone@7.26.4/babel.min.js";
+        b.onload = function () {
+          try {
+            var out = window.Babel.transform(src.textContent, {
+              presets: [["react", { runtime: "classic" }]],
+            }).code;
+            var run = document.createElement("script");
+            run.textContent = out;
+            document.body.appendChild(run);
+          } catch (e) {
+            console.error("[toto] 되돌림 컴파일도 실패했습니다", e);
+          }
+        };
+        document.head.appendChild(b);
+      })();
+    }
   </script>
 </body>
 </html>
