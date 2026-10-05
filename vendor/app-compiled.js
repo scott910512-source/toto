@@ -12,10 +12,44 @@ const {
   createContext,
   useContext
 } = React;
-// Recharts가 CDN에서 안 떠도 앱 전체가 멈추지 않도록 대체 컴포넌트 사용
-const RC = window.Recharts || {};
-const chartsOK = !!RC.ResponsiveContainer;
-const NullCmp = () => null; // 차트 미로딩 시 내부 요소는 무시
+/* ── 차트 라이브러리(Recharts 487kB)는 차트가 처음 그려질 때만 받는다 ──────
+   첫 로딩 때 받는 외부 파일 중 가장 큰데, 출산 전 홈은 차트를 하나도 안
+   그리고 출산 뒤에도 기록 탭 몇 개와 통계 모달에서만 쓴다.
+    Recharts 는 '자식의 타입' 으로 축·막대·선을 알아본다. 그래서 자식 자리
+   (XAxis 등)는 표시만 하는 빈 컴포넌트로 두고, 차트 프록시가 그릴 때 그
+   표시를 진짜 타입으로 바꿔 넘긴다. 호출부는 한 줄도 안 바뀐다. */
+const RECHARTS_SRC = "https://unpkg.com/recharts@2.12.7/umd/Recharts.js";
+let rechartsLoading = null;
+const loadRecharts = () => rechartsLoading || (rechartsLoading = new Promise(resolve => {
+  if (window.Recharts) return resolve(window.Recharts);
+  const el = document.createElement("script");
+  el.crossOrigin = "anonymous";
+  el.src = RECHARTS_SRC;
+  el.onload = () => resolve(window.Recharts || null);
+  el.onerror = () => resolve(null);
+  document.head.appendChild(el);
+}));
+// { rc: 라이브러리 | null, failed: 받다가 실패했는지 }
+const useRecharts = () => {
+  const [st, setSt] = useState(() => ({
+    rc: window.Recharts || null,
+    failed: false
+  }));
+  useEffect(() => {
+    if (st.rc) return;
+    let alive = true;
+    loadRecharts().then(rc => {
+      if (alive) setSt({
+        rc,
+        failed: !rc
+      });
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+  return st;
+};
 const ChartFallback = () => /*#__PURE__*/React.createElement("div", {
   style: {
     width: "100%",
@@ -27,25 +61,75 @@ const ChartFallback = () => /*#__PURE__*/React.createElement("div", {
     fontSize: 12
   }
 }, "\uCC28\uD2B8\uB97C \uBD88\uB7EC\uC624\uC9C0 \uBABB\uD588\uC5B4\uC694 (\uC778\uD130\uB137 \uC5F0\uACB0 \uD655\uC778)");
-const LineChart = RC.LineChart || ChartFallback;
-const BarChart = RC.BarChart || ChartFallback;
-const ResponsiveContainer = RC.ResponsiveContainer || (({
-  children
-}) => /*#__PURE__*/React.createElement("div", {
+const ChartLoading = () => /*#__PURE__*/React.createElement("div", {
+  role: "status",
+  "aria-live": "polite",
   style: {
     width: "100%",
-    height: "100%"
+    height: "100%",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    color: "#94a3b8",
+    fontSize: 12
   }
-}, children));
-const Line = RC.Line || NullCmp,
-  Bar = RC.Bar || NullCmp;
-const XAxis = RC.XAxis || NullCmp,
-  YAxis = RC.YAxis || NullCmp;
-const CartesianGrid = RC.CartesianGrid || NullCmp,
-  Tooltip = RC.Tooltip || NullCmp;
-const ReferenceLine = RC.ReferenceLine || NullCmp,
-  ReferenceArea = RC.ReferenceArea || NullCmp,
-  Legend = RC.Legend || NullCmp;
+}, "\uCC28\uD2B8 \uC900\uBE44 \uC911\u2026");
+/* 자식 자리 표시. 직접 그려질 일은 없다 — 차트 프록시가 진짜 타입으로 바꾼다. */
+const rcPart = name => {
+  const P = () => null;
+  P.__rc = name;
+  P.displayName = name;
+  return P;
+};
+const XAxis = rcPart("XAxis"),
+  YAxis = rcPart("YAxis"),
+  Bar = rcPart("Bar"),
+  Line = rcPart("Line");
+const CartesianGrid = rcPart("CartesianGrid"),
+  Tooltip = rcPart("Tooltip"),
+  Legend = rcPart("Legend");
+const ReferenceLine = rcPart("ReferenceLine"),
+  ReferenceArea = rcPart("ReferenceArea");
+const realizeParts = (rc, children) => React.Children.map(children, c => {
+  if (!c || !c.type || !c.type.__rc) return c;
+  const Real = rc[c.type.__rc];
+  return Real ? React.createElement(Real, {
+    ...c.props,
+    key: c.key
+  }) : null;
+});
+const chartProxy = name => {
+  const Proxy = props => {
+    const {
+      rc,
+      failed
+    } = useRecharts();
+    if (failed) return /*#__PURE__*/React.createElement(ChartFallback, null);
+    if (!rc) return /*#__PURE__*/React.createElement(ChartLoading, null);
+    const Real = rc[name];
+    if (!Real) return /*#__PURE__*/React.createElement(ChartFallback, null);
+    return /*#__PURE__*/React.createElement(Real, props, realizeParts(rc, props.children));
+  };
+  Proxy.displayName = name;
+  return Proxy;
+};
+const BarChart = chartProxy("BarChart");
+const LineChart = chartProxy("LineChart");
+/* 크기를 재서 자식 차트에 width/height 를 넣어주는 컨테이너.
+   라이브러리가 아직 없으면 같은 크기의 상자만 두어 자리가 흔들리지 않게 한다. */
+const ResponsiveContainer = props => {
+  const {
+    rc
+  } = useRecharts();
+  if (!rc || !rc.ResponsiveContainer) return /*#__PURE__*/React.createElement("div", {
+    style: {
+      width: "100%",
+      height: "100%"
+    }
+  }, props.children);
+  const Real = rc.ResponsiveContainer;
+  return /*#__PURE__*/React.createElement(Real, props);
+};
 
 /* ========================================================================
    0. 유틸리티 & 상수

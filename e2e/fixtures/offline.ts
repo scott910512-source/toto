@@ -29,6 +29,19 @@ export async function serveVendorLocally(page: Page, htmlPath = "app.html"): Pro
     },
   );
 
+  /* 미리 컴파일한 앱(vendor/app-compiled.js)도 같은 치환을 거친다.
+     차트 라이브러리처럼 "필요할 때 받는" 주소는 app.html 이 아니라 이 안에
+     들어 있어서, 여기서 안 바꾸면 그 요청이 밖으로 나가다 막힌다. */
+  await page.route(
+    (url) => url.pathname.endsWith("/vendor/app-compiled.js") && url.origin === "http://127.0.0.1:4173",
+    async (route) => {
+      const res = await route.fetch();
+      let js = await res.text();
+      for (const [re, local] of SWAP) js = js.replace(re, local);
+      await route.fulfill({ response: res, body: js, headers: { "content-type": "application/javascript; charset=utf-8" } });
+    },
+  );
+
   // 그래도 남은 외부 요청은 테스트가 밖으로 나가지 않도록 막는다
   await page.route((url) => url.origin !== "http://127.0.0.1:4173", (r) => r.abort());
 }
