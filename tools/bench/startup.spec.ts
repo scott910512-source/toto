@@ -8,7 +8,7 @@ import { serveVendorLocally } from "../../e2e/fixtures/offline";
    들쭉날쭉해서 거짓 실패를 만든다. 그래서 테스트 묶음(e2e/)에서 빼 두고,
    필요할 때만 손으로 돌린다.
 
-     npx playwright test --project=desktop tools/bench/startup.spec.ts
+     npx playwright test -c tools/bench/playwright.config.ts --project=desktop startup
 
    2026-10-03 측정 (이 기계, Babel 도 로컬에서 받음):
      미리 컴파일 638ms · Babel 직접 1829ms → 1.2초 빨라짐

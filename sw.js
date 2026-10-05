@@ -9,7 +9,7 @@
    ⚠️ 정적 파일 요청에 앱 화면(app.html)을 돌려주지 않는다.
       예전에는 .js 가 실패하면 HTML 이 돌아와서 앱이 이상하게 깨졌다.
    배포할 때 CACHE 버전을 올리면 이전 캐시가 정리된다. */
-const CACHE = "toto-v40";
+const CACHE = "toto-v41";
 
 /* app.html 이 vendor/*.js?v=NN 으로 부르므로, 미리 담을 때도 같은 주소를
    써야 한다. 주소가 다르면 오프라인에서 못 찾는다.
@@ -22,6 +22,7 @@ const SHELL = [
   `./vendor/toto-core.js?v=${V}`,
   // 미리 컴파일한 앱. 없으면 Babel 로 되돌아가 느려진다.
   `./vendor/app-compiled.js?v=${V}`,
+  `./vendor/app.css?v=${V}`,
   `./vendor/toto-sql.js?v=${V}`,
   "./dday.html",
   "./supabase-config.js",
@@ -35,7 +36,7 @@ const SHELL = [
 const BYPASS = /supabase\.co|supabase\.in|identitytoolkit|securetoken|google-analytics|googletagmanager/;
 
 /* 앱이 이 둘 없이는 못 뜬다. 나머지(아이콘 등)는 없어도 화면은 나온다. */
-const MUST = ["./app.html", `./vendor/toto-core.js?v=${V}`, `./vendor/app-compiled.js?v=${V}`];
+const MUST = ["./app.html", `./vendor/toto-core.js?v=${V}`, `./vendor/app-compiled.js?v=${V}`, `./vendor/app.css?v=${V}`];
 
 self.addEventListener("install", (e) => {
   /* 한 장씩 담는다.

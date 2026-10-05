@@ -74,11 +74,11 @@
   <!-- 공용 로직(날짜·오류문구·설정진단·백업검사).
        src/ 에서 빌드한 파일이고 테스트가 붙어 있다. npm run build:core
        이 파일이 못 뜨면 앱이 멈추므로 defer/async 를 쓰지 않는다. -->
-  <script src="vendor/toto-core.js?v=40"></script>
+  <script src="vendor/toto-core.js?v=41"></script>
 
   <!-- DB 보안 수정 SQL (관리자가 설정에서 복사해 Supabase 에 붙여넣는 용도).
        공개 저장소에 있는 내용과 같고 비밀값이 아니다. 없어도 앱은 동작한다. -->
-  <script src="vendor/toto-sql.js?v=40"></script>
+  <script src="vendor/toto-sql.js?v=41"></script>
 
   <!-- 버전 고정 + crossorigin: 'latest' 변경/CORS 가림(Script error.) 방지 -->
   <script crossorigin="anonymous" src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
@@ -93,12 +93,28 @@
   <script crossorigin="anonymous" src="https://unpkg.com/recharts@2.12.7/umd/Recharts.js"></script>
   <!-- exifr는 부팅을 막지 않도록 업로드 시 지연 로드 (아래 loadExifr) -->
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
-  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Tailwind 는 미리 만들어 둔 vendor/app.css 를 쓴다 (28kB).
+       예전엔 CDN 398kB 를 받아 브라우저가 그 자리에서 CSS 를 만들었다.
+       파일을 못 받으면 onerror 가 예전처럼 CDN 을 불러온다.
+
+       되돌림 함수는 반드시 링크보다 '앞에' 있어야 한다. 뒤에 두고 깃발만
+       검사하면, 그 검사가 onerror 보다 먼저 돌아 되돌림이 영영 안 켜진다
+       (실제로 그렇게 틀렸고 테스트가 잡아냈다). -->
+  <script>
+    window.__totoCssFallback = function () {
+      if (window.__totoCssFellBack) return;
+      window.__totoCssFellBack = true;
+      console.warn("[toto] vendor/app.css 를 받지 못해 CDN Tailwind 로 되돌립니다 (느립니다).");
+      var tw = document.createElement("script");
+      tw.src = "https://cdn.tailwindcss.com";
+      tw.onload = function () { if (window.tailwind) tailwind.config = { darkMode: 'class' }; };
+      document.head.appendChild(tw);
+    };
+  </script>
+  <link rel="stylesheet" href="vendor/app.css?v=41" id="toto-css" onerror="window.__totoCssFallback()">
   <script src="./supabase-config.js"></script>
 
   <script>
-    // 다크모드: Tailwind class 전략 (tailwind 로드 실패 대비 가드)
-    if (window.tailwind) tailwind.config = { darkMode: 'class' };
 
     // 오류를 화면에 보여주는 진단 오버레이
     window.__showFatal = function (title, detail) {
@@ -413,7 +429,7 @@
   } = window.TotoCore;
 
   // 화면에 표시할 빌드 버전 — 폰이 최신인지 바로 확인할 수 있게
-  const APP_VERSION = "v40";
+  const APP_VERSION = "v41";
 
   /* ========================================================================
      1. Supabase 초기화 + Firestore 호환 계층
@@ -6038,7 +6054,7 @@ Script.complete();
   </script>
 
   <!-- 미리 컴파일한 앱. 이게 돌면 Babel 은 필요하지 않다. -->
-  <script src="vendor/app-compiled.js?v=40"></script>
+  <script src="vendor/app-compiled.js?v=41"></script>
 
   <script>
     /* 미리 컴파일한 파일을 못 받았을 때의 되돌림.

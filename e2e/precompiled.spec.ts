@@ -94,3 +94,80 @@ test("6) vendor 주소에 버전이 붙어 있다 (새 HTML 에 옛 코드가 �
   });
   expect(appVer).toMatch(/^\d+$/);
 });
+
+/* ── 미리 만든 Tailwind CSS ──────────────────────────────────────────── */
+
+async function bootCss(page: Page, opts: { blockCss?: boolean } = {}) {
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await serveVendorLocally(page);
+  if (opts.blockCss) {
+    await page.route((u) => u.pathname.endsWith("/vendor/app.css"), (r) => r.abort());
+  }
+  await page.route("**/supabase-config.js", (r) =>
+    r.fulfill({ contentType: "application/javascript", body: stubScript({ role: "admin" }) }));
+  await page.goto("/app.html", { waitUntil: "load" });
+  await expect(page.locator("nav")).toBeVisible({ timeout: 25_000 });
+  return errors;
+}
+
+/** 스타일이 정말 입혀졌는지 — 글자 그대로의 클래스가 아니라 계산된 값을 본다 */
+async function styled(page: Page) {
+  return page.evaluate(() => {
+    const nav = document.querySelector("nav")!;
+    const btn = document.querySelector("nav button")!;
+    const cs = getComputedStyle(nav), cb = getComputedStyle(btn);
+    return {
+      navBg: cs.backgroundColor,              // bg-white/95 → 투명이 아니어야 한다
+      navBorderTop: cs.borderTopWidth,        // border-t → 1px
+      btnDisplay: cb.display,                 // flex
+      btnMinH: cb.minHeight,                  // min-h-[56px]
+      bodyFont: getComputedStyle(document.body).fontFamily,
+    };
+  });
+}
+
+test("7) 미리 만든 CSS 로 스타일이 입혀진다 (CDN 없이)", async ({ page }) => {
+  const asked: string[] = [];
+  page.on("request", (r) => { if (/cdn\.tailwindcss\.com|e2e\/vendor\/tailwind\.js/.test(r.url())) asked.push(r.url()); });
+  const errors = await bootCss(page);
+  const s = await styled(page);
+  expect(s.navBg).not.toBe("rgba(0, 0, 0, 0)");
+  expect(s.navBorderTop).toBe("1px");
+  expect(s.btnDisplay).toBe("flex");
+  expect(s.btnMinH).toBe("56px");
+  expect(asked, `Tailwind CDN 을 받았다: ${asked.join(", ")}`).toEqual([]);
+  expect(errors).toEqual([]);
+});
+
+test("8) 어두운 화면도 미리 만든 CSS 에 들어 있다", async ({ page }) => {
+  await bootCss(page);
+  const before = (await styled(page)).navBg;
+  await page.evaluate(() => document.documentElement.classList.add("dark"));
+  await page.waitForTimeout(100);
+  const after = (await styled(page)).navBg;
+  // dark:bg-slate-800/95 가 적용되면 색이 바뀐다. 안 바뀌면 dark: 규칙이 빠진 것이다.
+  expect(after).not.toBe(before);
+});
+
+test("9) CSS 를 못 받으면 CDN 으로 되돌아가 그래도 스타일이 입혀진다", async ({ page }) => {
+  const asked: string[] = [];
+  page.on("request", (r) => { if (/cdn\.tailwindcss\.com|e2e\/vendor\/tailwind\.js/.test(r.url())) asked.push(r.url()); });
+  await bootCss(page, { blockCss: true });
+  // CDN 이 받아져 그 자리에서 CSS 를 만들 시간을 준다
+  await page.waitForFunction(
+    () => getComputedStyle(document.querySelector("nav")!).borderTopWidth === "1px",
+    undefined, { timeout: 20_000 },
+  );
+  expect(asked.length, "되돌림인데 CDN 을 받지 않았다").toBeGreaterThan(0);
+  const s = await styled(page);
+  expect(s.btnDisplay).toBe("flex");
+});
+
+test("10) 44px 터치영역 규칙이 CSS 에 담겨 있다 (접근성 작업이 빠지지 않게)", async ({ page }) => {
+  await bootCss(page);
+  await page.evaluate(() => { location.hash = "#/records"; });
+  await page.waitForTimeout(1200);
+  const h = await page.locator('[role="tablist"] button').first().evaluate((el) => getComputedStyle(el).minHeight);
+  expect(h).toBe("44px");
+});

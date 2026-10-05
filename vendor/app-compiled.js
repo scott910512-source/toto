@@ -111,7 +111,7 @@ const {
 } = window.TotoCore;
 
 // 화면에 표시할 빌드 버전 — 폰이 최신인지 바로 확인할 수 있게
-const APP_VERSION = "v40";
+const APP_VERSION = "v41";
 
 /* ========================================================================
    1. Supabase 초기화 + Firestore 호환 계층

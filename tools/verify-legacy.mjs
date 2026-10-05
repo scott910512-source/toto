@@ -119,10 +119,10 @@ if (existsSync("app.html") && existsSync("sw.js")) {
      어긋나면 새 HTML 이 옛 캐시의 코드를 받아 "업데이트했는데 그대로" 가 된다. */
   if (v) {
     const app = readFileSync("app.html", "utf8");
-    const urls = [...app.matchAll(/vendor\/([\w.-]+\.js)\?v=(\d+)/g)];
+    const urls = [...app.matchAll(/vendor\/([\w.-]+\.(?:js|css))\?v=(\d+)/g)];
     const want = v[1].replace(/^v/, "");
     const wrong = urls.filter((u) => u[2] !== want).map((u) => `${u[1]}?v=${u[2]}`);
-    const plain = [...app.matchAll(/<script src="vendor\/([\w.-]+\.js)"><\/script>/g)].map((u) => u[1]);
+    const plain = [...app.matchAll(/(?:src|href)="vendor\/([\w.-]+\.(?:js|css))"/g)].map((u) => u[1]);
     if (wrong.length) {
       console.error(`❌ vendor 주소 버전이 ${want} 와 다릅니다 → ${wrong.join(", ")}`);
       failed++;
@@ -192,6 +192,24 @@ if (existsSync("vendor/app-compiled.js") && existsSync("tools/build-app-bundle.m
     } else console.log("✅ vendor/app-compiled.js 가 app.html 과 일치");
   } catch (e) {
     console.error("❌ 앱 컴파일 실패: " + (e.stderr ? String(e.stderr).slice(0, 300) : e.message));
+    failed++;
+  }
+}
+
+/* vendor/app.css 도 app.html 에서 만든 것이다. 클래스를 하나 더 쓰고 다시
+   만들지 않으면 그 버튼만 스타일이 빠진 채 배포된다. 다시 만들어 비교한다. */
+if (existsSync("vendor/app.css") && existsSync("tools/build-css.mjs")) {
+  const before = readFileSync("vendor/app.css", "utf8");
+  try {
+    execSync("node tools/build-css.mjs", { stdio: "pipe" });
+    const after = readFileSync("vendor/app.css", "utf8");
+    if (before !== after) {
+      writeFileSync("vendor/app.css", before);
+      console.error("❌ vendor/app.css 가 app.html 과 어긋납니다 — npm run build:css 후 커밋하세요");
+      failed++;
+    } else console.log("✅ vendor/app.css 가 app.html 과 일치");
+  } catch (e) {
+    console.error("❌ CSS 빌드 실패: " + (e.stderr ? String(e.stderr).slice(0, 300) : e.message));
     failed++;
   }
 }

@@ -19,7 +19,8 @@
     "fetch:tailwind": "node tools/fetch-tailwind.mjs",
     "test:sql": "bash tools/sql-verify.sh",
     "build:core": "vite build --config vite.core.config.ts",
-    "build:sql": "node tools/build-compact-sql.mjs"
+    "build:sql": "node tools/build-compact-sql.mjs",
+    "build:css": "node tools/build-css.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "2.45.4",
