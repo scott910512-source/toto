@@ -427,7 +427,38 @@ var TotoCoreBundle = function(exports) {
       if (!M) throw new Error(`알 수 없는 컬렉션: ${name}`);
       return M;
     };
-    function watchRows(name, build, cb, errCb) {
+    const shared = /* @__PURE__ */ new Map();
+    const listenTable = (table, onChange) => {
+      let entry = shared.get(table);
+      if (!entry) {
+        const listeners = /* @__PURE__ */ new Set();
+        const ch = sb.channel(`w${table}${++chanSeq}`).on("postgres_changes", { event: "*", schema: "public", table }, (payload) => {
+          [...listeners].forEach((f) => f(payload));
+        }).subscribe();
+        entry = { ch, listeners };
+        shared.set(table, entry);
+      }
+      entry.listeners.add(onChange);
+      return () => {
+        const cur = shared.get(table);
+        if (!cur || !cur.listeners.delete(onChange)) return;
+        if (cur.listeners.size === 0) {
+          shared.delete(table);
+          try {
+            sb.removeChannel(cur.ch);
+          } catch {
+          }
+        }
+      };
+    };
+    const concerns = (eqs, p) => {
+      if (!p || !eqs.length) return true;
+      if (p.eventType !== "INSERT" && p.eventType !== "UPDATE") return true;
+      const row = p.new;
+      if (!row) return true;
+      return eqs.every(([col, v]) => !(col in row) || row[col] === v);
+    };
+    function watchRows(name, build, cb, errCb, eqs = []) {
       const M = mapperOf(name);
       let alive = true;
       let timer = null;
@@ -444,8 +475,8 @@ var TotoCoreBundle = function(exports) {
           if (alive) errCb == null ? void 0 : errCb(e);
         }
       };
-      const schedule = () => {
-        if (!alive) return;
+      const schedule = (payload) => {
+        if (!alive || !concerns(eqs, payload)) return;
         if (debounceMs <= 0) {
           void run();
           return;
@@ -457,14 +488,11 @@ var TotoCoreBundle = function(exports) {
         }, debounceMs);
       };
       void run();
-      const ch = sb.channel(`w${M.table}${++chanSeq}`).on("postgres_changes", { event: "*", schema: "public", table: M.table }, schedule).subscribe();
+      const stop = listenTable(M.table, schedule);
       return () => {
         alive = false;
         if (timer !== null) clearT(timer);
-        try {
-          sb.removeChannel(ch);
-        } catch {
-        }
+        stop();
       };
     }
     const resolveRow = (row, cur) => {
@@ -520,7 +548,7 @@ var TotoCoreBundle = function(exports) {
         onSnapshot: (cb, errCb) => watchRows(name, (q) => q.eq("id", id), (rows) => {
           const r = rows[0];
           cb({ exists: !!r, id, data: () => r ? M.fromDb(r) : null });
-        }, errCb),
+        }, errCb, [["id", id]]),
         /* Firebase 시절의 users/{uid}/savedPhotos 하위 컬렉션.
            Supabase 에서는 saved_photos 테이블 한 장이라, 이름으로 갈라 보낸다. */
         collection: (sub) => {
@@ -529,14 +557,26 @@ var TotoCoreBundle = function(exports) {
         }
       };
     }
-    const applyOps = (q, name, ops) => {
+    const eqsOf = (name, ops) => {
       var _a2;
       const F = FIELD_COL[name] || {};
+      const out = [];
+      for (const o of ops) {
+        if (o.k !== "where") continue;
+        const v = o.f === "role" ? (_a2 = ROLE_TO_DB[String(o.v)]) != null ? _a2 : o.v : o.v;
+        out.push([F[o.f] || o.f, v]);
+      }
+      return out;
+    };
+    const applyOps = (q, name, ops) => {
+      const F = FIELD_COL[name] || {};
+      const eqs = eqsOf(name, ops);
       let out = q;
+      let i = 0;
       for (const o of ops) {
         if (o.k === "where") {
-          const v = o.f === "role" ? (_a2 = ROLE_TO_DB[String(o.v)]) != null ? _a2 : o.v : o.v;
-          out = out.eq(F[o.f] || o.f, v);
+          const [col, v] = eqs[i++];
+          out = out.eq(col, v);
         } else if (o.k === "order") {
           out = out.order(F[o.f] || o.f, { ascending: o.dir !== "desc", nullsFirst: false });
         } else if (o.k === "limit") {
@@ -574,7 +614,7 @@ var TotoCoreBundle = function(exports) {
         },
         onSnapshot: (cb, errCb) => watchRows(name, (q) => applyOps(q, name, ops), (rows) => {
           cb({ docs: rows.map((r) => ({ id: String(r.id), data: () => M.fromDb(r) })) });
-        }, errCb)
+        }, errCb, eqsOf(name, ops))
       });
       return make([]);
     }
@@ -614,14 +654,11 @@ var TotoCoreBundle = function(exports) {
         }, debounceMs);
       };
       void run();
-      const ch = sb.channel(`wfam${++chanSeq}`).on("postgres_changes", { event: "*", schema: "public", table: "families" }, schedule).subscribe();
+      const stop = listenTable("families", schedule);
       return () => {
         alive = false;
         if (timer !== null) clearT(timer);
-        try {
-          sb.removeChannel(ch);
-        } catch {
-        }
+        stop();
       };
     }
     const settingsHandle = () => ({
@@ -688,14 +725,11 @@ var TotoCoreBundle = function(exports) {
             }, debounceMs);
           };
           void run();
-          const ch = sb.channel(`wsav${++chanSeq}`).on("postgres_changes", { event: "*", schema: "public", table: "saved_photos" }, schedule).subscribe();
+          const stop = listenTable("saved_photos", schedule);
           return () => {
             alive = false;
             if (timer !== null) clearT(timer);
-            try {
-              sb.removeChannel(ch);
-            } catch {
-            }
+            stop();
           };
         }
       };

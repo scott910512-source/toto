@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { createStore, type MinimalClient, type MinimalQuery, type MinimalChannel } from "./legacyStore";
+import { createStore, type MinimalClient, type MinimalQuery, type MinimalChannel, type ChangePayload } from "./legacyStore";
 import { SV } from "@/lib/fieldValues";
 
 type Row = Record<string, unknown>;
@@ -9,7 +9,7 @@ type Row = Record<string, unknown>;
 function fakeClient(seed: Record<string, Row[]> = {}) {
   const db: Record<string, Row[]> = JSON.parse(JSON.stringify(seed));
   const log: Array<{ op: string; table: string; payload?: unknown; opts?: unknown }> = [];
-  const channels: Array<{ name: string; table: string; fire: () => void; removed: boolean }> = [];
+  const channels: Array<{ name: string; table: string; fire: (p?: ChangePayload) => void; removed: boolean; ch?: MinimalChannel }> = [];
   let nextId = 1;
 
   function query(table: string): MinimalQuery {
@@ -66,7 +66,7 @@ function fakeClient(seed: Record<string, Row[]> = {}) {
       },
       update: (o) => { pending = { kind: "update", o }; return api; },
       delete: () => { pending = { kind: "delete" }; return api; },
-      then: (res) => Promise.resolve(res({ data: rows, error: null })),
+      then: (res) => { log.push({ op: "read", table }); return Promise.resolve(res({ data: rows, error: null })); },
     };
     return api;
   }
@@ -74,7 +74,7 @@ function fakeClient(seed: Record<string, Row[]> = {}) {
   const client: MinimalClient = {
     from: (table) => query(table),
     channel: (name) => {
-      const entry = { name, table: "", fire: () => {}, removed: false };
+      const entry: (typeof channels)[number] = { name, table: "", fire: () => {}, removed: false };
       channels.push(entry);
       const ch: MinimalChannel = {
         on: (_ev, filter, cb) => {
@@ -84,11 +84,13 @@ function fakeClient(seed: Record<string, Row[]> = {}) {
         },
         subscribe: () => ch,
       };
+      entry.ch = ch;
       return ch;
     },
-    removeChannel: () => {
-      const last = channels[channels.length - 1];
-      if (last) last.removed = true;
+    removeChannel: (ch) => {
+      // 닫으라는 바로 그 채널을 표시한다 (마지막 것이 아니라)
+      const e = channels.find((c) => c.ch === ch);
+      if (e) e.removed = true;
     },
   };
 
@@ -292,6 +294,193 @@ describe("실시간 구독", () => {
     await settle();
     expect(cb).toHaveBeenCalledTimes(1);
     expect(f.channels[0]!.removed).toBe(true);
+  });
+
+  /* 테이블당 채널 하나 — 홈만 열어도 records 채널이 7개였고, 기록 하나가
+     바뀌면 서버가 7번 알렸다 (Realtime 메시지 한도를 그만큼 빨리 쓴다) */
+  describe("같은 테이블을 보는 구독은 채널 하나를 나눠 쓴다", () => {
+    it("구독이 셋이어도 채널은 하나고, 바뀌면 셋 다 다시 읽는다", async () => {
+      const f = fakeClient({ records: [{ id: "r1", type: "feeding", data: {} }] });
+      const t = manualTimers();
+      const store = createStore(f.client, { setTimeoutFn: t.setTimeoutFn, clearTimeoutFn: t.clearTimeoutFn });
+      const a = vi.fn(), b = vi.fn(), c = vi.fn();
+      const offA = store.COL.records().where("type", "==", "feeding").onSnapshot(a);
+      const offB = store.COL.records().where("type", "==", "sleep").onSnapshot(b);
+      const offC = store.COL.records().doc("r1").onSnapshot(c);
+      await settle();
+      expect(f.channels).toHaveLength(1);
+      expect(f.channels[0]!.table).toBe("records");
+
+      f.channels[0]!.fire();
+      t.flush();
+      await settle();
+      expect(a).toHaveBeenCalledTimes(2);
+      expect(b).toHaveBeenCalledTimes(2);
+      expect(c).toHaveBeenCalledTimes(2);
+      offA(); offB(); offC();
+    });
+
+    it("다른 테이블은 다른 채널이다", async () => {
+      const f = fakeClient({ records: [], media: [] });
+      const store = createStore(f.client);
+      const off1 = store.COL.records().onSnapshot(() => {});
+      const off2 = store.COL.photos().onSnapshot(() => {});
+      await settle();
+      expect(f.channels.map((c) => c.table).sort()).toEqual(["media", "records"]);
+      off1(); off2();
+    });
+
+    it("하나가 끊어도 남은 구독이 있으면 채널을 닫지 않는다 — 마지막이 끊을 때 닫는다", async () => {
+      const f = fakeClient({ records: [] });
+      const t = manualTimers();
+      const store = createStore(f.client, { setTimeoutFn: t.setTimeoutFn, clearTimeoutFn: t.clearTimeoutFn });
+      const a = vi.fn(), b = vi.fn();
+      const offA = store.COL.records().onSnapshot(a);
+      const offB = store.COL.records().onSnapshot(b);
+      await settle();
+
+      offA();
+      expect(f.channels[0]!.removed).toBe(false);
+      f.channels[0]!.fire();
+      t.flush();
+      await settle();
+      expect(a).toHaveBeenCalledTimes(1);   // 끊은 쪽은 더 안 부른다
+      expect(b).toHaveBeenCalledTimes(2);   // 남은 쪽은 계속 받는다
+
+      offB();
+      expect(f.channels[0]!.removed).toBe(true);
+    });
+
+    it("다 끊긴 뒤 새 구독이 오면 새 채널을 연다", async () => {
+      const f = fakeClient({ records: [] });
+      const store = createStore(f.client);
+      const off1 = store.COL.records().onSnapshot(() => {});
+      off1();
+      const off2 = store.COL.records().onSnapshot(() => {});
+      await settle();
+      expect(f.channels).toHaveLength(2);
+      expect(f.channels[0]!.removed).toBe(true);
+      expect(f.channels[1]!.removed).toBe(false);
+      off2();
+    });
+
+    it("같은 구독을 두 번 끊어도 남을 망가뜨리지 않는다", async () => {
+      const f = fakeClient({ records: [] });
+      const store = createStore(f.client);
+      const offA = store.COL.records().onSnapshot(() => {});
+      const offB = store.COL.records().onSnapshot(() => {});
+      await settle();
+      offA(); offA();
+      expect(f.channels[0]!.removed).toBe(false);
+      offB();
+      expect(f.channels[0]!.removed).toBe(true);
+    });
+
+    /* 알림에는 바뀐 행이 실려 온다. 수유 구독은 편지가 추가됐다고
+       다시 읽을 필요가 없다 — 홈을 열어둔 채 편지를 쓰면 예전에는
+       기록 구독 6개가 전부 다시 읽었다. */
+    describe("내 조건과 무관한 변경은 다시 읽지 않는다", () => {
+      const setup = () => {
+        const f = fakeClient({ records: [{ id: "r1", type: "feeding", data: {} }] });
+        const t = manualTimers();
+        const store = createStore(f.client, { setTimeoutFn: t.setTimeoutFn, clearTimeoutFn: t.clearTimeoutFn });
+        return { f, t, store };
+      };
+      const reads = (f: ReturnType<typeof fakeClient>) => f.log.filter((l) => l.op === "read" && l.table === "records").length;
+
+      it("다른 type 이 INSERT 되면 가만히 있고, 같은 type 이면 읽는다", async () => {
+        const { f, t, store } = setup();
+        const cb = vi.fn();
+        const off = store.COL.records().where("type", "==", "feeding").onSnapshot(cb);
+        await settle();
+        const before = reads(f);
+
+        f.channels[0]!.fire({ eventType: "INSERT", new: { id: "r2", type: "letter" } });
+        t.flush(); await settle();
+        expect(reads(f)).toBe(before);
+        expect(cb).toHaveBeenCalledTimes(1);
+
+        f.channels[0]!.fire({ eventType: "INSERT", new: { id: "r3", type: "feeding" } });
+        t.flush(); await settle();
+        expect(reads(f)).toBe(before + 1);
+        expect(cb).toHaveBeenCalledTimes(2);
+        off();
+      });
+
+      it("DELETE 는 id 만 오므로 언제나 읽는다", async () => {
+        const { f, t, store } = setup();
+        const off = store.COL.records().where("type", "==", "feeding").onSnapshot(() => {});
+        await settle();
+        const before = reads(f);
+        f.channels[0]!.fire({ eventType: "DELETE", old: { id: "r9" } });
+        t.flush(); await settle();
+        expect(reads(f)).toBe(before + 1);
+        off();
+      });
+
+      it("알림 모양을 모르면(비어 있으면) 읽는다 — 거르다 놓치는 것보다 낫다", async () => {
+        const { f, t, store } = setup();
+        const off = store.COL.records().where("type", "==", "feeding").onSnapshot(() => {});
+        await settle();
+        const before = reads(f);
+        f.channels[0]!.fire();
+        f.channels[0]!.fire({ eventType: "UPDATE", new: null });
+        t.flush(); await settle();
+        expect(reads(f)).toBe(before + 1);  // 몰아친 둘을 한 번으로
+        off();
+      });
+
+      it("조건 없는 구독은 무엇이 바뀌든 읽는다", async () => {
+        const { f, t, store } = setup();
+        const off = store.COL.records().onSnapshot(() => {});
+        await settle();
+        const before = reads(f);
+        f.channels[0]!.fire({ eventType: "INSERT", new: { id: "r2", type: "letter" } });
+        t.flush(); await settle();
+        expect(reads(f)).toBe(before + 1);
+        off();
+      });
+
+      it("화면 이름(createdBy)으로 건 조건도 DB 열 이름(created_by)으로 거른다", async () => {
+        const { f, t, store } = setup();
+        const off = store.COL.records().where("createdBy", "==", "u1").onSnapshot(() => {});
+        await settle();
+        const before = reads(f);
+        f.channels[0]!.fire({ eventType: "INSERT", new: { id: "r2", created_by: "u2" } });
+        t.flush(); await settle();
+        expect(reads(f)).toBe(before);
+        f.channels[0]!.fire({ eventType: "INSERT", new: { id: "r3", created_by: "u1" } });
+        t.flush(); await settle();
+        expect(reads(f)).toBe(before + 1);
+        off();
+      });
+
+      it("한 건 구독(doc)은 그 id 가 아닌 변경에 가만히 있다", async () => {
+        const { f, t, store } = setup();
+        const off = store.COL.records().doc("r1").onSnapshot(() => {});
+        await settle();
+        const before = reads(f);
+        f.channels[0]!.fire({ eventType: "UPDATE", new: { id: "r2", type: "feeding" } });
+        t.flush(); await settle();
+        expect(reads(f)).toBe(before);
+        f.channels[0]!.fire({ eventType: "UPDATE", new: { id: "r1", type: "feeding" } });
+        t.flush(); await settle();
+        expect(reads(f)).toBe(before + 1);
+        off();
+      });
+    });
+
+    it("가족 정보·저장한 사진 구독도 같은 방식이다", async () => {
+      const f = fakeClient({ families: [{ id: "f1", baby: {} }], saved_photos: [] });
+      const store = createStore(f.client);
+      const off1 = store.COL.settings().onSnapshot(() => {});
+      const off2 = store.COL.settings().onSnapshot(() => {});
+      const off3 = store.savedPhotosHandle("u1").onSnapshot(() => {});
+      await settle();
+      expect(f.channels.map((c) => c.table).sort()).toEqual(["families", "saved_photos"]);
+      off1(); off2(); off3();
+      expect(f.channels.every((c) => c.removed)).toBe(true);
+    });
   });
 
   it("읽다가 터져도 앱을 멈추지 않고 알려준다", async () => {

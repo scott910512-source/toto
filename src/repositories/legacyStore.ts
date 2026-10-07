@@ -34,8 +34,15 @@ export interface MinimalQuery {
 }
 
 export interface MinimalChannel {
-  on: (ev: string, filter: unknown, cb: () => void) => MinimalChannel;
+  on: (ev: string, filter: unknown, cb: (payload?: ChangePayload) => void) => MinimalChannel;
   subscribe: () => MinimalChannel;
+}
+
+/** Realtime 이 보내는 변경 알림 중 우리가 보는 부분 */
+export interface ChangePayload {
+  eventType?: string;           // "INSERT" | "UPDATE" | "DELETE"
+  new?: Row | null;             // INSERT·UPDATE 는 바뀐 행 전체
+  old?: Row | null;             // DELETE 는 기본 설정에서 id 만 온다
 }
 
 export interface MinimalClient {
@@ -74,15 +81,59 @@ export function createStore(sb: MinimalClient, opts: StoreOptions = {}) {
     return M;
   };
 
+  /* ── 테이블당 Realtime 채널 하나 ─────────────────────────────────────
+     예전에는 구독마다 채널을 하나씩 열었다. 홈만 열어도 records 채널이
+     7개였고, 기록 하나가 바뀌면 서버가 그 수만큼 알림을 보냈다 (Realtime
+     메시지 한도를 그만큼 빨리 쓴다). 이제 같은 테이블을 보는 구독은
+     채널 하나를 나눠 쓰고, 마지막 구독이 끝날 때 닫는다. */
+  type Listener = (payload?: ChangePayload) => void;
+  const shared = new Map<string, { ch: MinimalChannel; listeners: Set<Listener> }>();
+  const listenTable = (table: string, onChange: Listener): Unsubscribe => {
+    let entry = shared.get(table);
+    if (!entry) {
+      const listeners = new Set<Listener>();
+      const ch = sb.channel(`w${table}${++chanSeq}`)
+        .on("postgres_changes", { event: "*", schema: "public", table }, (payload) => {
+          // 알리는 도중 구독이 빠져도 안전하도록 복사해서 돈다
+          [...listeners].forEach((f) => f(payload));
+        })
+        .subscribe();
+      entry = { ch, listeners };
+      shared.set(table, entry);
+    }
+    entry.listeners.add(onChange);
+    return () => {
+      const cur = shared.get(table);
+      if (!cur || !cur.listeners.delete(onChange)) return;
+      if (cur.listeners.size === 0) {
+        shared.delete(table);
+        try { sb.removeChannel(cur.ch); } catch { /* 이미 닫혔으면 무시 */ }
+      }
+    };
+  };
+
   /* ── 실시간 구독 ──────────────────────────────────────────────────────
      테이블이 바뀌면 다시 조회한다. 변경이 몰아칠 때(사진 여러 장 업로드 등)
      한 번만 조회하도록 묶는다 — 예전에는 바뀐 횟수만큼 전부 다시 읽어서
      화면이 여러 번 깜빡였다. */
+  /* 이 알림이 내 조회 결과를 바꿀 수 있나.
+     같은 테이블이라도 수유 구독은 편지가 추가됐다고 다시 읽을 필요가 없다.
+     INSERT·UPDATE 는 바뀐 행이 통째로 오므로 등호 조건으로 거를 수 있고,
+     DELETE 는 id 만 오므로 거르지 않는다(모르면 읽는다). */
+  const concerns = (eqs: Array<[string, unknown]>, p?: ChangePayload): boolean => {
+    if (!p || !eqs.length) return true;
+    if (p.eventType !== "INSERT" && p.eventType !== "UPDATE") return true;
+    const row = p.new;
+    if (!row) return true;
+    return eqs.every(([col, v]) => !(col in row) || row[col] === v);
+  };
+
   function watchRows(
     name: string,
     build: (q: MinimalQuery) => MinimalQuery,
     cb: (rows: Row[]) => void,
     errCb?: (e: unknown) => void,
+    eqs: Array<[string, unknown]> = [],
   ): Unsubscribe {
     const M = mapperOf(name);
     let alive = true;
@@ -98,22 +149,20 @@ export function createStore(sb: MinimalClient, opts: StoreOptions = {}) {
         if (alive) errCb?.(e);
       }
     };
-    const schedule = () => {
-      if (!alive) return;
+    const schedule = (payload?: ChangePayload) => {
+      if (!alive || !concerns(eqs, payload)) return;
       if (debounceMs <= 0) { void run(); return; }
       if (timer !== null) clearT(timer);
       timer = setT(() => { timer = null; void run(); }, debounceMs);
     };
 
     void run();
-    const ch = sb.channel(`w${M.table}${++chanSeq}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: M.table }, schedule)
-      .subscribe();
+    const stop = listenTable(M.table, schedule);
 
     return () => {
       alive = false;
       if (timer !== null) clearT(timer);
-      try { sb.removeChannel(ch); } catch { /* 이미 닫혔으면 무시 */ }
+      stop();
     };
   }
 
@@ -175,7 +224,7 @@ export function createStore(sb: MinimalClient, opts: StoreOptions = {}) {
         watchRows(name, (q) => q.eq("id", id), (rows) => {
           const r = rows[0];
           cb({ exists: !!r, id, data: () => (r ? M.fromDb(r) : null) });
-        }, errCb),
+        }, errCb, [["id", id]]),
       /* Firebase 시절의 users/{uid}/savedPhotos 하위 컬렉션.
          Supabase 에서는 saved_photos 테이블 한 장이라, 이름으로 갈라 보낸다. */
       collection: (sub: string) => {
@@ -191,14 +240,28 @@ export function createStore(sb: MinimalClient, opts: StoreOptions = {}) {
     | { k: "order"; f: string; dir?: string }
     | { k: "limit"; n: number };
 
+  /** where 조건을 DB 열 이름과 값으로 (조회와 알림 거르기가 같은 것을 쓴다) */
+  const eqsOf = (name: string, ops: Op[]): Array<[string, unknown]> => {
+    const F = FIELD_COL[name] || {};
+    const out: Array<[string, unknown]> = [];
+    for (const o of ops) {
+      if (o.k !== "where") continue;
+      // 역할은 화면 이름으로 들어오므로 DB 이름으로 바꿔 찾는다
+      const v = o.f === "role" ? (ROLE_TO_DB[String(o.v)] ?? o.v) : o.v;
+      out.push([F[o.f] || o.f, v]);
+    }
+    return out;
+  };
+
   const applyOps = (q: MinimalQuery, name: string, ops: Op[]): MinimalQuery => {
     const F = FIELD_COL[name] || {};
+    const eqs = eqsOf(name, ops);
     let out = q;
+    let i = 0;
     for (const o of ops) {
       if (o.k === "where") {
-        // 역할은 화면 이름으로 들어오므로 DB 이름으로 바꿔 찾는다
-        const v = o.f === "role" ? (ROLE_TO_DB[String(o.v)] ?? o.v) : o.v;
-        out = out.eq(F[o.f] || o.f, v);
+        const [col, v] = eqs[i++]!;
+        out = out.eq(col, v);
       } else if (o.k === "order") {
         out = out.order(F[o.f] || o.f, { ascending: o.dir !== "desc", nullsFirst: false });
       } else if (o.k === "limit") {
@@ -238,7 +301,7 @@ export function createStore(sb: MinimalClient, opts: StoreOptions = {}) {
       onSnapshot: (cb: (s: QuerySnapshot) => void, errCb?: (e: unknown) => void) =>
         watchRows(name, (q) => applyOps(q, name, ops), (rows) => {
           cb({ docs: rows.map((r) => ({ id: String(r.id), data: () => M.fromDb(r) })) });
-        }, errCb),
+        }, errCb, eqsOf(name, ops)),
     });
     return make([]);
   }
@@ -274,13 +337,11 @@ export function createStore(sb: MinimalClient, opts: StoreOptions = {}) {
       timer = setT(() => { timer = null; void run(); }, debounceMs);
     };
     void run();
-    const ch = sb.channel(`wfam${++chanSeq}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "families" }, schedule)
-      .subscribe();
+    const stop = listenTable("families", schedule);
     return () => {
       alive = false;
       if (timer !== null) clearT(timer);
-      try { sb.removeChannel(ch); } catch { /* 무시 */ }
+      stop();
     };
   }
 
@@ -343,13 +404,11 @@ export function createStore(sb: MinimalClient, opts: StoreOptions = {}) {
           timer = setT(() => { timer = null; void run(); }, debounceMs);
         };
         void run();
-        const ch = sb.channel(`wsav${++chanSeq}`)
-          .on("postgres_changes", { event: "*", schema: "public", table: "saved_photos" }, schedule)
-          .subscribe();
+        const stop = listenTable("saved_photos", schedule);
         return () => {
           alive = false;
           if (timer !== null) clearT(timer);
-          try { sb.removeChannel(ch); } catch { /* 무시 */ }
+          stop();
         };
       },
     };
