@@ -915,18 +915,24 @@
      4. 설정(아기 정보) 컨텍스트 — 나이/주수 계산
      ======================================================================== */
   const BabyCtx = createContext(null);
+  const BabyReadyCtx = createContext(false);
   const useBaby = () => useContext(BabyCtx);
+  /* 아기 정보가 DB 에서 한 번은 왔는지. 오기 전에는 기본값(임신 중)이라
+     태어난 아기네도 홈이 잠깐 출산 전 화면을 그렸다가 바뀌었다. */
+  const useBabyReady = () => useContext(BabyReadyCtx);
   const BabyProvider = ({ children }) => {
     const [baby, setBaby] = useState(BABY_DEFAULTS);
+    const [ready, setReady] = useState(false);
     const w = useDbWatch("settings");
     useEffect(() => {
       const unsub = COL.settings().onSnapshot((s) => {
         w.ok();
         if (s.exists) setBaby({ ...BABY_DEFAULTS, ...s.data() });
-      }, w.fail);
+        setReady(true);
+      }, (e) => { w.fail(e); setReady(true); });   // 못 받으면 기본값으로라도 뜬다 (배너가 알린다)
       return () => unsub();
     }, [w.tick]);
-    return <BabyCtx.Provider value={baby}>{children}</BabyCtx.Provider>;
+    return <BabyCtx.Provider value={baby}><BabyReadyCtx.Provider value={ready}>{children}</BabyReadyCtx.Provider></BabyCtx.Provider>;
   };
 
   // 단위 설정 (저장은 항상 ml, 표시/입력만 변환)
@@ -1339,81 +1345,29 @@
     );
   };
 
+  /* 홈은 시기에 따라 전혀 다른 화면이다. 예전에는 한 컴포넌트가 출산 후에
+     쓰는 7개 기록 구독을 전부 연 뒤 출산 전 화면을 그렸다 — 지금 또또네가
+     매일 여는 화면이 필요도 없는 조회 6개가 끝나길 기다렸다.
+     이제 시기만 고르고, 각 화면이 제 것만 구독한다. */
   const Dashboard = ({ go }) => {
-    const { user, profile } = useAuth();
-    const toast = useToast();
-    const units = useUnits();
-    const [statsOpen, setStatsOpen] = useState(false);
-    const feedings = useRecords("feeding");
-    const sleeps = useRecords("sleep");
-    const diapers = useRecords("diaper");
-    const pumps = useRecords("pump", 50);
-    const solids = useRecords("solid", 50);
-    const meds = useRecords("med", 50);
-    const prenatals = useRecords("prenatal", 20);   // 출산 전 홈에 보여줄 초음파 기록
+    const ageInfo = useBabyAge();
+    const ready = useBabyReady();
+    // 아기 정보가 오기 전에 고르면 태어난 아기네도 출산 전 홈이 잠깐 떴다
+    if (!ready) return <Spinner label="불러오는 중..." />;
+    return ageInfo.mode === "born" ? <BornHome go={go} /> : <PregnantHome go={go} />;
+  };
+
+  const PregnantHome = ({ go }) => {
     const ageInfo = useBabyAge();
     const baby = useBaby();
-    const now = useNow(30000);
+    const prenatals = useRecords("prenatal", 20);   // 출산 전 홈에 보여줄 초음파 기록
     const [memoOpen, setMemoOpen] = useState(false);
-    const [qbusy, setQbusy] = useState(false);
-
-    // 홈 빠른 입력
-    const quickDiaper = async (t) => {
-      setQbusy(true);
-      try { await addRecordUndoable("diaper", { diaperType: t, color: null, at: TS() }, user, profile, toast, "기저귀 기록 추가"); }
-      catch (e) { toast(errMsg(e), "error"); } finally { setQbusy(false); }
-    };
-    const quickRepeatFeed = async () => {
-      const lf = feedings && feedings[0];
-      if (!lf) { go("records", "feeding"); return; }
-      setQbusy(true);
-      try { await addRecordUndoable("feeding", { kind: lf.kind, side: lf.side || null, amount: lf.amount || null, durationMin: lf.durationMin || null, at: TS() }, user, profile, toast, "직전 수유와 동일하게 기록"); }
-      catch (e) { toast(errMsg(e), "error"); } finally { setQbusy(false); }
-    };
-
-    if (!feedings || !sleeps || !diapers) return <Spinner label="불러오는 중..." />;
-
-    const today = new Date();
-    const tF = feedings.filter((r) => isSameDay(r.at, today));
-    const tD = diapers.filter((r) => isSameDay(r.at, today));
-    // 자정 넘긴 밤잠도 포함: 시작 또는 종료가 오늘인 완료 수면
-    const tS = sleeps.filter((r) => r.end && (isSameDay(r.at, today) || isSameDay(r.end, today)));
-    const clampMin = (r) => Math.min(24 * 60, Math.max(0, r.durationMin || 0)); // 잘못 저장된 값 보정
-    const sleepMin = tS.reduce((s, r) => s + clampMin(r), 0);
-
-    // 마지막 수유 & 다음 예상 (최근 간격 평균 기반)
-    const lastFeed = feedings[0];
-    const lastFeedDate = lastFeed ? toDate(lastFeed.at) : null;
-    const intervals = [];
-    for (let i = 0; i < Math.min(feedings.length - 1, 6); i++) {
-      const d = toDate(feedings[i].at) - toDate(feedings[i + 1].at);
-      if (d > 0) intervals.push(d);
-    }
-    const avgMs = intervals.length ? Math.max(5400000, intervals.reduce((a, b) => a + b, 0) / intervals.length) : 3 * 3600000;
-    const nextFeed = lastFeedDate ? new Date(lastFeedDate.getTime() + avgMs) : null;
-    const overdue = lastFeedDate && (now - lastFeedDate.getTime()) > 3 * 3600000; // 3시간 초과(임상 권고)
-
-    // 최근 7일 통계
-    const weekly = [];
-    for (let i = 6; i >= 0; i--) {
-      const d = new Date(); d.setDate(d.getDate() - i); const key = ymd(d);
-      const sl = sleeps.filter((r) => r.end && (ymd(r.at) === key || (r.end && ymd(r.end) === key))).reduce((s, r) => s + clampMin(r), 0) / 60;
-      weekly.push({
-        day: d.toLocaleDateString("ko-KR", { weekday: "short" }),
-        수유: feedings.filter((r) => ymd(r.at) === key).length,
-        기저귀: diapers.filter((r) => ymd(r.at) === key).length,
-        수면: +sl.toFixed(1),
-      });
-    }
-    const avg = (k) => (weekly.reduce((s, d) => s + d[k], 0) / 7);
-
-    const born = ageInfo.mode === "born";
     const lastUs = prenatals && prenatals.length ? prenatals[0] : null;
 
     /* ── 출산 전 홈 ──────────────────────────────────────────────────
        볼 게 D-day 와 초음파뿐인 시기다. 그 둘을 크게 앞에 둔다.
        수유·수면·기저귀 화면은 사라진 게 아니라 '기록' 탭에 그대로 있다. */
-    if (!born) return (
+    return (
       <div className="p-4 space-y-4 pb-safe">
       {/* 스크린리더가 제목으로 화면을 훑는다. 화면에는 자리를 차지하지 않지만
           어떤 화면인지 읽히도록 둔다 (예전에는 H3 부터 시작해 건너뛰며 읽혔다) */}
@@ -1483,6 +1437,75 @@
         </p>
       </div>
     );
+
+  };
+
+  const BornHome = ({ go }) => {
+    const { user, profile } = useAuth();
+    const toast = useToast();
+    const units = useUnits();
+    const [statsOpen, setStatsOpen] = useState(false);
+    const feedings = useRecords("feeding");
+    const sleeps = useRecords("sleep");
+    const diapers = useRecords("diaper");
+    const pumps = useRecords("pump", 50);
+    const solids = useRecords("solid", 50);
+    const meds = useRecords("med", 50);
+    const ageInfo = useBabyAge();
+    const baby = useBaby();
+    const now = useNow(30000);
+    const [memoOpen, setMemoOpen] = useState(false);
+    const [qbusy, setQbusy] = useState(false);
+
+    // 홈 빠른 입력
+    const quickDiaper = async (t) => {
+      setQbusy(true);
+      try { await addRecordUndoable("diaper", { diaperType: t, color: null, at: TS() }, user, profile, toast, "기저귀 기록 추가"); }
+      catch (e) { toast(errMsg(e), "error"); } finally { setQbusy(false); }
+    };
+    const quickRepeatFeed = async () => {
+      const lf = feedings && feedings[0];
+      if (!lf) { go("records", "feeding"); return; }
+      setQbusy(true);
+      try { await addRecordUndoable("feeding", { kind: lf.kind, side: lf.side || null, amount: lf.amount || null, durationMin: lf.durationMin || null, at: TS() }, user, profile, toast, "직전 수유와 동일하게 기록"); }
+      catch (e) { toast(errMsg(e), "error"); } finally { setQbusy(false); }
+    };
+
+    if (!feedings || !sleeps || !diapers) return <Spinner label="불러오는 중..." />;
+
+    const today = new Date();
+    const tF = feedings.filter((r) => isSameDay(r.at, today));
+    const tD = diapers.filter((r) => isSameDay(r.at, today));
+    // 자정 넘긴 밤잠도 포함: 시작 또는 종료가 오늘인 완료 수면
+    const tS = sleeps.filter((r) => r.end && (isSameDay(r.at, today) || isSameDay(r.end, today)));
+    const clampMin = (r) => Math.min(24 * 60, Math.max(0, r.durationMin || 0)); // 잘못 저장된 값 보정
+    const sleepMin = tS.reduce((s, r) => s + clampMin(r), 0);
+
+    // 마지막 수유 & 다음 예상 (최근 간격 평균 기반)
+    const lastFeed = feedings[0];
+    const lastFeedDate = lastFeed ? toDate(lastFeed.at) : null;
+    const intervals = [];
+    for (let i = 0; i < Math.min(feedings.length - 1, 6); i++) {
+      const d = toDate(feedings[i].at) - toDate(feedings[i + 1].at);
+      if (d > 0) intervals.push(d);
+    }
+    const avgMs = intervals.length ? Math.max(5400000, intervals.reduce((a, b) => a + b, 0) / intervals.length) : 3 * 3600000;
+    const nextFeed = lastFeedDate ? new Date(lastFeedDate.getTime() + avgMs) : null;
+    const overdue = lastFeedDate && (now - lastFeedDate.getTime()) > 3 * 3600000; // 3시간 초과(임상 권고)
+
+    // 최근 7일 통계
+    const weekly = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(); d.setDate(d.getDate() - i); const key = ymd(d);
+      const sl = sleeps.filter((r) => r.end && (ymd(r.at) === key || (r.end && ymd(r.end) === key))).reduce((s, r) => s + clampMin(r), 0) / 60;
+      weekly.push({
+        day: d.toLocaleDateString("ko-KR", { weekday: "short" }),
+        수유: feedings.filter((r) => ymd(r.at) === key).length,
+        기저귀: diapers.filter((r) => ymd(r.at) === key).length,
+        수면: +sl.toFixed(1),
+      });
+    }
+    const avg = (k) => (weekly.reduce((s, d) => s + d[k], 0) / 7);
 
     /* ── 출산 후 홈 ───────────────────────────────────────────────── */
     return (

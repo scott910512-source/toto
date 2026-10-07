@@ -773,11 +773,16 @@ const AuthProvider = ({
    4. 설정(아기 정보) 컨텍스트 — 나이/주수 계산
    ======================================================================== */
 const BabyCtx = createContext(null);
+const BabyReadyCtx = createContext(false);
 const useBaby = () => useContext(BabyCtx);
+/* 아기 정보가 DB 에서 한 번은 왔는지. 오기 전에는 기본값(임신 중)이라
+   태어난 아기네도 홈이 잠깐 출산 전 화면을 그렸다가 바뀌었다. */
+const useBabyReady = () => useContext(BabyReadyCtx);
 const BabyProvider = ({
   children
 }) => {
   const [baby, setBaby] = useState(BABY_DEFAULTS);
+  const [ready, setReady] = useState(false);
   const w = useDbWatch("settings");
   useEffect(() => {
     const unsub = COL.settings().onSnapshot(s => {
@@ -786,12 +791,18 @@ const BabyProvider = ({
         ...BABY_DEFAULTS,
         ...s.data()
       });
-    }, w.fail);
+      setReady(true);
+    }, e => {
+      w.fail(e);
+      setReady(true);
+    }); // 못 받으면 기본값으로라도 뜬다 (배너가 알린다)
     return () => unsub();
   }, [w.tick]);
   return /*#__PURE__*/React.createElement(BabyCtx.Provider, {
     value: baby
-  }, children);
+  }, /*#__PURE__*/React.createElement(BabyReadyCtx.Provider, {
+    value: ready
+  }, children));
 };
 
 // 단위 설정 (저장은 항상 ml, 표시/입력만 변환)
@@ -1411,7 +1422,119 @@ const StatsModal = ({
     className: "text-[12px] text-slate-400"
   }, "\uC790\uC8FC \uBA39\uB294 \uC2DC\uAC04\uB300\uB97C \uD30C\uC545\uD574 \uC218\uC720 \uB9AC\uB4EC\uC744 \uC7A1\uC544\uBCF4\uC138\uC694."))));
 };
+
+/* 홈은 시기에 따라 전혀 다른 화면이다. 예전에는 한 컴포넌트가 출산 후에
+   쓰는 7개 기록 구독을 전부 연 뒤 출산 전 화면을 그렸다 — 지금 또또네가
+   매일 여는 화면이 필요도 없는 조회 6개가 끝나길 기다렸다.
+   이제 시기만 고르고, 각 화면이 제 것만 구독한다. */
 const Dashboard = ({
+  go
+}) => {
+  const ageInfo = useBabyAge();
+  const ready = useBabyReady();
+  // 아기 정보가 오기 전에 고르면 태어난 아기네도 출산 전 홈이 잠깐 떴다
+  if (!ready) return /*#__PURE__*/React.createElement(Spinner, {
+    label: "\uBD88\uB7EC\uC624\uB294 \uC911..."
+  });
+  return ageInfo.mode === "born" ? /*#__PURE__*/React.createElement(BornHome, {
+    go: go
+  }) : /*#__PURE__*/React.createElement(PregnantHome, {
+    go: go
+  });
+};
+const PregnantHome = ({
+  go
+}) => {
+  const ageInfo = useBabyAge();
+  const baby = useBaby();
+  const prenatals = useRecords("prenatal", 20); // 출산 전 홈에 보여줄 초음파 기록
+  const [memoOpen, setMemoOpen] = useState(false);
+  const lastUs = prenatals && prenatals.length ? prenatals[0] : null;
+
+  /* ── 출산 전 홈 ──────────────────────────────────────────────────
+     볼 게 D-day 와 초음파뿐인 시기다. 그 둘을 크게 앞에 둔다.
+     수유·수면·기저귀 화면은 사라진 게 아니라 '기록' 탭에 그대로 있다. */
+  return /*#__PURE__*/React.createElement("div", {
+    className: "p-4 space-y-4 pb-safe"
+  }, /*#__PURE__*/React.createElement("h1", {
+    className: "sr-only"
+  }, "\uD648"), /*#__PURE__*/React.createElement(Card, {
+    className: "p-6 text-center bg-gradient-to-br from-violet-50 to-teal-50 dark:from-slate-800 dark:to-slate-800"
+  }, /*#__PURE__*/React.createElement("p", {
+    className: "text-sm text-slate-500 dark:text-slate-400"
+  }, baby.name), ageInfo.daysLeft > 0 ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", {
+    className: "text-5xl font-black text-violet-500 mt-1 tabular-nums"
+  }, "D-", ageInfo.daysLeft), /*#__PURE__*/React.createElement("p", {
+    className: "text-base font-bold text-slate-700 dark:text-slate-200 mt-2"
+  }, ageInfo.label), baby.dueDate && /*#__PURE__*/React.createElement("p", {
+    className: "text-[12px] text-slate-400 mt-1"
+  }, fmtDate(new Date(baby.dueDate)), " \uCD9C\uC0B0 \uC608\uC815")) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", {
+    className: "text-3xl font-black text-violet-500 mt-1"
+  }, ageInfo.label), /*#__PURE__*/React.createElement("p", {
+    className: "text-sm text-slate-500 mt-2"
+  }, "\uC608\uC815\uC77C\uC774 \uC9C0\uB0AC\uC5B4\uC694. \uACE7 \uB9CC\uB098\uC694 \uD83D\uDC9C"))), /*#__PURE__*/React.createElement("button", {
+    className: "w-full text-left",
+    onClick: () => go("records", "prenatal")
+  }, /*#__PURE__*/React.createElement(Card, {
+    className: "p-4 active:scale-[.99] transition"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center justify-between"
+  }, /*#__PURE__*/React.createElement("h3", {
+    className: "font-bold text-slate-800 dark:text-white"
+  }, "\uD83D\uDD2C \uCD5C\uADFC \uCD08\uC74C\uD30C"), /*#__PURE__*/React.createElement("span", {
+    className: "text-[12px] text-teal-600 dark:text-teal-400"
+  }, "\uC804\uCCB4 \uBCF4\uAE30 \u203A")), lastUs ? /*#__PURE__*/React.createElement("div", {
+    className: "mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-600 dark:text-slate-300"
+  }, /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("b", null, lastUs.week, "\uC8FC")), lastUs.efw != null && /*#__PURE__*/React.createElement("span", null, "\uCD94\uC815\uCCB4\uC911 ", lastUs.efw, "g"), lastUs.fhr != null && /*#__PURE__*/React.createElement("span", null, "\uC2EC\uBC15 ", lastUs.fhr, "bpm"), /*#__PURE__*/React.createElement("span", {
+    className: "text-slate-400"
+  }, fmtDate(lastUs.at))) : /*#__PURE__*/React.createElement("p", {
+    className: "text-sm text-slate-400 mt-2"
+  }, "\uC544\uC9C1 \uC5C6\uC5B4\uC694. \uAC80\uC9C4 \uB2E4\uB140\uC624\uBA74 \uC801\uC5B4\uB450\uBA74 \uC88B\uC544\uC694."))), /*#__PURE__*/React.createElement(Card, {
+    className: "p-3"
+  }, /*#__PURE__*/React.createElement("p", {
+    className: "text-xs font-semibold text-slate-400 mb-2 px-1"
+  }, "\u26A1 \uBE60\uB978 \uC785\uB825"), /*#__PURE__*/React.createElement("div", {
+    className: "grid grid-cols-3 gap-2"
+  }, /*#__PURE__*/React.createElement("button", {
+    onClick: () => go("records", "prenatal"),
+    className: "flex flex-col items-center gap-1 py-3 rounded-xl bg-teal-50 dark:bg-teal-900/30 active:scale-95 transition"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "text-xl",
+    "aria-hidden": "true"
+  }, "\uD83D\uDD2C"), /*#__PURE__*/React.createElement("span", {
+    className: "text-[12px] text-slate-600 dark:text-slate-300"
+  }, "\uCD08\uC74C\uD30C")), /*#__PURE__*/React.createElement("button", {
+    onClick: () => setMemoOpen(true),
+    className: "flex flex-col items-center gap-1 py-3 rounded-xl bg-violet-50 dark:bg-violet-900/30 active:scale-95 transition"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "text-xl",
+    "aria-hidden": "true"
+  }, "\uD83D\uDCDD"), /*#__PURE__*/React.createElement("span", {
+    className: "text-[12px] text-slate-600 dark:text-slate-300"
+  }, "\uBA54\uBAA8")), /*#__PURE__*/React.createElement("button", {
+    onClick: () => go("letters"),
+    className: "flex flex-col items-center gap-1 py-3 rounded-xl bg-rose-50 dark:bg-rose-900/30 active:scale-95 transition"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "text-xl",
+    "aria-hidden": "true"
+  }, "\uD83D\uDC8C"), /*#__PURE__*/React.createElement("span", {
+    className: "text-[12px] text-slate-600 dark:text-slate-300"
+  }, "\uD3B8\uC9C0")))), /*#__PURE__*/React.createElement("div", {
+    className: "grid grid-cols-2 gap-3"
+  }, /*#__PURE__*/React.createElement(Btn, {
+    variant: "primary",
+    onClick: () => go("records", "milestone")
+  }, "\uD83D\uDCD6 \uB2E4\uC774\uC5B4\uB9AC"), /*#__PURE__*/React.createElement(Btn, {
+    variant: "lavender",
+    onClick: () => go("records", "health")
+  }, "\uD83E\uDE7A \uAC74\uAC15 \uAE30\uB85D")), /*#__PURE__*/React.createElement(QuickMemoModal, {
+    open: memoOpen,
+    onClose: () => setMemoOpen(false)
+  }), /*#__PURE__*/React.createElement("p", {
+    className: "text-[12px] text-slate-400 text-center px-4 leading-relaxed"
+  }, "\uC218\uC720\xB7\uC218\uBA74\xB7\uAE30\uC800\uADC0 \uAE30\uB85D\uC740 \uD0DC\uC5B4\uB09C \uB4A4 \uD648\uC5D0 \uB098\uD0C0\uB098\uC694.", /*#__PURE__*/React.createElement("br", null), "\uC9C0\uAE08\uB3C4 '\uAE30\uB85D' \uD0ED\uC5D0\uC11C \uBBF8\uB9AC \uC368\uBCFC \uC218 \uC788\uC5B4\uC694."));
+};
+const BornHome = ({
   go
 }) => {
   const {
@@ -1427,7 +1550,6 @@ const Dashboard = ({
   const pumps = useRecords("pump", 50);
   const solids = useRecords("solid", 50);
   const meds = useRecords("med", 50);
-  const prenatals = useRecords("prenatal", 20); // 출산 전 홈에 보여줄 초음파 기록
   const ageInfo = useBabyAge();
   const baby = useBaby();
   const now = useNow(30000);
@@ -1510,91 +1632,6 @@ const Dashboard = ({
     });
   }
   const avg = k => weekly.reduce((s, d) => s + d[k], 0) / 7;
-  const born = ageInfo.mode === "born";
-  const lastUs = prenatals && prenatals.length ? prenatals[0] : null;
-
-  /* ── 출산 전 홈 ──────────────────────────────────────────────────
-     볼 게 D-day 와 초음파뿐인 시기다. 그 둘을 크게 앞에 둔다.
-     수유·수면·기저귀 화면은 사라진 게 아니라 '기록' 탭에 그대로 있다. */
-  if (!born) return /*#__PURE__*/React.createElement("div", {
-    className: "p-4 space-y-4 pb-safe"
-  }, /*#__PURE__*/React.createElement("h1", {
-    className: "sr-only"
-  }, "\uD648"), /*#__PURE__*/React.createElement(Card, {
-    className: "p-6 text-center bg-gradient-to-br from-violet-50 to-teal-50 dark:from-slate-800 dark:to-slate-800"
-  }, /*#__PURE__*/React.createElement("p", {
-    className: "text-sm text-slate-500 dark:text-slate-400"
-  }, baby.name), ageInfo.daysLeft > 0 ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", {
-    className: "text-5xl font-black text-violet-500 mt-1 tabular-nums"
-  }, "D-", ageInfo.daysLeft), /*#__PURE__*/React.createElement("p", {
-    className: "text-base font-bold text-slate-700 dark:text-slate-200 mt-2"
-  }, ageInfo.label), baby.dueDate && /*#__PURE__*/React.createElement("p", {
-    className: "text-[12px] text-slate-400 mt-1"
-  }, fmtDate(new Date(baby.dueDate)), " \uCD9C\uC0B0 \uC608\uC815")) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", {
-    className: "text-3xl font-black text-violet-500 mt-1"
-  }, ageInfo.label), /*#__PURE__*/React.createElement("p", {
-    className: "text-sm text-slate-500 mt-2"
-  }, "\uC608\uC815\uC77C\uC774 \uC9C0\uB0AC\uC5B4\uC694. \uACE7 \uB9CC\uB098\uC694 \uD83D\uDC9C"))), /*#__PURE__*/React.createElement("button", {
-    className: "w-full text-left",
-    onClick: () => go("records", "prenatal")
-  }, /*#__PURE__*/React.createElement(Card, {
-    className: "p-4 active:scale-[.99] transition"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "flex items-center justify-between"
-  }, /*#__PURE__*/React.createElement("h3", {
-    className: "font-bold text-slate-800 dark:text-white"
-  }, "\uD83D\uDD2C \uCD5C\uADFC \uCD08\uC74C\uD30C"), /*#__PURE__*/React.createElement("span", {
-    className: "text-[12px] text-teal-600 dark:text-teal-400"
-  }, "\uC804\uCCB4 \uBCF4\uAE30 \u203A")), lastUs ? /*#__PURE__*/React.createElement("div", {
-    className: "mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-600 dark:text-slate-300"
-  }, /*#__PURE__*/React.createElement("span", null, /*#__PURE__*/React.createElement("b", null, lastUs.week, "\uC8FC")), lastUs.efw != null && /*#__PURE__*/React.createElement("span", null, "\uCD94\uC815\uCCB4\uC911 ", lastUs.efw, "g"), lastUs.fhr != null && /*#__PURE__*/React.createElement("span", null, "\uC2EC\uBC15 ", lastUs.fhr, "bpm"), /*#__PURE__*/React.createElement("span", {
-    className: "text-slate-400"
-  }, fmtDate(lastUs.at))) : /*#__PURE__*/React.createElement("p", {
-    className: "text-sm text-slate-400 mt-2"
-  }, "\uC544\uC9C1 \uC5C6\uC5B4\uC694. \uAC80\uC9C4 \uB2E4\uB140\uC624\uBA74 \uC801\uC5B4\uB450\uBA74 \uC88B\uC544\uC694."))), /*#__PURE__*/React.createElement(Card, {
-    className: "p-3"
-  }, /*#__PURE__*/React.createElement("p", {
-    className: "text-xs font-semibold text-slate-400 mb-2 px-1"
-  }, "\u26A1 \uBE60\uB978 \uC785\uB825"), /*#__PURE__*/React.createElement("div", {
-    className: "grid grid-cols-3 gap-2"
-  }, /*#__PURE__*/React.createElement("button", {
-    onClick: () => go("records", "prenatal"),
-    className: "flex flex-col items-center gap-1 py-3 rounded-xl bg-teal-50 dark:bg-teal-900/30 active:scale-95 transition"
-  }, /*#__PURE__*/React.createElement("span", {
-    className: "text-xl",
-    "aria-hidden": "true"
-  }, "\uD83D\uDD2C"), /*#__PURE__*/React.createElement("span", {
-    className: "text-[12px] text-slate-600 dark:text-slate-300"
-  }, "\uCD08\uC74C\uD30C")), /*#__PURE__*/React.createElement("button", {
-    onClick: () => setMemoOpen(true),
-    className: "flex flex-col items-center gap-1 py-3 rounded-xl bg-violet-50 dark:bg-violet-900/30 active:scale-95 transition"
-  }, /*#__PURE__*/React.createElement("span", {
-    className: "text-xl",
-    "aria-hidden": "true"
-  }, "\uD83D\uDCDD"), /*#__PURE__*/React.createElement("span", {
-    className: "text-[12px] text-slate-600 dark:text-slate-300"
-  }, "\uBA54\uBAA8")), /*#__PURE__*/React.createElement("button", {
-    onClick: () => go("letters"),
-    className: "flex flex-col items-center gap-1 py-3 rounded-xl bg-rose-50 dark:bg-rose-900/30 active:scale-95 transition"
-  }, /*#__PURE__*/React.createElement("span", {
-    className: "text-xl",
-    "aria-hidden": "true"
-  }, "\uD83D\uDC8C"), /*#__PURE__*/React.createElement("span", {
-    className: "text-[12px] text-slate-600 dark:text-slate-300"
-  }, "\uD3B8\uC9C0")))), /*#__PURE__*/React.createElement("div", {
-    className: "grid grid-cols-2 gap-3"
-  }, /*#__PURE__*/React.createElement(Btn, {
-    variant: "primary",
-    onClick: () => go("records", "milestone")
-  }, "\uD83D\uDCD6 \uB2E4\uC774\uC5B4\uB9AC"), /*#__PURE__*/React.createElement(Btn, {
-    variant: "lavender",
-    onClick: () => go("records", "health")
-  }, "\uD83E\uDE7A \uAC74\uAC15 \uAE30\uB85D")), /*#__PURE__*/React.createElement(QuickMemoModal, {
-    open: memoOpen,
-    onClose: () => setMemoOpen(false)
-  }), /*#__PURE__*/React.createElement("p", {
-    className: "text-[12px] text-slate-400 text-center px-4 leading-relaxed"
-  }, "\uC218\uC720\xB7\uC218\uBA74\xB7\uAE30\uC800\uADC0 \uAE30\uB85D\uC740 \uD0DC\uC5B4\uB09C \uB4A4 \uD648\uC5D0 \uB098\uD0C0\uB098\uC694.", /*#__PURE__*/React.createElement("br", null), "\uC9C0\uAE08\uB3C4 '\uAE30\uB85D' \uD0ED\uC5D0\uC11C \uBBF8\uB9AC \uC368\uBCFC \uC218 \uC788\uC5B4\uC694."));
 
   /* ── 출산 후 홈 ───────────────────────────────────────────────── */
   return /*#__PURE__*/React.createElement("div", {

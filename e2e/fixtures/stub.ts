@@ -40,7 +40,7 @@ export function stubScript(seed: Seed = {}): string {
   var UID = "11111111-1111-1111-1111-111111111111";
   var OTHER = "22222222-2222-2222-2222-222222222222";
   var SEED = ${JSON.stringify(s)};
-  window.__E2E = { calls: [], db: null, dbError: SEED.dbError };
+  window.__E2E = { calls: [], reads: [], db: null, dbError: SEED.dbError };
   /* 조회 실패를 흉내낸다. 로그인 자료(profiles)는 멀쩡해야 앱이 뜨므로 제외. */
   function readErr(t) {
     if (!window.__E2E.dbError || t === "profiles") return null;
@@ -127,7 +127,9 @@ export function stubScript(seed: Seed = {}): string {
   }
 
   function qb(t) {
-    var rows = visibleRows(t), pend = null;
+    var rows = visibleRows(t), pend = null, eqs = {};
+    /* 어떤 조회가 나갔는지 남긴다 — "홈이 필요한 것만 읽나" 를 센다 */
+    function noteRead() { window.__E2E.reads.push({ t: t, eq: eqs }); }
     var api = {
       select: function () { return api; },
       eq: function (c, v) {
@@ -142,11 +144,12 @@ export function stubScript(seed: Seed = {}): string {
           return Promise.resolve({ error: null });
         }
         rows = rows.filter(function (r) { return r[c] === v; });
+        eqs[c] = v;
         return api;
       },
       order: function () { return api; },
       limit: function (n) { rows = rows.slice(0, n); return api; },
-      maybeSingle: function () { var e = readErr(t); return Promise.resolve({ data: e ? null : (rows[0] || null), error: e }); },
+      maybeSingle: function () { noteRead(); var e = readErr(t); return Promise.resolve({ data: e ? null : (rows[0] || null), error: e }); },
       single: function () { return Promise.resolve({ data: rows[0] || null, error: null }); },
       insert: function (o) {
         var row = Object.assign({ id: "n" + Math.random().toString(36).slice(2, 8), family_id: "fam-1" }, o);
@@ -158,7 +161,7 @@ export function stubScript(seed: Seed = {}): string {
       upsert: function (o) { window.__E2E.calls.push({ op: "upsert", t: t, row: o }); return Promise.resolve({ error: null }); },
       update: function (o) { pend = { u: o }; return api; },
       delete: function () { pend = "del"; return api; },
-      then: function (res, rej) { var e = readErr(t); return Promise.resolve({ data: e ? null : rows, error: e }).then(res, rej); }
+      then: function (res, rej) { noteRead(); var e = readErr(t); return Promise.resolve({ data: e ? null : rows, error: e }).then(res, rej); }
     };
     return api;
   }
