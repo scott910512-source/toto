@@ -20,6 +20,9 @@ export type Seed = {
   signInError?: string;
   /** DB 보안 수정이 적용돼 있는지 — false 면 해당 함수가 없는 것처럼 답한다 */
   migrated?: boolean;
+  /** 기록·사진·가족 조회가 이 오류로 실패한다 (빈 문자열이면 정상).
+      테스트 중 window.__E2E.dbError 를 바꾸면 그 뒤 조회부터 반영된다. */
+  dbError?: string;
 };
 
 export function stubScript(seed: Seed = {}): string {
@@ -27,7 +30,7 @@ export function stubScript(seed: Seed = {}): string {
     role: "admin", approved: true, babyName: "또또",
     dueDate: "2026-12-14", birthDate: "", records: 2, photos: 3,
     privatePhotos: 1, privateOwner: "me", email: "me@t.com",
-    loggedOut: false, signInError: "", migrated: true,
+    loggedOut: false, signInError: "", migrated: true, dbError: "",
     ...seed,
   };
 
@@ -37,7 +40,12 @@ export function stubScript(seed: Seed = {}): string {
   var UID = "11111111-1111-1111-1111-111111111111";
   var OTHER = "22222222-2222-2222-2222-222222222222";
   var SEED = ${JSON.stringify(s)};
-  window.__E2E = { calls: [], db: null };
+  window.__E2E = { calls: [], db: null, dbError: SEED.dbError };
+  /* 조회 실패를 흉내낸다. 로그인 자료(profiles)는 멀쩡해야 앱이 뜨므로 제외. */
+  function readErr(t) {
+    if (!window.__E2E.dbError || t === "profiles") return null;
+    return { message: window.__E2E.dbError, code: /JWT/.test(window.__E2E.dbError) ? "PGRST301" : "" };
+  }
 
   function pic(label, bg) {
     return "data:image/svg+xml;utf8," + encodeURIComponent(
@@ -138,7 +146,7 @@ export function stubScript(seed: Seed = {}): string {
       },
       order: function () { return api; },
       limit: function (n) { rows = rows.slice(0, n); return api; },
-      maybeSingle: function () { return Promise.resolve({ data: rows[0] || null, error: null }); },
+      maybeSingle: function () { var e = readErr(t); return Promise.resolve({ data: e ? null : (rows[0] || null), error: e }); },
       single: function () { return Promise.resolve({ data: rows[0] || null, error: null }); },
       insert: function (o) {
         var row = Object.assign({ id: "n" + Math.random().toString(36).slice(2, 8), family_id: "fam-1" }, o);
@@ -150,7 +158,7 @@ export function stubScript(seed: Seed = {}): string {
       upsert: function (o) { window.__E2E.calls.push({ op: "upsert", t: t, row: o }); return Promise.resolve({ error: null }); },
       update: function (o) { pend = { u: o }; return api; },
       delete: function () { pend = "del"; return api; },
-      then: function (res, rej) { return Promise.resolve({ data: rows, error: null }).then(res, rej); }
+      then: function (res, rej) { var e = readErr(t); return Promise.resolve({ data: e ? null : rows, error: e }).then(res, rej); }
     };
     return api;
   }

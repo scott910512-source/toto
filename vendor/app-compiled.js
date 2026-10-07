@@ -191,11 +191,13 @@ const {
   tempStage,
   fhrCheck,
   crlGuide,
-  roleLabel
+  roleLabel,
+  createDbHealth,
+  isAuthExpired
 } = window.TotoCore;
 
 // 화면에 표시할 빌드 버전 — 폰이 최신인지 바로 확인할 수 있게
-const APP_VERSION = "v41";
+const APP_VERSION = "v42";
 
 /* ========================================================================
    1. Supabase 초기화 + Firestore 호환 계층
@@ -343,6 +345,48 @@ const {
   removeFiles: removeStorage
 } = photoStore;
 const TS = () => SV.serverTimestamp();
+
+/* ── DB 연결 상태 ────────────────────────────────────────────────────
+   조회가 실패하면(오프라인·로그인 만료·서버 오류) 예전에는 조용히 빈
+   목록을 넣어서 모든 화면이 "아직 기록이 없어요" 라고 했다. 가족이
+   "기록이 사라졌나" 하고 놀랄 수 있는 문구다. 이제 구독 훅들이 여기에
+   알리고, 배너 하나가 "연결하지 못했어요 · 다시 시도" 를 띄운다. */
+const dbHealth = createDbHealth();
+const useDbHealth = () => React.useSyncExternalStore(dbHealth.subscribe, dbHealth.get);
+/* 구독 훅용: 성공/실패를 알리고, 다시 시도 tick 을 돌려준다.
+   unmount 되면 실패 목록에서 빠져 배너가 남지 않는다. */
+const useDbWatch = key => {
+  const {
+    tick
+  } = useDbHealth();
+  useEffect(() => () => dbHealth.forget(key), [key]);
+  return {
+    tick,
+    ok: () => dbHealth.ok(key),
+    fail: e => {
+      console.error(key, e);
+      dbHealth.fail(key, e);
+    }
+  };
+};
+/* 오프라인 ↔ 온라인. 연결되면 자동으로 다시 조회한다. */
+const useOnline = () => {
+  const [on, setOn] = useState(typeof navigator === "undefined" || navigator.onLine !== false);
+  useEffect(() => {
+    const up = () => {
+      setOn(true);
+      dbHealth.retry();
+    };
+    const down = () => setOn(false);
+    window.addEventListener("online", up);
+    window.addEventListener("offline", down);
+    return () => {
+      window.removeEventListener("online", up);
+      window.removeEventListener("offline", down);
+    };
+  }, []);
+  return on;
+};
 const signOutApp = async () => {
   purgeLegacyCredentials();
   photoStore.clearSignedUrlCache(); // 다음 사람에게 남의 사진이 보이지 않게
@@ -734,15 +778,17 @@ const BabyProvider = ({
   children
 }) => {
   const [baby, setBaby] = useState(BABY_DEFAULTS);
+  const w = useDbWatch("settings");
   useEffect(() => {
     const unsub = COL.settings().onSnapshot(s => {
+      w.ok();
       if (s.exists) setBaby({
         ...BABY_DEFAULTS,
         ...s.data()
       });
-    });
+    }, w.fail);
     return () => unsub();
-  }, []);
+  }, [w.tick]);
   return /*#__PURE__*/React.createElement(BabyCtx.Provider, {
     value: baby
   }, children);
@@ -785,21 +831,26 @@ const useNow = (intervalMs = 30000) => {
 };
 const useRecords = (type, max = 200) => {
   const [items, setItems] = useState(null);
+  const w = useDbWatch("records:" + type);
   useEffect(() => {
     // 타입별 단일 필드 equality 쿼리(자동 색인, 복합 색인 불필요) → 해당 타입만 가져옴
     const unsub = COL.records().where("type", "==", type).limit(max).onSnapshot(snap => {
+      w.ok();
       const arr = snap.docs.map(d => ({
         id: d.id,
         ...d.data()
       }));
       arr.sort((a, b) => (toDate(b.at) || 0) - (toDate(a.at) || 0)); // 최신순 클라이언트 정렬
       setItems(arr);
-    }, err => {
-      console.error(type, err);
+    },
+    /* 빈 목록을 넣되 배너가 "불러오지 못함" 을 알린다 — 스피너가 영영
+       돌지도, "없어요" 만 보이지도 않게 */
+    err => {
+      w.fail(err);
       setItems([]);
     });
     return () => unsub();
-  }, [type, max]);
+  }, [type, max, w.tick]);
   return items;
 };
 const addRecord = async (type, data, user, profile) => {
@@ -4809,9 +4860,11 @@ const AlbumPicker = ({
 };
 const usePhotos = (max = 300) => {
   const [photos, setPhotos] = useState(null);
+  const w = useDbWatch("photos");
   useEffect(() => {
     let alive = true;
     const unsub = COL.photos().orderBy("createdAt", "desc").limit(max).onSnapshot(async snap => {
+      w.ok();
       const rows = snap.docs.map(d => ({
         id: d.id,
         ...d.data()
@@ -4825,14 +4878,14 @@ const usePhotos = (max = 300) => {
         thumbUrl: map[p.thumbPath] || map[p.previewPath] || map[p.storagePath] || null
       })));
     }, e => {
-      console.error(e);
+      w.fail(e);
       if (alive) setPhotos([]);
     });
     return () => {
       alive = false;
       unsub();
     };
-  }, [max]);
+  }, [max, w.tick]);
   return photos;
 };
 
@@ -6647,6 +6700,37 @@ const UpdateBanner = () => {
   }, busy ? "적용 중…" : "업데이트"))));
 };
 
+/* ── DB 연결 배너 ──────────────────────────────────────────────────
+   조회가 하나라도 실패해 있으면 머리글 아래에 띄운다. 오프라인이면 그
+   말을 하고, 연결되면 자동으로 다시 조회한다. 로그인 만료는 "다시 시도"
+   로 안 풀리므로 로그아웃 버튼을 준다. */
+const DbHealthBanner = () => {
+  const {
+    failedCount,
+    lastError
+  } = useDbHealth();
+  const online = useOnline();
+  if (failedCount === 0 && online) return null;
+  const expired = failedCount > 0 && isAuthExpired(lastError);
+  const text = !online ? "오프라인이에요. 연결되면 다시 불러올게요." : expired ? "로그인이 만료됐어요. 다시 로그인해 주세요." : "서버에 연결하지 못했어요. 보이는 기록이 전부가 아닐 수 있어요.";
+  return /*#__PURE__*/React.createElement("div", {
+    role: "alert",
+    className: "shrink-0 px-4 pt-2"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "max-w-[430px] mx-auto flex items-center gap-3 rounded-2xl bg-amber-50 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200 px-4 py-2.5 text-sm"
+  }, /*#__PURE__*/React.createElement("span", {
+    "aria-hidden": "true"
+  }, online ? "⚠️" : "📴"), /*#__PURE__*/React.createElement("span", {
+    className: "flex-1 leading-snug"
+  }, text), online && (expired ? /*#__PURE__*/React.createElement("button", {
+    onClick: () => signOutApp(),
+    className: "font-bold text-amber-700 dark:text-amber-200 min-h-[44px] px-2 -mr-2 shrink-0"
+  }, "\uB85C\uADF8\uC544\uC6C3") : /*#__PURE__*/React.createElement("button", {
+    onClick: () => dbHealth.retry(),
+    className: "font-bold text-amber-700 dark:text-amber-200 min-h-[44px] px-2 -mr-2 shrink-0"
+  }, "\uB2E4\uC2DC \uC2DC\uB3C4"))));
+};
+
 /* ========================================================================
    D-day 위젯 — Scriptable 코드와 전체화면 링크를 우리 아기 값으로 만들어 준다
    ======================================================================== */
@@ -7730,7 +7814,7 @@ const ViewerApp = ({
   }, /*#__PURE__*/React.createElement(Header, {
     dark: dark,
     setDark: setDark
-  }), /*#__PURE__*/React.createElement(MedalWatcher, null), /*#__PURE__*/React.createElement("main", {
+  }), /*#__PURE__*/React.createElement(MedalWatcher, null), /*#__PURE__*/React.createElement(DbHealthBanner, null), /*#__PURE__*/React.createElement("main", {
     className: "app-main"
   }, /*#__PURE__*/React.createElement("div", {
     className: "px-4 pt-3"
@@ -8504,7 +8588,7 @@ const MainApp = () => {
   }, /*#__PURE__*/React.createElement(Header, {
     dark: dark,
     setDark: setDark
-  }), /*#__PURE__*/React.createElement(MedalWatcher, null), /*#__PURE__*/React.createElement(InstallBanner, null), /*#__PURE__*/React.createElement("main", {
+  }), /*#__PURE__*/React.createElement(MedalWatcher, null), /*#__PURE__*/React.createElement(InstallBanner, null), /*#__PURE__*/React.createElement(DbHealthBanner, null), /*#__PURE__*/React.createElement("main", {
     className: "app-main"
   }, tab === "dashboard" && /*#__PURE__*/React.createElement(Dashboard, {
     go: go

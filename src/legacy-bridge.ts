@@ -33,6 +33,7 @@ import { createStorage } from "@/lib/storage";
 import { canSeePhoto, canSeeLetter, likeCountOf, likedByMe } from "@/lib/visibility";
 import { MEDALS, medalStats, earnedMedals, medalProgress } from "@/lib/medals";
 import { tempStage, fhrCheck, crlGuide, roleLabel, ROLE_LABEL } from "@/lib/guides";
+import { createDbHealth, isAuthExpired } from "@/lib/dbHealth";
 
 export const TotoCore = {
   // 날짜·시간
@@ -59,6 +60,8 @@ export const TotoCore = {
   MEDALS, medalStats, earnedMedals, medalProgress,
   // 참고 안내 · 등급 이름
   tempStage, fhrCheck, crlGuide, roleLabel, ROLE_LABEL,
+  // DB 연결 상태 ("불러오지 못함" 을 "없음" 으로 보이지 않게)
+  createDbHealth, isAuthExpired,
 } as const;
 
 declare global {

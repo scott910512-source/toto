@@ -19,6 +19,7 @@
     "fetch:tailwind": "node tools/fetch-tailwind.mjs",
     "test:sql": "bash tools/sql-verify.sh",
     "build:core": "vite build --config vite.core.config.ts",
+    "build:app": "node tools/build-app-bundle.mjs",
     "build:sql": "node tools/build-compact-sql.mjs",
     "build:css": "node tools/build-css.mjs"
   },

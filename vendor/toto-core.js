@@ -904,6 +904,60 @@ var TotoCoreBundle = function(exports) {
     viewer: "관람전용"
   };
   const roleLabel = (r) => r && ROLE_LABEL[r] || "구성원";
+  function createDbHealth() {
+    const failed = /* @__PURE__ */ new Map();
+    const subs = /* @__PURE__ */ new Set();
+    let tick = 0;
+    let lastError = null;
+    let snapshot = { failedCount: 0, lastError: null, tick: 0 };
+    const emit = () => {
+      snapshot = { failedCount: failed.size, lastError, tick };
+      subs.forEach((f) => f());
+    };
+    return {
+      /** 조회가 실패했다. key 는 조회마다 고유한 이름(예: "records:feeding"). */
+      fail(key, e) {
+        failed.set(key, e);
+        lastError = e;
+        emit();
+      },
+      /** 조회가 성공했다(복구됐다). 실패 목록에 없었다면 아무 일도 없다. */
+      ok(key) {
+        if (failed.delete(key)) {
+          if (failed.size === 0) lastError = null;
+          emit();
+        }
+      },
+      /** 구독이 끝났다 — 실패로 남아 배너가 계속 뜨지 않게 지운다. */
+      forget(key) {
+        if (failed.delete(key)) {
+          if (failed.size === 0) lastError = null;
+          emit();
+        }
+      },
+      /** 모두 다시 조회하게 한다. */
+      retry() {
+        failed.clear();
+        lastError = null;
+        tick++;
+        emit();
+      },
+      /** useSyncExternalStore 용 — 바뀌지 않았으면 같은 객체를 준다. */
+      get: () => snapshot,
+      subscribe(f) {
+        subs.add(f);
+        return () => {
+          subs.delete(f);
+        };
+      }
+    };
+  }
+  function isAuthExpired(e) {
+    var _a, _b;
+    const raw = String((_a = e == null ? void 0 : e.message) != null ? _a : typeof e === "string" ? e : "");
+    const code = String((_b = e == null ? void 0 : e.code) != null ? _b : "");
+    return /JWT expired|token is expired|invalid JWT|JWSError/i.test(raw) || code === "PGRST301";
+  }
   const TotoCore = {
     // 날짜·시간
     GESTATION_DAYS,
@@ -964,7 +1018,10 @@ var TotoCoreBundle = function(exports) {
     fhrCheck,
     crlGuide,
     roleLabel,
-    ROLE_LABEL
+    ROLE_LABEL,
+    // DB 연결 상태 ("불러오지 못함" 을 "없음" 으로 보이지 않게)
+    createDbHealth,
+    isAuthExpired
   };
   if (typeof window !== "undefined") window.TotoCore = TotoCore;
   exports.TotoCore = TotoCore;

@@ -9,7 +9,7 @@
    ⚠️ 정적 파일 요청에 앱 화면(app.html)을 돌려주지 않는다.
       예전에는 .js 가 실패하면 HTML 이 돌아와서 앱이 이상하게 깨졌다.
    배포할 때 CACHE 버전을 올리면 이전 캐시가 정리된다. */
-const CACHE = "toto-v41";
+const CACHE = "toto-v42";
 
 /* app.html 이 vendor/*.js?v=NN 으로 부르므로, 미리 담을 때도 같은 주소를
    써야 한다. 주소가 다르면 오프라인에서 못 찾는다.

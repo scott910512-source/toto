@@ -74,11 +74,11 @@
   <!-- 공용 로직(날짜·오류문구·설정진단·백업검사).
        src/ 에서 빌드한 파일이고 테스트가 붙어 있다. npm run build:core
        이 파일이 못 뜨면 앱이 멈추므로 defer/async 를 쓰지 않는다. -->
-  <script src="vendor/toto-core.js?v=41"></script>
+  <script src="vendor/toto-core.js?v=42"></script>
 
   <!-- DB 보안 수정 SQL (관리자가 설정에서 복사해 Supabase 에 붙여넣는 용도).
        공개 저장소에 있는 내용과 같고 비밀값이 아니다. 없어도 앱은 동작한다. -->
-  <script src="vendor/toto-sql.js?v=41"></script>
+  <script src="vendor/toto-sql.js?v=42"></script>
 
   <!-- 버전 고정 + crossorigin: 'latest' 변경/CORS 가림(Script error.) 방지 -->
   <script crossorigin="anonymous" src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
@@ -112,7 +112,7 @@
       document.head.appendChild(tw);
     };
   </script>
-  <link rel="stylesheet" href="vendor/app.css?v=41" id="toto-css" onerror="window.__totoCssFallback()">
+  <link rel="stylesheet" href="vendor/app.css?v=42" id="toto-css" onerror="window.__totoCssFallback()">
   <script src="./supabase-config.js"></script>
 
   <script>
@@ -482,10 +482,11 @@
     canSeePhoto, canSeeLetter, likeCountOf, likedByMe,
     MEDALS, medalStats, earnedMedals,
     tempStage, fhrCheck, crlGuide, roleLabel,
+    createDbHealth, isAuthExpired,
   } = window.TotoCore;
 
   // 화면에 표시할 빌드 버전 — 폰이 최신인지 바로 확인할 수 있게
-  const APP_VERSION = "v41";
+  const APP_VERSION = "v42";
 
   /* ========================================================================
      1. Supabase 초기화 + Firestore 호환 계층
@@ -591,6 +592,33 @@
   const { signPaths, signOne, fetchSigned, removeFiles: removeStorage } = photoStore;
 
   const TS = () => SV.serverTimestamp();
+
+  /* ── DB 연결 상태 ────────────────────────────────────────────────────
+     조회가 실패하면(오프라인·로그인 만료·서버 오류) 예전에는 조용히 빈
+     목록을 넣어서 모든 화면이 "아직 기록이 없어요" 라고 했다. 가족이
+     "기록이 사라졌나" 하고 놀랄 수 있는 문구다. 이제 구독 훅들이 여기에
+     알리고, 배너 하나가 "연결하지 못했어요 · 다시 시도" 를 띄운다. */
+  const dbHealth = createDbHealth();
+  const useDbHealth = () => React.useSyncExternalStore(dbHealth.subscribe, dbHealth.get);
+  /* 구독 훅용: 성공/실패를 알리고, 다시 시도 tick 을 돌려준다.
+     unmount 되면 실패 목록에서 빠져 배너가 남지 않는다. */
+  const useDbWatch = (key) => {
+    const { tick } = useDbHealth();
+    useEffect(() => () => dbHealth.forget(key), [key]);
+    return { tick, ok: () => dbHealth.ok(key), fail: (e) => { console.error(key, e); dbHealth.fail(key, e); } };
+  };
+  /* 오프라인 ↔ 온라인. 연결되면 자동으로 다시 조회한다. */
+  const useOnline = () => {
+    const [on, setOn] = useState(typeof navigator === "undefined" || navigator.onLine !== false);
+    useEffect(() => {
+      const up = () => { setOn(true); dbHealth.retry(); };
+      const down = () => setOn(false);
+      window.addEventListener("online", up); window.addEventListener("offline", down);
+      return () => { window.removeEventListener("online", up); window.removeEventListener("offline", down); };
+    }, []);
+    return on;
+  };
+
   const signOutApp = async () => {
     purgeLegacyCredentials();
     photoStore.clearSignedUrlCache();   // 다음 사람에게 남의 사진이 보이지 않게
@@ -890,12 +918,14 @@
   const useBaby = () => useContext(BabyCtx);
   const BabyProvider = ({ children }) => {
     const [baby, setBaby] = useState(BABY_DEFAULTS);
+    const w = useDbWatch("settings");
     useEffect(() => {
       const unsub = COL.settings().onSnapshot((s) => {
+        w.ok();
         if (s.exists) setBaby({ ...BABY_DEFAULTS, ...s.data() });
-      });
+      }, w.fail);
       return () => unsub();
-    }, []);
+    }, [w.tick]);
     return <BabyCtx.Provider value={baby}>{children}</BabyCtx.Provider>;
   };
 
@@ -937,6 +967,7 @@
 
   const useRecords = (type, max = 200) => {
     const [items, setItems] = useState(null);
+    const w = useDbWatch("records:" + type);
     useEffect(() => {
       // 타입별 단일 필드 equality 쿼리(자동 색인, 복합 색인 불필요) → 해당 타입만 가져옴
       const unsub = COL.records()
@@ -944,14 +975,17 @@
         .limit(max)
         .onSnapshot(
           (snap) => {
+            w.ok();
             const arr = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
             arr.sort((a, b) => (toDate(b.at) || 0) - (toDate(a.at) || 0)); // 최신순 클라이언트 정렬
             setItems(arr);
           },
-          (err) => { console.error(type, err); setItems([]); }
+          /* 빈 목록을 넣되 배너가 "불러오지 못함" 을 알린다 — 스피너가 영영
+             돌지도, "없어요" 만 보이지도 않게 */
+          (err) => { w.fail(err); setItems([]); }
         );
       return () => unsub();
-    }, [type, max]);
+    }, [type, max, w.tick]);
     return items;
   };
 
@@ -3286,10 +3320,12 @@
 
   const usePhotos = (max = 300) => {
     const [photos, setPhotos] = useState(null);
+    const w = useDbWatch("photos");
     useEffect(() => {
       let alive = true;
       const unsub = COL.photos().orderBy("createdAt", "desc").limit(max)
         .onSnapshot(async (snap) => {
+          w.ok();
           const rows = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
           // 비공개 버킷이라 표시용 서명 URL 을 따로 발급받아 붙인다
           const map = await signPaths(rows.flatMap((p) => [p.thumbPath, p.previewPath, p.storagePath]));
@@ -3299,9 +3335,9 @@
             url: map[p.previewPath] || map[p.storagePath] || map[p.thumbPath] || null,
             thumbUrl: map[p.thumbPath] || map[p.previewPath] || map[p.storagePath] || null,
           })));
-        }, (e) => { console.error(e); if (alive) setPhotos([]); });
+        }, (e) => { w.fail(e); if (alive) setPhotos([]); });
       return () => { alive = false; unsub(); };
-    }, [max]);
+    }, [max, w.tick]);
     return photos;
   };
 
@@ -4523,6 +4559,31 @@
     );
   };
 
+  /* ── DB 연결 배너 ──────────────────────────────────────────────────
+     조회가 하나라도 실패해 있으면 머리글 아래에 띄운다. 오프라인이면 그
+     말을 하고, 연결되면 자동으로 다시 조회한다. 로그인 만료는 "다시 시도"
+     로 안 풀리므로 로그아웃 버튼을 준다. */
+  const DbHealthBanner = () => {
+    const { failedCount, lastError } = useDbHealth();
+    const online = useOnline();
+    if (failedCount === 0 && online) return null;
+    const expired = failedCount > 0 && isAuthExpired(lastError);
+    const text = !online ? "오프라인이에요. 연결되면 다시 불러올게요."
+      : expired ? "로그인이 만료됐어요. 다시 로그인해 주세요."
+      : "서버에 연결하지 못했어요. 보이는 기록이 전부가 아닐 수 있어요.";
+    return (
+      <div role="alert" className="shrink-0 px-4 pt-2">
+        <div className="max-w-[430px] mx-auto flex items-center gap-3 rounded-2xl bg-amber-50 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200 px-4 py-2.5 text-sm">
+          <span aria-hidden="true">{online ? "⚠️" : "📴"}</span>
+          <span className="flex-1 leading-snug">{text}</span>
+          {online && (expired
+            ? <button onClick={() => signOutApp()} className="font-bold text-amber-700 dark:text-amber-200 min-h-[44px] px-2 -mr-2 shrink-0">로그아웃</button>
+            : <button onClick={() => dbHealth.retry()} className="font-bold text-amber-700 dark:text-amber-200 min-h-[44px] px-2 -mr-2 shrink-0">다시 시도</button>)}
+        </div>
+      </div>
+    );
+  };
+
   /* ========================================================================
      D-day 위젯 — Scriptable 코드와 전체화면 링크를 우리 아기 값으로 만들어 준다
      ======================================================================== */
@@ -5297,6 +5358,7 @@
       <div className="app-shell bg-warm">
         <Header dark={dark} setDark={setDark} />
         <MedalWatcher />
+        <DbHealthBanner />
         <main className="app-main">
           <div className="px-4 pt-3">
             <p className="text-xs text-slate-400">관람 계정 · 사진 감상 ❤️ · 편지 작성 · 메달 수집이 가능해요</p>
@@ -5991,6 +6053,7 @@ Script.complete();
         <Header dark={dark} setDark={setDark} />
         <MedalWatcher />
         <InstallBanner />
+        <DbHealthBanner />
         <main className="app-main">
           {tab === "dashboard" && <Dashboard go={go} />}
           {tab === "records" && <Records sub={recSub} setSub={setRecSub} openUpload={() => openUpload("ultrasound")} />}
@@ -6110,7 +6173,7 @@ Script.complete();
   </script>
 
   <!-- 미리 컴파일한 앱. 이게 돌면 Babel 은 필요하지 않다. -->
-  <script src="vendor/app-compiled.js?v=41"></script>
+  <script src="vendor/app-compiled.js?v=42"></script>
 
   <script>
     /* 미리 컴파일한 파일을 못 받았을 때의 되돌림.
