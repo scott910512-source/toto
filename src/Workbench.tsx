@@ -12,6 +12,13 @@ import { babyAge, dday, ago, hm } from "./lib/dates";
 import { tempStage } from "./lib/guides";
 import { errMsg } from "./lib/errors";
 import { MedalGrid } from "./screens/MedalGrid";
+import { Letters, type Letter } from "./screens/Letters";
+
+/* 작업대용 편지 — DB 없이 메모리에만 둔다 */
+const SEED_LETTERS: Letter[] = [
+  { id: "l1", title: "사랑하는 또또에게", body: "건강하게 나와줘", vis: "public", createdBy: "u-dad", creatorName: "아빠", at: "2026-10-01T10:00:00Z" },
+  { id: "l2", title: "엄마의 비밀 편지", body: "너만 알아줘", vis: "private", createdBy: "u-me", creatorName: "엄마", at: "2026-10-02T10:00:00Z" },
+];
 
 /* 작업대 — 옮겨 온 조각들이 실제로 동작하는지 눈으로 보는 자리.
    가족이 쓰는 화면이 아니며 배포되지 않는다. 화면을 하나씩 옮겨 오면서
@@ -30,6 +37,8 @@ function Inner() {
   const [kind, setKind] = useState<(typeof KINDS)[number]["value"]>("breast");
   const [open, setOpen] = useState(false);
   const [temp, setTemp] = useState("37.2");
+  const [letters, setLetters] = useState<Letter[]>(SEED_LETTERS);
+  const [admin, setAdmin] = useState(true);
 
   const baby = { name: "또또", dueDate: "2026-12-14", birthDate: "" };
   const age = babyAge(baby);
@@ -106,6 +115,32 @@ function Inner() {
       <Card className="p-4 space-y-2">
         <h2 className="font-bold text-slate-800 dark:text-white">메달 (옮겨 온 화면)</h2>
         <MedalGrid owner={{ loginDays: ["1", "2", "3", "4", "5"], letterCount: 1 }} />
+      </Card>
+
+      <Card className="p-0 space-y-0">
+        <div className="p-4 pb-0 flex items-center justify-between">
+          <h2 className="font-bold text-slate-800 dark:text-white">편지 (옮겨 온 화면)</h2>
+          <Btn variant="ghost" className="text-sm py-2 px-3" onClick={() => setAdmin(!admin)}>
+            {admin ? "관리자로 보는 중" : "가족으로 보는 중"}
+          </Btn>
+        </div>
+        <Letters
+          letters={letters}
+          uid="u-me"
+          isAdmin={admin}
+          onSave={async (d, id) => {
+            setLetters((ls) => id
+              ? ls.map((l) => (l.id === id ? { ...l, ...d } : l))
+              : [{ id: "l" + Date.now(), ...d, createdBy: "u-me", creatorName: "엄마", at: new Date().toISOString() }, ...ls]);
+            toast(id ? "편지를 수정했어요." : "편지를 남겼어요 💛", "success");
+          }}
+          onDelete={async (l) => { setLetters((ls) => ls.filter((x) => x.id !== l.id)); toast("지웠어요."); }}
+          onReply={async (l, text) => {
+            setLetters((ls) => ls.map((x) => (x.id === l.id ? { ...x, reply: text, replyBy: "엄마", replyAt: new Date().toISOString() } : x)));
+            toast("답장을 남겼어요 💜", "success");
+          }}
+          confirm={async (m) => window.confirm(m)}
+        />
       </Card>
 
       <Card className="p-4 space-y-2">
