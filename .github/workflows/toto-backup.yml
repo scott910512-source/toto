@@ -1,0 +1,102 @@
+name: 또또 백업
+
+# 왜: Supabase 무료 플랜은 자동 백업이 없다. 매일 기록을, 일요일에는 사진까지
+# 꺼내 암호화해 GitHub Artifacts 에 90일 보관한다. 복원은 앱의 "백업 가져오기".
+#
+# 필요한 비밀 (Settings → Secrets and variables → Actions → New repository secret):
+#   TOTO_BACKUP_EMAIL     승인된 가족 계정 이메일 (관리자 권장)
+#   TOTO_BACKUP_PASSWORD  그 계정 비밀번호
+#   TOTO_BACKUP_PASSPHRASE  백업 파일을 잠그는 암호 — 잃어버리면 백업을 못 연다
+# service_role 키는 쓰지 않는다. 가족 계정으로 RLS 가 허락하는 만큼만 읽는다.
+#
+# 공개 저장소의 Artifact 는 누구나 내려받을 수 있어서 반드시 암호화한다.
+# 푸는 법은 docs/백업.md.
+#
+# schedule 은 기본 브랜치의 워크플로만 돌린다. 이 파일은 또또 브랜치에 있고,
+# 기본 브랜치의 'Supabase 깨우기' 워크플로가 매일 이 파일을 workflow_call 로
+# 불러 돌린다 (uses: …/toto-backup.yml@claude/baby-care-firebase-app-QPyK0).
+
+on:
+  workflow_call:
+    inputs:
+      photos:
+        description: "사진 원본까지 담기"
+        type: boolean
+        default: false
+  workflow_dispatch:
+    inputs:
+      photos:
+        description: "사진 원본까지 담기 (평일 기본은 기록만, 일요일은 사진까지)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    name: 꺼내서 잠그고 보관
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: claude/baby-care-firebase-app-QPyK0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+
+      - name: 비밀이 있는지
+        env:
+          E: ${{ secrets.TOTO_BACKUP_EMAIL }}
+          P: ${{ secrets.TOTO_BACKUP_PASSWORD }}
+          K: ${{ secrets.TOTO_BACKUP_PASSPHRASE }}
+        run: |
+          missing=""
+          [ -z "$E" ] && missing="$missing TOTO_BACKUP_EMAIL"
+          [ -z "$P" ] && missing="$missing TOTO_BACKUP_PASSWORD"
+          [ -z "$K" ] && missing="$missing TOTO_BACKUP_PASSPHRASE"
+          if [ -n "$missing" ]; then
+            echo "::error::비밀이 없습니다:$missing — Settings → Secrets and variables → Actions 에서 넣으세요 (docs/백업.md)"
+            exit 1
+          fi
+
+      - name: 오늘은 사진까지?
+        id: mode
+        run: |
+          # 일요일(0) 이거나 수동으로 켰으면 사진까지
+          if [ "${{ inputs.photos }}" = "true" ] || [ "$(date -u +%u)" = "7" ]; then
+            echo "flag=--photos" >> "$GITHUB_OUTPUT"; echo "kind=사진포함" >> "$GITHUB_OUTPUT"
+          else
+            echo "flag=" >> "$GITHUB_OUTPUT"; echo "kind=기록만" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: 꺼내기
+        env:
+          TOTO_BACKUP_EMAIL: ${{ secrets.TOTO_BACKUP_EMAIL }}
+          TOTO_BACKUP_PASSWORD: ${{ secrets.TOTO_BACKUP_PASSWORD }}
+        run: npx vite-node tools/backup.ts ${{ steps.mode.outputs.flag }} --out backup-out
+
+      - name: 잠그기 (AES-256, 비밀 암호)
+        env:
+          TOTO_BACKUP_PASSPHRASE: ${{ secrets.TOTO_BACKUP_PASSPHRASE }}
+        run: |
+          day=$(date -u +%Y-%m-%d)
+          tar -C backup-out -czf "backup-$day.tar.gz" .
+          openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -salt \
+            -in "backup-$day.tar.gz" -out "또또백업-$day-${{ steps.mode.outputs.kind }}.tar.gz.enc" \
+            -pass env:TOTO_BACKUP_PASSPHRASE
+          rm -rf backup-out "backup-$day.tar.gz"
+          # 잠근 파일이 정말 풀리는지 바로 확인한다
+          openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -in "또또백업-$day-${{ steps.mode.outputs.kind }}.tar.gz.enc" \
+            -pass env:TOTO_BACKUP_PASSPHRASE | tar -tz | head -3
+          ls -la *.enc
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: 또또백업-${{ steps.mode.outputs.kind }}-${{ github.run_id }}
+          path: "*.enc"
+          retention-days: 90
+          if-no-files-found: error
