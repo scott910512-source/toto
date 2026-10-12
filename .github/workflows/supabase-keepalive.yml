@@ -16,6 +16,11 @@ on:
   schedule:
     - cron: "17 3 * * *"        # 매일 12:17 KST (정각은 몰려서 늦어진다)
   workflow_dispatch:
+    inputs:
+      photos:
+        description: "백업에 사진 원본까지 담기 (일요일 자동 실행은 어차피 담는다)"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -67,4 +72,6 @@ jobs:
     name: 또또 백업
     needs: ping
     uses: scott910512-source/toto/.github/workflows/toto-backup.yml@claude/baby-care-firebase-app-QPyK0
+    with:
+      photos: ${{ inputs.photos == true }}
     secrets: inherit
