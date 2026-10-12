@@ -3,15 +3,14 @@ name: Supabase 깨우기
 # 왜: Supabase 무료 프로젝트는 7일 동안 API 요청이 없으면 멈춘다(pause).
 # 멈추면 주소(xxx.supabase.co)가 DNS 에서 사라져 앱이 "서버에 연결하지
 # 못했어요" 가 된다. 2026-10-12 에 실제로 그렇게 멈췄다.
-# 하루에 한 번 DB 를 한 줄 읽어 "활동" 으로 인식시킨다.
+# 하루에 한 번 DB 를 한 줄 읽어 "활동" 으로 인식시키고, 이어서 백업을 돌린다.
 #
 # 멈춰 있으면 이 작업이 실패하고 GitHub 이 저장소 주인에게 메일을 보낸다 —
 # 그게 알림이다. 그때는 supabase.com/dashboard 에서 "Restore project".
 #
 # 주의: schedule 은 저장소의 기본 브랜치에 있는 워크플로만 돌린다.
-# 또또는 기본 브랜치가 아니라서, 이 파일은 기본 브랜치에도 같은 내용으로
-# 두어야 매일 돈다. 접속 정보는 또또 브랜치에서 읽어 오므로 여기 아무것도
-# 적지 않는다 (anon 키는 앱에 공개돼 있는 값이지만 그래도 가리고 쓴다).
+# 또또는 기본 브랜치가 아니라서 이 파일만 여기 두고, 실제 일(접속 정보·백업
+# 로직)은 전부 또또 브랜치에서 가져온다. 이 파일에는 비밀값이 없다.
 
 on:
   schedule:
@@ -39,7 +38,6 @@ jobs:
           URL=$(grep -o 'SUPABASE_URL *= *"[^"]*"' supabase-config.js | sed 's/.*"\(.*\)"/\1/')
           KEY=$(grep -o 'SUPABASE_ANON_KEY *= *"[^"]*"' supabase-config.js | sed 's/.*"\(.*\)"/\1/')
           if [ -z "$URL" ] || [ -z "$KEY" ]; then echo "supabase-config.js 에서 접속 정보를 못 읽었습니다"; exit 1; fi
-          case "$KEY" in sb_secret_*|eyJ*) ;; esac
           echo "::add-mask::$KEY"
           echo "url=$URL" >> "$GITHUB_OUTPUT"
           echo "key=$KEY" >> "$GITHUB_OUTPUT"
@@ -62,3 +60,11 @@ jobs:
           cat /tmp/body 2>/dev/null | head -c 300; echo
           echo "::error::Supabase 프로젝트에 닿지 못했습니다 (HTTP $code). 멈춘 것 같으면 https://supabase.com/dashboard 에서 Restore project 를 누르세요."
           exit 1
+
+  # 백업 — 로직은 또또 브랜치의 워크플로에 있다. 비밀은 저장소 Secrets 에서
+  # 그대로 넘어간다 (docs/백업.md). 깨우기가 성공했을 때만 돈다.
+  backup:
+    name: 또또 백업
+    needs: ping
+    uses: scott910512-source/toto/.github/workflows/toto-backup.yml@claude/baby-care-firebase-app-QPyK0
+    secrets: inherit
