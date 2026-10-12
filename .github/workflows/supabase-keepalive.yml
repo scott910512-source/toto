@@ -1,0 +1,64 @@
+name: Supabase 깨우기
+
+# 왜: Supabase 무료 프로젝트는 7일 동안 API 요청이 없으면 멈춘다(pause).
+# 멈추면 주소(xxx.supabase.co)가 DNS 에서 사라져 앱이 "서버에 연결하지
+# 못했어요" 가 된다. 2026-10-12 에 실제로 그렇게 멈췄다.
+# 하루에 한 번 DB 를 한 줄 읽어 "활동" 으로 인식시킨다.
+#
+# 멈춰 있으면 이 작업이 실패하고 GitHub 이 저장소 주인에게 메일을 보낸다 —
+# 그게 알림이다. 그때는 supabase.com/dashboard 에서 "Restore project".
+#
+# 주의: schedule 은 저장소의 기본 브랜치에 있는 워크플로만 돌린다.
+# 또또는 기본 브랜치가 아니라서, 이 파일은 기본 브랜치에도 같은 내용으로
+# 두어야 매일 돈다. 접속 정보는 또또 브랜치에서 읽어 오므로 여기 아무것도
+# 적지 않는다 (anon 키는 앱에 공개돼 있는 값이지만 그래도 가리고 쓴다).
+
+on:
+  schedule:
+    - cron: "17 3 * * *"        # 매일 12:17 KST (정각은 몰려서 늦어진다)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ping:
+    name: DB 한 줄 읽기
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: claude/baby-care-firebase-app-QPyK0
+          sparse-checkout: supabase-config.js
+          sparse-checkout-cone-mode: false
+
+      - name: 접속 정보 읽기
+        id: cfg
+        run: |
+          URL=$(grep -o 'SUPABASE_URL *= *"[^"]*"' supabase-config.js | sed 's/.*"\(.*\)"/\1/')
+          KEY=$(grep -o 'SUPABASE_ANON_KEY *= *"[^"]*"' supabase-config.js | sed 's/.*"\(.*\)"/\1/')
+          if [ -z "$URL" ] || [ -z "$KEY" ]; then echo "supabase-config.js 에서 접속 정보를 못 읽었습니다"; exit 1; fi
+          case "$KEY" in sb_secret_*|eyJ*) ;; esac
+          echo "::add-mask::$KEY"
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+          echo "key=$KEY" >> "$GITHUB_OUTPUT"
+          echo "대상: $URL"
+
+      - name: 깨우기
+        env:
+          URL: ${{ steps.cfg.outputs.url }}
+          KEY: ${{ steps.cfg.outputs.key }}
+        run: |
+          # RLS 때문에 anon 으로는 빈 목록이 오지만, DB 까지 닿는 요청이라 활동으로 센다
+          code=$(curl -sS -m 30 -o /tmp/body -w '%{http_code}' \
+            "$URL/rest/v1/families?select=id&limit=1" \
+            -H "apikey: $KEY" -H "Authorization: Bearer $KEY" || echo "000")
+          echo "HTTP $code"
+          if [ "$code" = "200" ]; then
+            echo "✅ 살아 있음"
+            exit 0
+          fi
+          cat /tmp/body 2>/dev/null | head -c 300; echo
+          echo "::error::Supabase 프로젝트에 닿지 못했습니다 (HTTP $code). 멈춘 것 같으면 https://supabase.com/dashboard 에서 Restore project 를 누르세요."
+          exit 1
