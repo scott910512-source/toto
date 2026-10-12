@@ -21,7 +21,8 @@ export function Modal({ open, onClose, title, full, children }: ModalProps) {
   return (
     <Portal>
       <div
-        className="fixed inset-0 z-[80] bg-black/60 flex items-end sm:items-center justify-center fade-in"
+        // 사진 전체화면(z-90) 위에서 열리는 확인창이 그 뒤에 숨지 않게 100
+        className="fixed inset-0 z-[100] bg-black/60 flex items-end sm:items-center justify-center fade-in"
         onClick={onClose}
       >
         <div

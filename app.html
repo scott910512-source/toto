@@ -74,11 +74,11 @@
   <!-- 공용 로직(날짜·오류문구·설정진단·백업검사).
        src/ 에서 빌드한 파일이고 테스트가 붙어 있다. npm run build:core
        이 파일이 못 뜨면 앱이 멈추므로 defer/async 를 쓰지 않는다. -->
-  <script src="vendor/toto-core.js?v=42"></script>
+  <script src="vendor/toto-core.js?v=43"></script>
 
   <!-- DB 보안 수정 SQL (관리자가 설정에서 복사해 Supabase 에 붙여넣는 용도).
        공개 저장소에 있는 내용과 같고 비밀값이 아니다. 없어도 앱은 동작한다. -->
-  <script src="vendor/toto-sql.js?v=42"></script>
+  <script src="vendor/toto-sql.js?v=43"></script>
 
   <!-- 버전 고정 + crossorigin: 'latest' 변경/CORS 가림(Script error.) 방지 -->
   <script crossorigin="anonymous" src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
@@ -112,7 +112,7 @@
       document.head.appendChild(tw);
     };
   </script>
-  <link rel="stylesheet" href="vendor/app.css?v=42" id="toto-css" onerror="window.__totoCssFallback()">
+  <link rel="stylesheet" href="vendor/app.css?v=43" id="toto-css" onerror="window.__totoCssFallback()">
   <script src="./supabase-config.js"></script>
 
   <script>
@@ -486,7 +486,7 @@
   } = window.TotoCore;
 
   // 화면에 표시할 빌드 버전 — 폰이 최신인지 바로 확인할 수 있게
-  const APP_VERSION = "v42";
+  const APP_VERSION = "v43";
 
   /* ========================================================================
      1. Supabase 초기화 + Firestore 호환 계층
@@ -805,7 +805,9 @@
     if (!open) return null;
     return (
       <Portal>
-        <div className="fixed inset-0 z-[80] bg-black/60 flex items-end sm:items-center justify-center fade-in"
+        {/* 사진 전체화면(z-90) 위에서 열리는 확인창·수정창이 그 뒤에 숨지 않도록
+            모달은 전체화면보다 위(100)에 둔다. 알림(120)·업데이트 배너(150)는 그 위. */}
+        <div className="fixed inset-0 z-[100] bg-black/60 flex items-end sm:items-center justify-center fade-in"
           onClick={onClose}>
           <div ref={boxRef} tabIndex={-1} onClick={(e) => e.stopPropagation()}
             role="dialog" aria-modal="true"
@@ -6196,7 +6198,7 @@ Script.complete();
   </script>
 
   <!-- 미리 컴파일한 앱. 이게 돌면 Babel 은 필요하지 않다. -->
-  <script src="vendor/app-compiled.js?v=42"></script>
+  <script src="vendor/app-compiled.js?v=43"></script>
 
   <script>
     /* 미리 컴파일한 파일을 못 받았을 때의 되돌림.

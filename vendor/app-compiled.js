@@ -197,7 +197,7 @@ const {
 } = window.TotoCore;
 
 // 화면에 표시할 빌드 버전 — 폰이 최신인지 바로 확인할 수 있게
-const APP_VERSION = "v42";
+const APP_VERSION = "v43";
 
 /* ========================================================================
    1. Supabase 초기화 + Firestore 호환 계층
@@ -636,7 +636,7 @@ const Modal = ({
   const boxRef = useFocusTrap(open, onClose);
   if (!open) return null;
   return /*#__PURE__*/React.createElement(Portal, null, /*#__PURE__*/React.createElement("div", {
-    className: "fixed inset-0 z-[80] bg-black/60 flex items-end sm:items-center justify-center fade-in",
+    className: "fixed inset-0 z-[100] bg-black/60 flex items-end sm:items-center justify-center fade-in",
     onClick: onClose
   }, /*#__PURE__*/React.createElement("div", _extends({
     ref: boxRef,
