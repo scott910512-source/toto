@@ -1,0 +1,83 @@
+:root {
+  --brand: #c1121f;
+}
+
+body {
+  min-height: 100vh;
+}
+
+.navbar-brand {
+  letter-spacing: -0.5px;
+}
+
+/* 경기 카드 */
+.match-card {
+  cursor: pointer;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+  height: 100%;
+}
+.match-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15) !important;
+}
+.match-card.closed {
+  cursor: default;
+  opacity: 0.85;
+}
+.match-card.closed:hover {
+  transform: none;
+}
+
+.score-input {
+  font-size: 1.6rem;
+  font-weight: 700;
+}
+/* 숫자 입력 화살표 숨김 (모바일 깔끔하게) */
+.score-input::-webkit-outer-spin-button,
+.score-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.score-input {
+  -moz-appearance: textfield;
+}
+
+/* 간단 토스트 */
+.toast-msg {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%) translateY(20px);
+  background: rgba(33, 37, 41, 0.95);
+  color: #fff;
+  padding: 0.7rem 1.2rem;
+  border-radius: 0.6rem;
+  font-size: 0.95rem;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  z-index: 1080;
+  max-width: 90vw;
+  text-align: center;
+}
+.toast-msg.show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+.toast-msg.error {
+  background: rgba(176, 0, 32, 0.96);
+}
+
+/* 통계 막대 */
+.stat-bar {
+  height: 22px;
+  border-radius: 4px;
+  background: var(--bs-primary);
+  min-width: 2px;
+}
+
+@media (max-width: 575.98px) {
+  .navbar-brand {
+    font-size: 1rem;
+  }
+}

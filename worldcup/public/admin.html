@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="ko" data-bs-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>관리자 · 월드컵 예측 이벤트</title>
+  <link rel="stylesheet" href="/vendor/bootstrap.min.css" />
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+  <nav class="navbar navbar-expand bg-body-tertiary border-bottom sticky-top">
+    <div class="container">
+      <span class="navbar-brand fw-bold">🔐 관리자</span>
+      <div class="ms-auto d-flex align-items-center gap-2">
+        <button id="themeToggle" class="btn btn-outline-secondary btn-sm" title="다크모드 전환">🌙</button>
+        <a href="/" class="btn btn-outline-secondary btn-sm">참여 화면</a>
+        <button id="logoutBtn" class="btn btn-outline-danger btn-sm d-none">로그아웃</button>
+      </div>
+    </div>
+  </nav>
+
+  <main class="container py-4">
+    <!-- 로그인 -->
+    <section id="loginView" class="d-none">
+      <div class="row justify-content-center">
+        <div class="col-12 col-sm-9 col-md-6 col-lg-4">
+          <div class="card shadow-sm">
+            <div class="card-body p-4">
+              <h1 class="h5 mb-3 text-center">관리자 로그인</h1>
+              <form id="loginForm">
+                <div class="mb-3">
+                  <label class="form-label">비밀번호</label>
+                  <input type="password" id="pwInput" class="form-control form-control-lg" required />
+                </div>
+                <div id="loginError" class="text-danger small mb-2 d-none"></div>
+                <button type="submit" class="btn btn-primary btn-lg w-100">로그인</button>
+              </form>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 대시보드 -->
+    <section id="dashView" class="d-none">
+      <ul class="nav nav-pills mb-3 flex-wrap gap-1" role="tablist">
+        <li class="nav-item"><button class="nav-link active" data-tab="all">전체 조회</button></li>
+        <li class="nav-item"><button class="nav-link" data-tab="stats">경기별 통계</button></li>
+        <li class="nav-item"><button class="nav-link" data-tab="matches">경기 설정</button></li>
+      </ul>
+
+      <!-- 전체 조회 -->
+      <div id="tab-all" class="tab-pane">
+        <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+          <h2 class="h5 mb-0">전체 예측 조회 <span id="allCount" class="badge text-bg-secondary"></span></h2>
+          <div class="d-flex gap-2">
+            <input type="text" id="allFilter" class="form-control form-control-sm" placeholder="팀·이름·경기 검색" style="width:200px" />
+            <button id="exportBtn" class="btn btn-success btn-sm">⬇️ 전체 다운로드 (xlsx)</button>
+          </div>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-sm table-striped align-middle">
+            <thead>
+              <tr><th>팀</th><th>이름</th><th>경기</th><th>예측</th><th>수정시각</th></tr>
+            </thead>
+            <tbody id="allBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- 경기별 통계 -->
+      <div id="tab-stats" class="tab-pane d-none">
+        <h2 class="h5 mb-3">경기별 통계</h2>
+        <div id="statsBox"></div>
+      </div>
+
+      <!-- 경기 설정 -->
+      <div id="tab-matches" class="tab-pane d-none">
+        <div class="row g-4">
+          <div class="col-12 col-lg-5">
+            <div class="card shadow-sm">
+              <div class="card-body">
+                <h2 class="h6">경기 추가</h2>
+                <form id="matchForm">
+                  <div class="mb-2">
+                    <label class="form-label small mb-1">우리팀</label>
+                    <input type="text" id="homeTeam" class="form-control" value="대한민국" />
+                  </div>
+                  <div class="mb-2">
+                    <label class="form-label small mb-1">상대팀</label>
+                    <input type="text" id="awayTeam" class="form-control" placeholder="예) 멕시코" required />
+                  </div>
+                  <div class="mb-2">
+                    <label class="form-label small mb-1">경기일시 (KST)</label>
+                    <input type="datetime-local" id="kickoff" class="form-control" required />
+                  </div>
+                  <div id="matchError" class="text-danger small mb-2 d-none"></div>
+                  <button type="submit" class="btn btn-primary w-100">경기 추가</button>
+                </form>
+              </div>
+            </div>
+          </div>
+          <div class="col-12 col-lg-7">
+            <h2 class="h6">등록된 경기</h2>
+            <div id="matchAdminList" class="vstack gap-2"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div id="toast" class="toast-msg"></div>
+
+  <script src="/vendor/bootstrap.bundle.min.js"></script>
+  <script src="/js/admin.js"></script>
+</body>
+</html>
